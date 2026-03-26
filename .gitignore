@@ -1,0 +1,25 @@
+# Dependencies
+node_modules
+.pnpm-debug.log*
+
+# Build
+dist
+.next
+out
+
+# Environment
+.env
+.env.*
+
+# Specs (Local reference)
+SPECIFICATION.md
+
+# Foundry
+cache
+lib/forge-std
+
+# Hardhat
+artifacts
+cache
+typechain
+typechain-types

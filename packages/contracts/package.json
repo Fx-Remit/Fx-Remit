@@ -1,0 +1,15 @@
+{
+  "name": "@fx-remit/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "forge test",
+    "deploy": "hardhat run scripts/deploy.ts"
+  },
+  "devDependencies": {
+    "hardhat": "^2.21.0",
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.1",
+    "solhint": "^4.1.1"
+  }
+}
