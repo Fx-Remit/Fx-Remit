@@ -175,7 +175,20 @@ forge script script/DeployFXRemit.s.sol:DeployFXRemit \
 
 ---
 
-## 9. Security and Audit
+## 9. Deployed Addresses
+
+### Celo Mainnet (Live)
+
+- **Router**: `0x59Dc15638A7fb548022A8331f7D848e8aBA4D764`
+- **MentoAdapter**: `0x4042f8da9B5466cebe1f5DC82C048D269efb49B4`
+
+### Arbitrum One / Base (Pending)
+
+_To be added after deployment._
+
+---
+
+## 10. Security and Audit
 
 The Fx-Remit contracts have been rigorously audited using advanced security methodologies.
 
