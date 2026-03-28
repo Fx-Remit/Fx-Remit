@@ -15,11 +15,18 @@ out
 SPECIFICATION.md
 
 # Foundry
-cache
-lib/forge-std
+cache/
+broadcast/
+lib/
+!lib/forge-std # Keep forge-std if it's already staged, but usually we ignore lib/
 
 # Hardhat
-artifacts
-cache
-typechain
-typechain-types
+artifacts/
+cache/
+typechain/
+typechain-types/
+
+# Package managers
+pnpm-lock.yaml
+node_modules/
+.pnpm-debug.log*

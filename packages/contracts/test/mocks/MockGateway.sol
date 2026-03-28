@@ -7,9 +7,13 @@ contract MockGateway {
     function createOrder(
         address token,
         uint256 amount,
-        bytes32 messageHash
+        uint256 rate,
+        address partner,
+        uint256 partnerPercent,
+        address refundAddress,
+        string calldata messageHash
     ) external returns (uint256 orderId) {
         IERC20(token).transferFrom(msg.sender, address(this), amount);
-        return 1;
+        return 123;
     }
 }

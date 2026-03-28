@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.26;
 
 interface IFXRemitV3Router {
+    event GatewayUpdated(address indexed oldGateway, address indexed newGateway);
+
     event RemittanceInitiated(
-        uint256 indexed remittanceId,
+        uint256 indexed orderId,
         address indexed sender,
         address fromToken,
         address toToken,
         uint256 amountIn,
-        uint256 amountOutUSD,
+        uint256 amountToRemit,
+        uint256 chainId,
         string targetCurrency,
-        string providerId
+        string providerId,
+        address indexed feeCollector,
+        uint256 feeBps
     );
 
     function swapAndRemit(
@@ -18,9 +23,12 @@ interface IFXRemitV3Router {
         address toToken,
         uint256 amountIn,
         uint256 minAmountOut,
-        bytes32 messageHash,
+        uint256 rate,
         address refundAddress,
+        string calldata messageHash,
         string calldata targetCurrency,
         string calldata providerId
-    ) external;
+    ) external payable;
+
+    function setGateway(address _gateway) external;
 }
