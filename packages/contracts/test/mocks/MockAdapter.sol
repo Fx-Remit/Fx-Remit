@@ -7,16 +7,16 @@ import "./MockToken.sol";
 
 contract MockAdapter is ISwapAdapter {
     function swap(
-        address fromToken,
+        address, // fromToken
         address toToken,
         uint256 amountIn,
-        uint256 minAmountOut,
+        uint256, // minAmountOut
         address receiver
     ) external override returns (uint256 amountOut) {
-        IERC20(fromToken).transferFrom(msg.sender, address(this), amountIn);
-        
-        // Mock a 95% return for simplicity
         amountOut = (amountIn * 95) / 100;
+        
+        // We MUST actually provide the tokens to the receiver (the Router)
+        // so it can then give them to the Gateway.
         MockToken(toToken).mint(receiver, amountOut);
     }
 }
