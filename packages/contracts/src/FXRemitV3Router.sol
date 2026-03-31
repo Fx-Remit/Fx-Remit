@@ -218,6 +218,7 @@ contract FXRemitV3Router is IFXRemitV3Router, Ownable, ReentrancyGuard {
             toToken,
             amountIn,
             amountToRemit,
+            rate,
             block.chainid,
             targetCurrency,
             providerId,
