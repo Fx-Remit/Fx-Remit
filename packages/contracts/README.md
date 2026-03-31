@@ -179,8 +179,8 @@ forge script script/DeployFXRemit.s.sol:DeployFXRemit \
 
 ### Celo Mainnet (Live)
 
-- **Router**: `0x59Dc15638A7fb548022A8331f7D848e8aBA4D764`
-- **MentoAdapter**: `0x4042f8da9B5466cebe1f5DC82C048D269efb49B4`
+- **Router**: `0x767B35703C98f63e71aB61d68a406931ADdb3FeB`
+- **MentoAdapter**: `0x077fCc25199a5d8016102a2f706dC63BA0d6700e`
 
 ### Arbitrum One / Base (Pending)
 

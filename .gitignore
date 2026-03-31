@@ -13,6 +13,8 @@ out
 
 # Specs (Local reference)
 SPECIFICATION.md
+STRATEGY_ROADMAP.md
+PRICING_ENGINE_SPEC.md
 
 # Foundry
 cache/

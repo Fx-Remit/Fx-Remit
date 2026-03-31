@@ -11,6 +11,7 @@ interface IFXRemitV3Router {
         address toToken,
         uint256 amountIn,
         uint256 amountToRemit,
+        uint256 rate,
         uint256 chainId,
         string targetCurrency,
         string providerId,
