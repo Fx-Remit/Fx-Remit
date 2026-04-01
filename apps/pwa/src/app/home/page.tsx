@@ -121,7 +121,7 @@ export default function HomePage() {
         {/* Action Buttons */}
         <div className="flex items-center justify-between px-1">
           <Link
-            href="/remit"
+            href="/add-cash"
             style={{
               width: "150px",
               height: "50px",
@@ -140,7 +140,7 @@ export default function HomePage() {
             <span className="font-semibold text-[#2261FE] text-sm">Add cash</span>
           </Link>
           <Link
-            href="/remit"
+            href="/add-cash"
             style={{
               width: "150px",
               height: "50px",
