@@ -1,0 +1,62 @@
+/* FX Remit Design System */
+
+:root {
+  /* Colors */
+  --color-primary-blue: #3b82f6;      /* Electric Blue */
+  --color-primary-dark: #1d4ed8;      /* Deep Blue */
+  --color-accent-teal: #2dd4bf;      /* Neon Teal */
+  --color-white: #ffffff;
+  --color-light-grey: #f8fafd;       /* Background Grey */
+  --color-text-main: #0a0f1d;
+  --color-text-muted: #64748b;
+  --color-success: #10b981;
+  --color-error: #ef4444;
+
+  /* Gradients */
+  --gradient-blue: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  --gradient-promo: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+
+  /* Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+
+  /* Shadows */
+  --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-floating: 0 15px 30px -5px rgba(0, 0, 0, 0.08);
+
+  /* Spacing */
+  --spacing-horizontal: 20px;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  background-color: var(--color-white);
+  color: var(--color-text-main);
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 700;
+}
+
+/* Base UI Layout */
+.pwa-container {
+  max-width: 450px;
+  margin: 0 auto;
+  min-height: 100vh;
+  position: relative;
+  background-color: var(--color-white);
+}
+
+.pwa-content {
+  padding: 24px var(--spacing-horizontal) 100px;
+}
