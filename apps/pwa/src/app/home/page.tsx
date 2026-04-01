@@ -1,0 +1,257 @@
+import {
+  ArrowUpRight,
+  Eye,
+  EyeOff,
+  Home,
+  FileText,
+  User,
+  Bell,
+} from "lucide-react";
+import Link from "next/link";
+
+const MOCK_USER = {
+  name: "Callme_stone",
+  avatar: "https://api.dicebear.com/8.x/lorelei/svg?seed=callme_stone&backgroundColor=b6e3f4",
+  balance: "897.00",
+};
+
+const MOCK_TRANSACTIONS = [
+  {
+    id: "tx1",
+    type: "sent",
+    label: "You sent money",
+    address: "0x1a8F...bee650",
+    amount: "230.86",
+    currency: "cKES",
+    date: "Today, 4:22 PM",
+  },
+  {
+    id: "tx2",
+    type: "received",
+    label: "You received USDC",
+    address: "0xB3c2...4f91",
+    amount: "+150.00",
+    currency: "USDC",
+    date: "Yesterday, 10:11 AM",
+  },
+];
+
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-[#f8fafd] pb-28">
+      {/* Header */}
+      <div className="px-5 pt-12 pb-4 bg-white flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <img
+            src={MOCK_USER.avatar}
+            alt={MOCK_USER.name}
+            className="w-12 h-12 rounded-full border-2 border-blue-100 bg-blue-50"
+          />
+          <div>
+            <p className="font-bold text-gray-900 text-[16px] leading-tight">{MOCK_USER.name}</p>
+            <p className="text-gray-400 text-sm">Welcome back 👋</p>
+          </div>
+        </div>
+        <button className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 shadow-sm hover:bg-blue-100 transition-colors">
+          <Bell size={20} />
+        </button>
+      </div>
+
+      <div className="px-5 pt-6 space-y-8">
+        {/* Balance Card */}
+        <div
+          className="relative overflow-hidden"
+          style={{
+            width: "100%",
+            height: "166px",
+            borderRadius: "15px",
+            background: "linear-gradient(180deg, #2261FE 0%, #143A98 154.82%)",
+            boxShadow: "7px -5px 4px 0px #BBCFFF5C inset",
+          }}
+        >
+          {/* bg.svg — full card background texture */}
+          <img
+            src="/bg.svg"
+            alt=""
+            aria-hidden
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+            style={{ opacity: 1 }}
+          />
+
+          {/* img pattern.svg — right-side decorative pattern */}
+          <img
+            src="/img pattern.svg"
+            alt=""
+            aria-hidden
+            className="absolute pointer-events-none select-none"
+            style={{
+              left: "226px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: "253.59px",
+              height: "288.99px",
+            }}
+          />
+
+          {/* Card content */}
+          <div className="relative z-10 p-5 flex flex-col justify-center h-full">
+            {/* Balance group */}
+            <div
+              style={{
+                width: "220px",
+                height: "81px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              <p className="text-blue-100 text-sm font-medium leading-none">Current balance</p>
+              <div className="flex items-center gap-2">
+                <span className="tracking-tight" style={{ fontSize: "46px", fontWeight: 500, lineHeight: "100%", color: "#F6F6F6" }}>
+                  ${MOCK_USER.balance}
+                </span>
+                <button className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors flex-shrink-0">
+                  <Eye size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-between px-1">
+          <Link
+            href="/remit"
+            style={{
+              width: "150px",
+              height: "50px",
+              background: "#D8E9FF",
+              borderRadius: "10px",
+              padding: "10px",
+              gap: "10px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textDecoration: "none",
+            }}
+            className="active:scale-95 transition-transform"
+          >
+            <img src="/add cash.svg" alt="" width={20} height={20} />
+            <span className="font-semibold text-[#2261FE] text-sm">Add cash</span>
+          </Link>
+          <Link
+            href="/remit"
+            style={{
+              width: "150px",
+              height: "50px",
+              background: "#D8E9FF",
+              borderRadius: "10px",
+              padding: "10px",
+              gap: "10px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textDecoration: "none",
+            }}
+            className="active:scale-95 transition-transform"
+          >
+            <img src="/cash out.svg" alt="" width={20} height={20} />
+            <span className="font-semibold text-[#2261FE] text-sm">Cash out</span>
+          </Link>
+        </div>
+
+        {/* Promo Banner */}
+        <div className="w-full h-auto rounded-3xl overflow-hidden shadow-sm">
+          <img src="/instant.svg" alt="Instant, Global and Secure" className="w-full h-auto object-cover" />
+        </div>
+
+        {/* Transaction History */}
+        <div>
+          <div className="flex items-center justify-between mb-3 mt-2">
+            <h2 className="font-bold text-gray-900 text-lg">Transaction history</h2>
+            <button className="text-blue-500 text-sm font-medium hover:underline">See all</button>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-sm overflow-hidden divide-y divide-gray-50">
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-gray-200" />
+            </div>
+
+            {MOCK_TRANSACTIONS.map((tx) => (
+              <div key={tx.id} className="flex items-center gap-4 px-4 py-4">
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${tx.type === "sent"
+                    ? "bg-red-50"
+                    : "bg-green-50"
+                    }`}
+                >
+                  {tx.type === "sent" ? (
+                    <ArrowUpRight size={22} className="text-red-500 rotate-0" />
+                  ) : (
+                    <ArrowUpRight size={22} className="text-green-500 rotate-180" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 text-[15px] truncate">{tx.label}</p>
+                  <p className="text-gray-400 text-sm truncate">{tx.address}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="font-bold text-gray-900 text-[15px]">
+                    {tx.amount} {tx.currency}
+                  </p>
+                  <p className="text-gray-400 text-xs">{tx.date}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+        <div
+          style={{
+            width: "320px",
+            height: "75px",
+            background: "#D8E9FF",
+            borderRadius: "70px",
+            padding: "15px 30px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0px 4px 4px 0px #00000040",
+          }}
+        >
+          <Link
+            href="/home"
+            className="flex flex-col items-center gap-1 text-[#1C1C1C]"
+          >
+            <Home size={30} />
+            <span style={{ fontFamily: "Inter", fontWeight: 600, fontSize: "14px" }}>
+              Home
+            </span>
+          </Link>
+          <Link
+            href="/history"
+            className="flex flex-col items-center gap-1 text-[#1C1C1C]/40 hover:text-[#1C1C1C] transition-colors"
+          >
+            <FileText size={30} />
+            <span style={{ fontFamily: "Inter", fontWeight: 600, fontSize: "14px" }}>
+              History
+            </span>
+          </Link>
+          <Link
+            href="/profile"
+            className="flex flex-col items-center gap-1 text-[#1C1C1C]/40 hover:text-[#1C1C1C] transition-colors"
+          >
+            <User size={30} />
+            <span style={{ fontFamily: "Inter", fontWeight: 600, fontSize: "14px" }}>
+              Profile
+            </span>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
