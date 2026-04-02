@@ -1,13 +1,17 @@
+"use client";
+
 import {
   ArrowUpRight,
+  Bell,
   Eye,
   EyeOff,
-  Home,
   FileText,
+  Home,
   User,
-  Bell,
 } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
+import { CashOutSheet } from "../cash-out/CashOutSheet";
 
 const MOCK_USER = {
   name: "Callme_stone",
@@ -37,6 +41,9 @@ const MOCK_TRANSACTIONS = [
 ];
 
 export default function HomePage() {
+  const [balanceVisible, setBalanceVisible] = useState(true);
+  const [cashOutOpen, setCashOutOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-[#f8fafd] pb-28">
       {/* Header */}
@@ -108,10 +115,13 @@ export default function HomePage() {
               <p className="text-blue-100 text-sm font-medium leading-none">Current balance</p>
               <div className="flex items-center gap-2">
                 <span className="tracking-tight" style={{ fontSize: "46px", fontWeight: 500, lineHeight: "100%", color: "#F6F6F6" }}>
-                  ${MOCK_USER.balance}
+                  {balanceVisible ? `$${MOCK_USER.balance}` : "••••••"}
                 </span>
-                <button className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors flex-shrink-0">
-                  <Eye size={16} />
+                <button
+                  onClick={() => setBalanceVisible((v) => !v)}
+                  className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors flex-shrink-0"
+                >
+                  {balanceVisible ? <Eye size={16} /> : <EyeOff size={16} />}
                 </button>
               </div>
             </div>
@@ -139,8 +149,8 @@ export default function HomePage() {
             <img src="/add cash.svg" alt="" width={20} height={20} />
             <span className="font-semibold text-[#2261FE] text-sm">Add cash</span>
           </Link>
-          <Link
-            href="/add-cash"
+          <button
+            onClick={() => setCashOutOpen(true)}
             style={{
               width: "150px",
               height: "50px",
@@ -151,13 +161,12 @@ export default function HomePage() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              textDecoration: "none",
             }}
             className="active:scale-95 transition-transform"
           >
             <img src="/cash out.svg" alt="" width={20} height={20} />
             <span className="font-semibold text-[#2261FE] text-sm">Cash out</span>
-          </Link>
+          </button>
         </div>
 
         {/* Promo Banner */}
@@ -252,6 +261,7 @@ export default function HomePage() {
           </Link>
         </div>
       </div>
+      <CashOutSheet isOpen={cashOutOpen} onClose={() => setCashOutOpen(false)} />
     </div>
   );
 }
