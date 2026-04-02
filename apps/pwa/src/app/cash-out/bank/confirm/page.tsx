@@ -41,8 +41,8 @@ function CashOutConfirmContent() {
       <div className="flex-1 flex flex-col items-center pt-8 overflow-y-auto w-full px-5">
         {/* Exchange Card (Identical to Bank Page) */}
         <div
-          className="bg-white rounded-[15px] p-6 shadow-[0px_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 mb-8 flex flex-col justify-between"
-          style={{ width: '390px', height: '359px', maxWidth: 'calc(100vw - 40px)' }}
+          className="bg-white rounded-[15px] p-6 shadow-[0px_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 mb-8 flex flex-col justify-between w-full max-w-[390px]"
+          style={{ height: '359px' }}
         >
           <div className="flex-1 flex flex-col justify-between py-2">
             {/* You Send */}
@@ -84,8 +84,7 @@ function CashOutConfirmContent() {
 
         {/* Fees & Exchange Rate */}
         <div
-          className="flex flex-col justify-between mb-10"
-          style={{ width: '370px', height: '54px', gap: '20px', margin: '0 auto 40px auto' }}
+          className="flex flex-col gap-3 mb-8 w-full max-w-[370px] mx-auto"
         >
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[14px] font-medium">Fees</span>
@@ -93,12 +92,12 @@ function CashOutConfirmContent() {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[14px] font-medium">Exchange rate</span>
-            <span className="text-[#1C1C1C] text-[14px] font-bold uppercase whitespace-nowrap">1 {token} = 1,460 {currency}</span>
+            <span className="text-[#1C1C1C] text-[14px] font-bold uppercase whitespace-nowrap text-right">1 {token} = 1,460 {currency}</span>
           </div>
         </div>
 
         {/* Payment Detail Box */}
-        <div className="bg-white rounded-[15px] p-4 border border-[#B8D8FF] flex items-center gap-4 relative shadow-sm">
+        <div className="w-full max-w-[390px] mx-auto bg-white rounded-[15px] p-4 border border-[#B8D8FF] flex items-center gap-4 relative shadow-sm">
           <div className="w-[45px] h-[45px] rounded-full bg-[#E1EFFF] flex items-center justify-center overflow-hidden flex-shrink-0">
             <img src="/bank2.svg" alt={isBank ? "Bank" : "Mobile Money"} className="w-[45px] h-[45px] object-contain" />
           </div>
