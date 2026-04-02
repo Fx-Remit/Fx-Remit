@@ -144,8 +144,7 @@ export default function AddCashPage() {
 
           {/* Sheet Container */}
           <div
-            className="relative w-full bg-[#f6f6f6] rounded-t-[40px] px-6 pb-12 pt-4 shadow-2xl animate-in slide-in-from-bottom duration-300 transform-gpu overflow-hidden"
-            style={{ maxWidth: "430px", margin: "0 auto" }}
+            className="relative w-full max-w-[430px] mx-auto bg-[#f6f6f6] rounded-t-[40px] px-6 pb-12 pt-4 shadow-2xl animate-in slide-in-from-bottom duration-300 transform-gpu overflow-hidden"
           >
             {/* Drag handle */}
             <div className="flex justify-center mb-4">

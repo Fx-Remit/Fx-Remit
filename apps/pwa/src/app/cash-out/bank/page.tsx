@@ -50,8 +50,8 @@ export default function BankCashOutPage() {
       <div className="flex-1 flex flex-col items-center pt-8 overflow-y-auto w-full px-[20px]">
         {/* Exchange Card */}
         <div 
-          className="bg-white rounded-[15px] p-6 shadow-[0px_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 mb-8 flex flex-col justify-between"
-          style={{ width: '390px', height: '359px', maxWidth: 'calc(100vw - 40px)' }}
+          className="bg-white rounded-[15px] p-6 shadow-[0px_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 mb-8 flex flex-col justify-between w-full max-w-[390px]"
+          style={{ height: '359px' }}
         >
           <div className="flex-1 flex flex-col justify-between py-2">
             {/* You Send */}
@@ -126,8 +126,8 @@ export default function BankCashOutPage() {
         <div className="mt-12 w-full flex justify-center px-[20px]">
           <button 
             onClick={() => setIsPaymentMethodSheetOpen(true)}
-            className="rounded-[15px] border-2 border-dashed border-[#89C1FF] bg-white flex flex-col items-center justify-center gap-1 hover:bg-[#F8FBFF] transition-colors group active:scale-[0.99] duration-200"
-            style={{ width: '390px', height: '126px', maxWidth: 'calc(100vw - 40px)' }}
+            className="w-full max-w-[390px] rounded-[15px] border-2 border-dashed border-[#89C1FF] bg-white flex flex-col items-center justify-center gap-1 hover:bg-[#F8FBFF] transition-colors group active:scale-[0.99] duration-200"
+            style={{ height: '126px' }}
           >
             <span className="text-[#1C1C1C] text-[18px] font-bold group-hover:text-[#2261FE]">Choose payment method</span>
             <span className="text-[#888888] text-[14px] font-medium">Bank account or mobile money</span>
@@ -274,8 +274,7 @@ function SelectionSheet({ isOpen, onClose, title, children }: { isOpen: boolean;
       
       {/* Sheet */}
       <div 
-        className="relative w-full bg-white rounded-t-[40px] pt-4 pb-10 shadow-2xl animate-in slide-in-from-bottom duration-300"
-        style={{ maxWidth: "430px", margin: "0 auto" }}
+        className="relative w-full max-w-[430px] mx-auto bg-white rounded-t-[40px] pt-4 pb-10 shadow-2xl animate-in slide-in-from-bottom duration-300"
       >
         <div className="flex justify-center mb-6">
           <div className="w-12 h-1 bg-gray-200 rounded-full" />

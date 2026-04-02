@@ -94,18 +94,10 @@ function AddAccountForm() {
       </div>
 
       {/* Footer */}
-      <div className="mt-auto px-[20px] pb-10 flex justify-center">
+      <div className="mt-auto p-6 pb-12 w-full flex justify-center">
         <button
           onClick={handleContinue}
-          style={{ 
-            width: '390px', 
-            height: '65px', 
-            maxWidth: 'calc(100vw - 40px)',
-            borderRadius: '7px',
-            padding: '20px 10px',
-            gap: '10px'
-          }}
-          className="bg-[#2261FE] text-white text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center translate-x-[-1px]"
+          className="w-full max-w-[390px] h-[65px] bg-[#2261FE] text-white text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center rounded-[7px]"
         >
           Continue
         </button>
