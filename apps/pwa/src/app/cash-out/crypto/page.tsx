@@ -180,16 +180,14 @@ export default function CryptoCashOutPage() {
             </button>
           </div>
 
-          {/* Empty State */}
           <div className="mt-12 flex flex-col items-center">
             <div className="w-[300px] h-auto mb-6">
               <img
-                src="/save address.svg"
+                src="/non added.svg"
                 alt="No wallet address"
                 className="w-full h-auto"
               />
             </div>
-
           </div>
         </div>
       </div>
@@ -309,38 +307,43 @@ export default function CryptoCashOutPage() {
 
       {/* Success State */}
       {status === "success" && (
-        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6">
-          <div className="w-full max-w-md bg-white rounded-[40px] p-8 flex flex-col items-center relative shadow-2xl border border-gray-100">
-            <div className="w-full flex justify-between items-center mb-8">
-              <h2 className="text-[24px] font-bold text-[#1C1C1C]">Success!</h2>
-              <Link href="/home" className="p-2 bg-gray-50 rounded-full">
-                <X size={20} />
+        <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div 
+            className="bg-white rounded-[20px] p-8 flex flex-col items-center relative shadow-[0px_4px_30px_rgba(0,0,0,0.05)] border border-gray-100 translate-y-[-20px]"
+            style={{ width: '392px', height: '449px' }}
+          >
+            <div className="w-full flex justify-between items-center mb-6">
+              <h2 className="text-[22px] font-bold text-[#1C1C1C]">Success!</h2>
+              <Link href="/home" className="p-2 bg-gray-50 rounded-full hover:bg-gray-100 transition-colors">
+                <X size={20} className="text-gray-400" />
               </Link>
             </div>
 
-            <div className="flex-1 flex flex-col items-center justify-center py-10 text-center">
-              <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-10">
-                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white">
+            <div className="flex-1 flex flex-col items-center justify-center text-center">
+              <div className="w-[80px] h-[80px] bg-green-50 rounded-full flex items-center justify-center mb-8">
+                <div className="w-[40px] h-[40px] bg-green-500 rounded-full flex items-center justify-center text-white">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </div>
               </div>
 
-              <h3 className="text-[24px] font-bold text-[#1C1C1C] leading-tight mb-4 px-4">
-                You successfully sent ${amount} {token} to {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+              <h3 
+                className="font-[700] leading-[120%] text-center px-4 mb-4"
+                style={{ color: '#464446', fontSize: '24px' }}
+              >
+                You have successfully sent {amount} {token} to {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
               </h3>
 
-              <p className="text-[#888888] text-[16px] font-medium max-w-[260px]">
+              <p className="text-[#888888] text-[15px] font-medium max-w-[280px]">
                 Kindly check your transaction status in your wallet.
               </p>
             </div>
 
-            <div className="w-full mt-10">
+            <div className="w-full mt-8">
               <Link
                 href="/home"
-                style={{ height: '62px', borderRadius: '12px' }}
-                className="w-full bg-[#2261FE] text-white font-bold text-[18px] flex items-center justify-center"
+                className="w-full h-[65px] bg-[#2261FE] text-white font-bold text-[18px] flex items-center justify-center rounded-[7px] shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all"
               >
                 Back to home
               </Link>

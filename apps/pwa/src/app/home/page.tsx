@@ -129,43 +129,20 @@ export default function HomePage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-between px-1">
+        <div className="flex items-center justify-between gap-4">
           <Link
             href="/add-cash"
-            style={{
-              width: "150px",
-              height: "50px",
-              background: "#D8E9FF",
-              borderRadius: "10px",
-              padding: "10px",
-              gap: "10px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textDecoration: "none",
-            }}
-            className="active:scale-95 transition-transform"
+            className="flex-1 h-[50px] bg-[#D8E9FF] rounded-[10px] flex items-center justify-center gap-2 active:scale-95 transition-transform"
           >
             <img src="/add cash.svg" alt="" width={20} height={20} />
-            <span className="font-semibold text-[#2261FE] text-sm">Add cash</span>
+            <span className="font-semibold text-[#2261FE] text-sm whitespace-nowrap">Add cash</span>
           </Link>
           <button
             onClick={() => setCashOutOpen(true)}
-            style={{
-              width: "150px",
-              height: "50px",
-              background: "#D8E9FF",
-              borderRadius: "10px",
-              padding: "10px",
-              gap: "10px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            className="active:scale-95 transition-transform"
+            className="flex-1 h-[50px] bg-[#D8E9FF] rounded-[10px] flex items-center justify-center gap-2 active:scale-95 transition-transform"
           >
             <img src="/cash out.svg" alt="" width={20} height={20} />
-            <span className="font-semibold text-[#2261FE] text-sm">Cash out</span>
+            <span className="font-semibold text-[#2261FE] text-sm whitespace-nowrap">Cash out</span>
           </button>
         </div>
 
@@ -218,46 +195,31 @@ export default function HomePage() {
       </div>
 
       {/* Bottom Navigation */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full px-5 flex justify-center">
         <div
-          style={{
-            width: "320px",
-            height: "75px",
-            background: "#D8E9FF",
-            borderRadius: "70px",
-            padding: "15px 30px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            boxShadow: "0px 4px 4px 0px #00000040",
-          }}
+          className="w-full max-w-[320px] bg-[#D8E9FF] rounded-[70px] py-[15px] px-[30px] flex items-center justify-between shadow-[0px_4px_4px_0px_#00000040]"
+          style={{ height: "75px" }}
         >
           <Link
             href="/home"
             className="flex flex-col items-center gap-1 text-[#1C1C1C]"
           >
-            <Home size={30} />
-            <span style={{ fontFamily: "Inter", fontWeight: 600, fontSize: "14px" }}>
-              Home
-            </span>
+            <Home size={28} />
+            <span className="font-semibold text-[13px]">Home</span>
           </Link>
           <Link
             href="/history"
             className="flex flex-col items-center gap-1 text-[#1C1C1C]/40 hover:text-[#1C1C1C] transition-colors"
           >
-            <FileText size={30} />
-            <span style={{ fontFamily: "Inter", fontWeight: 600, fontSize: "14px" }}>
-              History
-            </span>
+            <FileText size={28} />
+            <span className="font-semibold text-[13px]">History</span>
           </Link>
           <Link
             href="/profile"
             className="flex flex-col items-center gap-1 text-[#1C1C1C]/40 hover:text-[#1C1C1C] transition-colors"
           >
-            <User size={30} />
-            <span style={{ fontFamily: "Inter", fontWeight: 600, fontSize: "14px" }}>
-              Profile
-            </span>
+            <User size={28} />
+            <span className="font-semibold text-[13px]">Profile</span>
           </Link>
         </div>
       </div>

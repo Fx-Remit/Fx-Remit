@@ -104,18 +104,16 @@ export default function AmountPage() {
       </div>
 
       {/* Footer Actions */}
-      <div className="fixed bottom-0 left-0 right-0 p-5 bg-transparent flex justify-center items-center gap-[10px] z-50">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] p-5 flex justify-center items-center gap-[10px] z-50">
         <button 
-          style={{ width: '190px', height: '62px', borderRadius: '7px', paddingTop: '20px', paddingBottom: '20px', paddingLeft: '10px', paddingRight: '10px' }}
-          className="bg-white border border-[#2261FE] text-[#2261FE] font-bold text-[16px] flex items-center justify-center gap-2"
+          className="flex-1 h-[62px] bg-white border border-[#2261FE] text-[#2261FE] font-bold text-[16px] flex items-center justify-center gap-2 rounded-[7px] active:scale-95 transition-transform"
         >
           <Share2 size={20} />
           Share
         </button>
         <Link 
           href="/home"
-          style={{ width: '190px', height: '62px', borderRadius: '7px', paddingTop: '20px', paddingBottom: '20px', paddingLeft: '10px', paddingRight: '10px', backgroundColor: '#2261FE' }}
-          className="text-white font-bold text-[16px] flex items-center justify-center"
+          className="flex-1 h-[62px] bg-[#2261FE] text-white font-bold text-[16px] flex items-center justify-center rounded-[7px] active:scale-95 transition-transform"
         >
           Done
         </Link>
