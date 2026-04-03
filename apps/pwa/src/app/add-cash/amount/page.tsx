@@ -1,26 +1,26 @@
-"use client";
+'use client';
 
-import { ChevronLeft, Copy, Share2 } from "lucide-react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { ChevronLeft, Copy, Share2 } from 'lucide-react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useState } from 'react';
 
 const NETWORK_NAMES: Record<string, string> = {
-  celo: "Celo network",
-  base: "Base network",
-  ethereum: "Ethereum network",
+  celo: 'Celo network',
+  base: 'Base network',
+  ethereum: 'Ethereum network',
 };
 
 export default function AmountPage() {
   const searchParams = useSearchParams();
-  const token = searchParams.get("token") || "USDT";
-  const network = searchParams.get("network") || "celo";
-  
+  const token = searchParams.get('token') || 'USDT';
+  const network = searchParams.get('network') || 'celo';
+
   const tokenSymbol = token.toUpperCase();
-  const networkName = NETWORK_NAMES[network] || "Celo network";
-  
+  const networkName = NETWORK_NAMES[network] || 'Celo network';
+
   const [copied, setCopied] = useState(false);
-  const walletAddress = "0x1e902e730C89EB9419a7a9cc53633f29A9C7f07E";
+  const walletAddress = '0x1e902e730C89EB9419a7a9cc53633f29A9C7f07E';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(walletAddress);
@@ -48,8 +48,8 @@ export default function AmountPage() {
         <div className="flex justify-center mb-6 text-center">
           <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100/50">
             <div className="w-[180px] h-[180px] bg-white flex items-center justify-center overflow-hidden">
-               <img 
-                src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=0x1e902e730C89EB9419a7a9cc53633f29A9C7f07E" 
+              <img
+                src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=0x1e902e730C89EB9419a7a9cc53633f29A9C7f07E"
                 alt="Deposit QR Code"
                 className="w-full h-full object-contain"
               />
@@ -62,12 +62,14 @@ export default function AmountPage() {
           {/* Address Section */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
-              <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">Tokens available</p>
+              <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">
+                Tokens available
+              </p>
               <p className="text-[#1C1C1C] text-[15px] font-medium break-all leading-relaxed pr-2">
                 {walletAddress}
               </p>
             </div>
-            <button 
+            <button
               onClick={handleCopy}
               className={`w-11 h-11 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
                 copied ? 'bg-green-500 text-white' : 'bg-[#D8E9FF] text-[#2261FE]'
@@ -92,11 +94,15 @@ export default function AmountPage() {
           {/* Limits Section */}
           <div className="flex justify-between gap-4 pt-1">
             <div>
-              <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">Minimum deposit</p>
+              <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">
+                Minimum deposit
+              </p>
               <p className="text-[#1C1C1C] text-[15px] font-semibold">1 {tokenSymbol}</p>
             </div>
             <div className="text-right">
-              <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">Maximum deposit</p>
+              <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">
+                Maximum deposit
+              </p>
               <p className="text-[#1C1C1C] text-[15px] font-semibold">50,000.00 {tokenSymbol}</p>
             </div>
           </div>
@@ -105,13 +111,11 @@ export default function AmountPage() {
 
       {/* Footer Actions */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] p-5 flex justify-center items-center gap-[10px] z-50">
-        <button 
-          className="flex-1 h-[62px] bg-white border border-[#2261FE] text-[#2261FE] font-bold text-[16px] flex items-center justify-center gap-2 rounded-[7px] active:scale-95 transition-transform"
-        >
+        <button className="flex-1 h-[62px] bg-white border border-[#2261FE] text-[#2261FE] font-bold text-[16px] flex items-center justify-center gap-2 rounded-[7px] active:scale-95 transition-transform">
           <Share2 size={20} />
           Share
         </button>
-        <Link 
+        <Link
           href="/home"
           className="flex-1 h-[62px] bg-[#2261FE] text-white font-bold text-[16px] flex items-center justify-center rounded-[7px] active:scale-95 transition-transform"
         >

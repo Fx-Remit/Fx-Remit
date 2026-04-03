@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { ChevronRight, X } from "lucide-react";
-import Link from "next/link";
+import { ChevronRight, X } from 'lucide-react';
+import Link from 'next/link';
 
 interface CashOutSheetProps {
   isOpen: boolean;
@@ -14,15 +14,12 @@ export function CashOutSheet({ isOpen, onClose }: CashOutSheetProps) {
   return (
     <div className="fixed inset-0 z-[100] flex items-end">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/30"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
       {/* Sheet */}
       <div
         className="relative w-full bg-[#f6f6f6] rounded-t-[40px] px-6 pb-12 pt-4 shadow-2xl animate-in slide-in-from-bottom duration-300"
-        style={{ maxWidth: "430px", margin: "0 auto" }}
+        style={{ maxWidth: '430px', margin: '0 auto' }}
       >
         {/* Drag handle */}
         <div className="flex justify-center mb-5">
@@ -57,10 +54,10 @@ export function CashOutSheet({ isOpen, onClose }: CashOutSheetProps) {
               <img src="/bank.svg" alt="Bank" className="w-[45px] h-[45px] object-contain" />
             </div>
             <div className="flex-1">
-              <p style={{ fontWeight: 500, fontSize: "16px", color: "#1C1C1C" }}>
+              <p style={{ fontWeight: 500, fontSize: '16px', color: '#1C1C1C' }}>
                 To bank or mobile money
               </p>
-              <p style={{ fontWeight: 500, fontSize: "12px", color: "#888888", marginTop: "2px" }}>
+              <p style={{ fontWeight: 500, fontSize: '12px', color: '#888888', marginTop: '2px' }}>
                 Send to local currency accounts
               </p>
             </div>
@@ -77,10 +74,10 @@ export function CashOutSheet({ isOpen, onClose }: CashOutSheetProps) {
               <img src="/crypto.svg" alt="Crypto" className="w-[45px] h-[45px] object-contain" />
             </div>
             <div className="flex-1">
-              <p style={{ fontWeight: 500, fontSize: "16px", color: "#1C1C1C" }}>
+              <p style={{ fontWeight: 500, fontSize: '16px', color: '#1C1C1C' }}>
                 To a crypto wallet
               </p>
-              <p style={{ fontWeight: 500, fontSize: "12px", color: "#888888", marginTop: "2px" }}>
+              <p style={{ fontWeight: 500, fontSize: '12px', color: '#888888', marginTop: '2px' }}>
                 Send to a crypto wallet
               </p>
             </div>

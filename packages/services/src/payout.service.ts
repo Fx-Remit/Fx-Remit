@@ -1,4 +1,4 @@
-import { prisma } from "@fx-remit/database";
+import { prisma } from '@fx-remit/database';
 
 export class PayoutService {
   /**
@@ -6,7 +6,9 @@ export class PayoutService {
    * Executes the off-chain bridge after on-chain verification.
    */
   static async triggerPayout(orderId: bigint, amount: string, currency: string) {
-    console.log(`[PayoutService] Initiating Payout: Order #${orderId.toString()} | Amount: ${amount} ${currency}`);
+    console.log(
+      `[PayoutService] Initiating Payout: Order #${orderId.toString()} | Amount: ${amount} ${currency}`,
+    );
 
     // TODO: Implement Paycrest SDK / API call here
     // const response = await fetch("https://api.paycrest.io/v1/payouts", { ... });
@@ -15,11 +17,11 @@ export class PayoutService {
     await prisma.transaction.update({
       where: { orderId: orderId },
       data: {
-        status: "PROCESSING", // Payout has been handed off to Paycrest
+        status: 'PROCESSING', // Payout has been handed off to Paycrest
         updatedAt: new Date(),
       },
     });
 
-    return { success: true, status: "PROCESSING" };
+    return { success: true, status: 'PROCESSING' };
   }
 }

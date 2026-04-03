@@ -36,6 +36,9 @@ jobs:
       - name: Turborepo High-Fidelity Cache
         uses: dtinth/setup-github-actions-caching-for-turbo@v1
 
+      - name: Check Format
+        run: pnpm check-format
+
       - name: Lint
         run: pnpm turbo lint --concurrency=1 --continue
 

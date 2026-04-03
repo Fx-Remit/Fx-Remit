@@ -1,28 +1,28 @@
-"use client";
+'use client';
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import Link from "next/link";
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 
 const TOKENS = [
   {
-    symbol: "USDT",
-    name: "Tether USD",
-    icon: "/usdt.svg",
+    symbol: 'USDT',
+    name: 'Tether USD',
+    icon: '/usdt.svg',
   },
   {
-    symbol: "USDC",
-    name: "USD Coin",
-    icon: "/usdc.svg",
+    symbol: 'USDC',
+    name: 'USD Coin',
+    icon: '/usdc.svg',
   },
   {
-    symbol: "cUSD",
-    name: "Celo Dollar",
-    icon: "/cusd.svg",
+    symbol: 'cUSD',
+    name: 'Celo Dollar',
+    icon: '/cusd.svg',
   },
   {
-    symbol: "CELO",
-    name: "Celo Native",
-    icon: "/celo.svg",
+    symbol: 'CELO',
+    name: 'Celo Native',
+    icon: '/celo.svg',
   },
 ];
 
@@ -52,28 +52,27 @@ export default function TokenSelectionPage() {
             >
               <div className="flex items-center gap-4">
                 <div className="w-[45px] h-[45px] rounded-full overflow-hidden flex-shrink-0">
-                  <img
-                    src={token.icon}
-                    alt={token.symbol}
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={token.icon} alt={token.symbol} className="w-full h-full object-cover" />
                 </div>
                 <div>
-                  <h3 
-                    style={{ fontWeight: 500, fontSize: "16px", color: "#1C1C1C" }}
+                  <h3
+                    style={{ fontWeight: 500, fontSize: '16px', color: '#1C1C1C' }}
                     className="leading-none mb-1"
                   >
                     {token.symbol}
                   </h3>
-                  <p 
-                    style={{ fontWeight: 500, fontSize: "12px", color: "#888888" }}
+                  <p
+                    style={{ fontWeight: 500, fontSize: '12px', color: '#888888' }}
                     className="leading-none"
                   >
                     {token.name}
                   </p>
                 </div>
               </div>
-              <ChevronRight size={20} className="text-gray-300 group-hover:text-[#2261FE] transition-colors" />
+              <ChevronRight
+                size={20}
+                className="text-gray-300 group-hover:text-[#2261FE] transition-colors"
+              />
             </Link>
           ))}
         </div>

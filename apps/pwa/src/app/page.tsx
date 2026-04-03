@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { useRouter } from 'next/navigation';
+import { ArrowRight } from 'lucide-react';
 
 export default function SplashPage() {
   const router = useRouter();
@@ -20,18 +20,14 @@ export default function SplashPage() {
       {/* Main Logo (fx remit.svg) */}
       <div className="relative z-10 flex flex-col items-center animate-in fade-in zoom-in slide-in-from-bottom-12 duration-1000 ease-out">
         <div className="w-[280px] h-auto flex items-center justify-center">
-          <img
-            src="/fx remit.svg"
-            alt="FX Remit Logo"
-            className="w-full h-full object-contain"
-          />
+          <img src="/fx remit.svg" alt="FX Remit Logo" className="w-full h-full object-contain" />
         </div>
       </div>
 
       {/* Interactive CTA (at the bottom) */}
       <div className="absolute bottom-16 left-0 right-0 z-20 px-8 flex flex-col items-center animate-in fade-in slide-in-from-bottom-8 delay-500 duration-1000">
         <button
-          onClick={() => router.push("/home")}
+          onClick={() => router.push('/home')}
           className="w-full max-w-[320px] h-[64px] bg-[#2261FE] text-white rounded-[18px] text-[18px] font-bold shadow-2xl shadow-[#2261FE]/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
         >
           Get Started
@@ -42,7 +38,6 @@ export default function SplashPage() {
           Safe • Global • Instant
         </p>
       </div>
-
     </div>
   );
 }

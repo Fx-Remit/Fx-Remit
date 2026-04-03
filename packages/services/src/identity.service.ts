@@ -1,5 +1,5 @@
-import { prisma } from "@fx-remit/database";
-import { PrivyClient } from "@privy-io/node";
+import { prisma } from '@fx-remit/database';
+import { PrivyClient } from '@privy-io/node';
 
 const privy = new PrivyClient({
   appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
@@ -18,12 +18,10 @@ export class IdentityService {
     console.log(`[IdentityService] Syncing User: DID[${did}] | Event[${type}]`);
 
     // Extracting mapped identity fields
-    const email = user.linked_accounts.find(
-      (a: any) => a.type === "email",
-    )?.address;
+    const email = user.linked_accounts.find((a: any) => a.type === 'email')?.address;
 
     const walletAddress = user.linked_accounts.find(
-      (a: any) => a.type === "wallet" || a.type === "smart_wallet",
+      (a: any) => a.type === 'wallet' || a.type === 'smart_wallet',
     )?.address;
 
     // Atomic Supabase Sync via Prisma
@@ -37,9 +35,9 @@ export class IdentityService {
       },
       create: {
         privyDid: did,
-        email: email || "",
-        walletAddress: walletAddress || "",
-        displayName: user.displayName || "New User",
+        email: email || '',
+        walletAddress: walletAddress || '',
+        displayName: user.displayName || 'New User',
         lastLoginAt: new Date(),
       },
     });

@@ -1,24 +1,24 @@
-"use client";
+'use client';
 
-import { ChevronLeft } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useState, Suspense } from "react";
+import { ChevronLeft } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, Suspense } from 'react';
 
 function AddAccountForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const type = searchParams.get("type") || "bank";
-  const send = searchParams.get("send") || "0";
-  const receive = searchParams.get("receive") || "0";
-  const token = searchParams.get("token") || "USDT";
-  const currency = searchParams.get("currency") || "NGN";
-  
-  // Form states
-  const [accountNumber, setAccountNumber] = useState("");
-  const [accountName, setAccountName] = useState("");
-  const [bankName, setBankName] = useState("");
+  const type = searchParams.get('type') || 'bank';
+  const send = searchParams.get('send') || '0';
+  const receive = searchParams.get('receive') || '0';
+  const token = searchParams.get('token') || 'USDT';
+  const currency = searchParams.get('currency') || 'NGN';
 
-  const isBank = type === "bank";
+  // Form states
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [bankName, setBankName] = useState('');
+
+  const isBank = type === 'bank';
 
   const handleContinue = () => {
     const params = new URLSearchParams({
@@ -27,9 +27,9 @@ function AddAccountForm() {
       receive,
       token,
       currency,
-      accNum: accountNumber || "0000000000",
-      accName: accountName || "Unnamed Account",
-      bank: bankName || "Unknown Institution"
+      accNum: accountNumber || '0000000000',
+      accName: accountName || 'Unnamed Account',
+      bank: bankName || 'Unknown Institution',
     });
     router.push(`/cash-out/bank/confirm?${params.toString()}`);
   };
@@ -45,7 +45,7 @@ function AddAccountForm() {
           <ChevronLeft size={24} />
         </button>
         <h1 className="absolute left-1/2 -translate-x-1/2 text-[18px] font-bold text-[#1C1C1C] whitespace-nowrap">
-          {isBank ? "Add bank account" : "Add mobile money"}
+          {isBank ? 'Add bank account' : 'Add mobile money'}
         </h1>
       </div>
 
@@ -53,11 +53,11 @@ function AddAccountForm() {
         {/* Account Number / Phone Number */}
         <div className="space-y-2">
           <label className="text-[16px] font-medium text-[#1C1C1C]">
-            {isBank ? "Account number" : "Phone number"}
+            {isBank ? 'Account number' : 'Phone number'}
           </label>
           <input
             type="text"
-            placeholder={isBank ? "Account number" : "Phone number"}
+            placeholder={isBank ? 'Account number' : 'Phone number'}
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value)}
             className="w-full h-[58px] px-4 rounded-[12px] border border-gray-200 bg-white text-[16px] text-[#1C1C1C] placeholder:text-gray-400 focus:outline-none focus:border-[#2261FE] transition-colors"
@@ -67,11 +67,11 @@ function AddAccountForm() {
         {/* Account Name / Owner Name */}
         <div className="space-y-2">
           <label className="text-[16px] font-medium text-[#1C1C1C]">
-            {isBank ? "Account name" : "Owner name"}
+            {isBank ? 'Account name' : 'Owner name'}
           </label>
           <input
             type="text"
-            placeholder={isBank ? "Account name" : "Full name"}
+            placeholder={isBank ? 'Account name' : 'Full name'}
             value={accountName}
             onChange={(e) => setAccountName(e.target.value)}
             className="w-full h-[58px] px-4 rounded-[12px] border border-gray-200 bg-white text-[16px] text-[#1C1C1C] placeholder:text-gray-400 focus:outline-none focus:border-[#2261FE] transition-colors"
@@ -81,11 +81,11 @@ function AddAccountForm() {
         {/* Bank Name / Provider */}
         <div className="space-y-2">
           <label className="text-[16px] font-medium text-[#1C1C1C]">
-            {isBank ? "Bank name" : "Provider"}
+            {isBank ? 'Bank name' : 'Provider'}
           </label>
           <input
             type="text"
-            placeholder={isBank ? "Bank name" : "e.g. M-Pesa, MTN"}
+            placeholder={isBank ? 'Bank name' : 'e.g. M-Pesa, MTN'}
             value={bankName}
             onChange={(e) => setBankName(e.target.value)}
             className="w-full h-[58px] px-4 rounded-[12px] border border-gray-200 bg-white text-[16px] text-[#1C1C1C] placeholder:text-gray-400 focus:outline-none focus:border-[#2261FE] transition-colors"
