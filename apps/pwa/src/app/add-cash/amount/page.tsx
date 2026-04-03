@@ -3,7 +3,7 @@
 import { ChevronLeft, Copy, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 
 const NETWORK_NAMES: Record<string, string> = {
   celo: 'Celo network',
@@ -11,7 +11,7 @@ const NETWORK_NAMES: Record<string, string> = {
   ethereum: 'Ethereum network',
 };
 
-export default function AmountPage() {
+function AmountPageContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || 'USDT';
   const network = searchParams.get('network') || 'celo';
@@ -123,5 +123,13 @@ export default function AmountPage() {
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function AmountPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f8fafd] flex items-center justify-center">Loading...</div>}>
+      <AmountPageContent />
+    </Suspense>
   );
 }

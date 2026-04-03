@@ -2,8 +2,8 @@ import { prisma } from '@fx-remit/database';
 import { PrivyClient } from '@privy-io/node';
 
 const privy = new PrivyClient({
-  appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
-  appSecret: process.env.PRIVY_APP_SECRET!,
+  appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID || 'BUILD_PHASE',
+  appSecret: process.env.PRIVY_APP_SECRET || 'BUILD_PHASE',
 });
 
 export class IdentityService {

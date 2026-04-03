@@ -1,9 +1,9 @@
 'use client';
 
-import { ChevronLeft, ChevronDown, X, Edit2 } from 'lucide-react';
+import { ChevronLeft, ChevronDown, X } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 
 const NETWORK_DATA: Record<string, { name: string; icon: string }> = {
   celo: { name: 'Celo Mainnet', icon: '/cel2.svg' },
@@ -11,7 +11,7 @@ const NETWORK_DATA: Record<string, { name: string; icon: string }> = {
   ethereum: { name: 'Ethereum Mainnet', icon: '/eth.svg' },
 };
 
-export default function CryptoCashOutPage() {
+function CryptoCashOutContent() {
   const searchParams = useSearchParams();
   const token = (searchParams.get('token') || 'USDT').toUpperCase();
 
@@ -369,5 +369,13 @@ export default function CryptoCashOutPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CryptoCashOutPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white flex items-center justify-center">Loading...</div>}>
+      <CryptoCashOutContent />
+    </Suspense>
   );
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { IdentityService } from '@fx-remit/services';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
     const svixId = req.headers.get('svix-id');

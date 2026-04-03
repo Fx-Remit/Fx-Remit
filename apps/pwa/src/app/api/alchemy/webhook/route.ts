@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createHmac } from 'crypto';
 import { AlchemyService, PayoutService } from '@fx-remit/services';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
     const signature = req.headers.get('x-alchemy-signature');
