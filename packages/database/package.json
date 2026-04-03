@@ -1,0 +1,23 @@
+{
+  "name": "@fx-remit/database",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "generate": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.0.0",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@prisma/config": "^7.0.0",
+    "@types/node": "^20.11.24",
+    "dotenv": "^16.4.5",
+    "prisma": "^7.0.0",
+    "typescript": "^5.3.3"
+  }
+}

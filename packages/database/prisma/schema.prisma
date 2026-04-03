@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String   @id @default(uuid())
+  privyDid         String   @unique @map("privy_did")
+  walletAddress    String   @unique @map("wallet_address")
+  fullName         String?  @map("full_name")
+  email            String?  @unique
+  avatarUrl        String?  @map("avatar_url")
+  totalSentUsd     Decimal  @default(0.0) @map("total_sent_usd") @db.Decimal(20, 2)
+  transactionCount Int      @default(0) @map("transaction_count")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  transactions Transaction[]
+
+  @@map("users")
+}
+
+model Transaction {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  orderId       BigInt   @unique @map("order_id") // The Idempotency Key (Contract)
+  txHash        String   @unique @map("tx_hash")
+  sourceToken   String   @map("source_token")
+  amountUsd     Decimal  @map("amount_usd") @db.Decimal(20, 2)
+  payoutFiat    Decimal  @map("payout_fiat") @db.Decimal(20, 2)
+  status        Status   @default(PENDING)
+  recipientName String?  @map("recipient_name")
+  recipientBank String?  @map("recipient_bank")
+  recipientAcc  String?  @map("recipient_acc")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("transactions")
+}
+
+enum Status {
+  PENDING
+  VERIFIED
+  COMPLETED
+  FAILED
+}
