@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { PrivyClient } from "@privy-io/server-auth";
+import { PrivyClient, verifyAuthToken } from "@privy-io/node";
 import { prisma } from "@fx-remit/database";
 
-const privy = new PrivyClient(
-  process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
-  process.env.PRIVY_APP_SECRET!,
-);
+const privy = new PrivyClient({
+  appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
+  appSecret: process.env.PRIVY_APP_SECRET!,
+});
 
 export async function POST(req: Request) {
   try {
@@ -18,29 +18,33 @@ export async function POST(req: Request) {
     }
 
     const token = authHeader.replace("Bearer ", "");
-    const verifiedClaims = await privy.verifySession(token);
+    
+    const user = await privy.users().get({ id_token: token });
 
-    if (!verifiedClaims) {
+    if (!user) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
 
-    const user = await privy.getUser(verifiedClaims.userId);
-    const wallet = user.linkedAccounts.find((a) => a.type === "wallet");
+    const wallet = user.linked_accounts.find((a) => a.type === "wallet");
 
     if (!wallet || wallet.type !== "wallet") {
       return NextResponse.json({ error: "No wallet linked" }, { status: 400 });
     }
 
+    const emailAccount = user.linked_accounts.find((a) => a.type === "email");
+    const email =
+      emailAccount?.type === "email" ? emailAccount.address : undefined;
+
     const dbUser = await prisma.user.upsert({
       where: { privyDid: user.id },
       update: {
         walletAddress: wallet.address,
-        email: user.email?.address,
+        email: email,
       },
       create: {
         privyDid: user.id,
         walletAddress: wallet.address,
-        email: user.email?.address,
+        email: email,
       },
     });
 
