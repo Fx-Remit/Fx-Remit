@@ -37,7 +37,7 @@ jobs:
         uses: dtinth/setup-github-actions-caching-for-turbo@v1
 
       - name: Lint
-        run: pnpm turbo lint
+        run: pnpm turbo lint --concurrency=1 --continue
 
       - name: Build
-        run: pnpm turbo build
+        run: pnpm turbo build --concurrency=1 --continue
