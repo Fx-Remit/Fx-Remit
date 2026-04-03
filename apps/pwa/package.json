@@ -10,8 +10,12 @@
   },
   "dependencies": {
     "@privy-io/react-auth": "latest",
+    "@privy-io/server-auth": "latest",
+    "@fx-remit/database": "workspace:*",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-slot": "^1.2.4",
+    "@supabase/ssr": "^0.10.0",
+    "@supabase/supabase-js": "^2.39.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.7.0",
