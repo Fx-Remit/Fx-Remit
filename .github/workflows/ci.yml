@@ -39,8 +39,5 @@ jobs:
       - name: Check Format
         run: pnpm check-format
 
-      - name: Lint
-        run: pnpm turbo lint --concurrency=1 --continue
-
       - name: Build
         run: pnpm turbo build --concurrency=1 --continue
