@@ -1,11 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrivyClient } from "@privy-io/node";
-import { prisma } from "@fx-remit/database";
-
-const privy = new PrivyClient({
-  appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
-  appSecret: process.env.PRIVY_APP_SECRET!,
-});
+import { IdentityService } from "@fx-remit/services";
 
 export async function POST(req: Request) {
   try {
@@ -14,6 +8,7 @@ export async function POST(req: Request) {
     const svixSignature = req.headers.get("svix-signature");
 
     if (!svixId || !svixTimestamp || !svixSignature) {
+      console.error("[Privy Webhook] Missing Svix Signature Headers");
       return NextResponse.json(
         { error: "Missing signature headers" },
         { status: 401 },
@@ -22,52 +17,19 @@ export async function POST(req: Request) {
 
     const rawBody = await req.text();
 
-    const event = await privy.webhooks().verify({
-      payload: rawBody,
-      svix: {
-        id: svixId,
-        timestamp: svixTimestamp,
-        signature: svixSignature,
-      },
-      signing_secret: process.env.PRIVY_WEBHOOK_SECRET,
+    // 1. Hand off to Sovereign Identity Service for Verification
+    const event = await IdentityService.verifyWebhook(rawBody, {
+      id: svixId,
+      timestamp: svixTimestamp,
+      signature: svixSignature,
     });
 
-    const { type, data } = event as any;
+    // 2. Atomic Synchronization of User Identity
+    await IdentityService.syncUser(event);
 
-    const user = data;
-
-    console.log(`[Privy Webhook] Received ${type} for ${user.id}`);
-
-    const privyDid = user.id;
-
-    const email = user.linked_accounts.find(
-      (a: any) => a.type === "email",
-    )?.address;
-
-    const walletAddress = user.linked_accounts.find(
-      (a: any) => a.type === "wallet" || a.type === "smart_wallet",
-    )?.address;
-
-    await prisma.user.upsert({
-      where: { privyDid },
-      update: {
-        email: email || undefined,
-        walletAddress: walletAddress || undefined,
-        lastLoginAt: new Date(),
-        displayName: user.displayName || undefined,
-      },
-      create: {
-        privyDid,
-        email: email || "",
-        walletAddress: walletAddress || "",
-        displayName: user.displayName || "New User",
-        lastLoginAt: new Date(),
-      },
-    });
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: "Identity synchronized" });
   } catch (err: any) {
-    console.error(`[Privy Webhook Error] ${err.message}`);
-    return NextResponse.json({ error: "Verification failed" }, { status: 401 });
+    console.error(`[Privy Webhook Failure] ${err.message}`);
+    return NextResponse.json({ error: "Identity verification failed" }, { status: 401 });
   }
 }
