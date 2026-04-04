@@ -2,11 +2,11 @@
 
 :root {
   /* Colors */
-  --color-primary-blue: #3b82f6;      /* Electric Blue */
-  --color-primary-dark: #1d4ed8;      /* Deep Blue */
-  --color-accent-teal: #2dd4bf;      /* Neon Teal */
+  --color-primary-blue: #3b82f6; /* Electric Blue */
+  --color-primary-dark: #1d4ed8; /* Deep Blue */
+  --color-accent-teal: #2dd4bf; /* Neon Teal */
   --color-white: #ffffff;
-  --color-light-grey: #f8fafd;       /* Background Grey */
+  --color-light-grey: #f8fafd; /* Background Grey */
   --color-text-main: #0a0f1d;
   --color-text-muted: #64748b;
   --color-success: #10b981;
@@ -38,13 +38,18 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
   background-color: var(--color-white);
   color: var(--color-text-main);
   -webkit-tap-highlight-color: transparent;
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-weight: 700;
 }
 

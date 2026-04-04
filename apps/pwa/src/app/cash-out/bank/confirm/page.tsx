@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { ChevronLeft, ChevronDown } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
-import { ConfirmTransactionSheet } from "./ConfirmTransactionSheet";
+import { ChevronLeft, ChevronDown } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { ConfirmTransactionSheet } from './ConfirmTransactionSheet';
 
 function CashOutConfirmContent() {
   const router = useRouter();
@@ -11,17 +11,17 @@ function CashOutConfirmContent() {
 
   const [isConfirmSheetOpen, setIsConfirmSheetOpen] = useState(false);
 
-  const sendAmount = searchParams.get("send") || "0";
-  const receiveAmount = searchParams.get("receive") || "0";
-  const token = searchParams.get("token") || "USDT";
-  const currency = searchParams.get("currency") || "NGN";
+  const sendAmount = searchParams.get('send') || '0';
+  const receiveAmount = searchParams.get('receive') || '0';
+  const token = searchParams.get('token') || 'USDT';
+  const currency = searchParams.get('currency') || 'NGN';
 
-  const accountNumber = searchParams.get("accNum") || "0000000000";
-  const accountName = searchParams.get("accName") || "Account Owner";
-  const bankName = searchParams.get("bank") || "Bank Name";
-  const type = searchParams.get("type") || "bank";
+  const accountNumber = searchParams.get('accNum') || '0000000000';
+  const accountName = searchParams.get('accName') || 'Account Owner';
+  const bankName = searchParams.get('bank') || 'Bank Name';
+  const type = searchParams.get('type') || 'bank';
 
-  const isBank = type === "bank";
+  const isBank = type === 'bank';
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] flex flex-col">
@@ -49,11 +49,13 @@ function CashOutConfirmContent() {
             <div className="space-y-3">
               <p className="text-[#1C1C1C] text-[16px] font-medium opacity-80">You send</p>
               <div className="flex items-center justify-between gap-2">
-                <div className="flex-1 text-[32px] font-bold text-[#1C1C1C]">
-                  ${sendAmount}
-                </div>
+                <div className="flex-1 text-[32px] font-bold text-[#1C1C1C]">${sendAmount}</div>
                 <div className="flex items-center gap-2 px-3 py-2 bg-[#E1EFFF] rounded-full text-[#2261FE] font-bold text-[13px] border border-[#2261FE]/10 whitespace-nowrap">
-                  <img src={`/${token.toLowerCase()}.svg`} alt="" className="w-5 h-5 rounded-full object-contain" />
+                  <img
+                    src={`/${token.toLowerCase()}.svg`}
+                    alt=""
+                    className="w-5 h-5 rounded-full object-contain"
+                  />
                   {token}
                   <ChevronDown size={16} />
                 </div>
@@ -68,7 +70,9 @@ function CashOutConfirmContent() {
 
             {/* Recipient Receives */}
             <div className="space-y-3">
-              <p className="text-[#1C1C1C] text-[16px] font-medium opacity-80">Recipient receives</p>
+              <p className="text-[#1C1C1C] text-[16px] font-medium opacity-80">
+                Recipient receives
+              </p>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 text-[32px] font-bold text-[#1C1C1C]">
                   {Number(receiveAmount).toLocaleString()}
@@ -83,23 +87,27 @@ function CashOutConfirmContent() {
         </div>
 
         {/* Fees & Exchange Rate */}
-        <div
-          className="flex flex-col gap-3 mb-8 w-full max-w-[370px] mx-auto"
-        >
+        <div className="flex flex-col gap-3 mb-8 w-full max-w-[370px] mx-auto">
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[14px] font-medium">Fees</span>
             <span className="text-[#1C1C1C] text-[14px] font-bold">1.0%</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[14px] font-medium">Exchange rate</span>
-            <span className="text-[#1C1C1C] text-[14px] font-bold uppercase whitespace-nowrap text-right">1 {token} = 1,460 {currency}</span>
+            <span className="text-[#1C1C1C] text-[14px] font-bold uppercase whitespace-nowrap text-right">
+              1 {token} = 1,460 {currency}
+            </span>
           </div>
         </div>
 
         {/* Payment Detail Box */}
         <div className="w-full max-w-[390px] mx-auto bg-white rounded-[15px] p-4 border border-[#B8D8FF] flex items-center gap-4 relative shadow-sm">
           <div className="w-[45px] h-[45px] rounded-full bg-[#E1EFFF] flex items-center justify-center overflow-hidden flex-shrink-0">
-            <img src="/bank2.svg" alt={isBank ? "Bank" : "Mobile Money"} className="w-[45px] h-[45px] object-contain" />
+            <img
+              src="/bank2.svg"
+              alt={isBank ? 'Bank' : 'Mobile Money'}
+              className="w-[45px] h-[45px] object-contain"
+            />
           </div>
 
           <div className="flex-1 space-y-0.5 min-w-0">

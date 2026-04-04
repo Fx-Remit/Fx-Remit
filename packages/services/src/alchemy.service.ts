@@ -1,6 +1,6 @@
-import { prisma } from "@fx-remit/database";
-import { decodeEventLog } from "viem";
-import routerAbi from "./abi/FXRemitRouter.json";
+import { prisma } from '@fx-remit/database';
+import { decodeEventLog } from 'viem';
+import routerAbi from './abi/FXRemitRouter.json';
 
 export class AlchemyService {
   /**
@@ -11,7 +11,7 @@ export class AlchemyService {
     const { event } = payload;
 
     if (!event || !event.data || !event.data.block) {
-      return { success: true, message: "No event data" };
+      return { success: true, message: 'No event data' };
     }
 
     const logs = event.data.block.logs || [];
@@ -25,22 +25,15 @@ export class AlchemyService {
           topics: log.topics,
         });
 
-        if (decoded.eventName === "RemittanceInitiated") {
+        if (decoded.eventName === 'RemittanceInitiated') {
           const args = decoded.args as any;
-          const { 
-            orderId, 
-            sender, 
-            amountToRemit, 
-            targetCurrency, 
-            amountIn,
-            fromToken,
-          } = args;
+          const { orderId, sender, amountToRemit, targetCurrency, amountIn, fromToken } = args;
 
           console.log(`[AlchemyService] Mapping Order #${orderId.toString()} | Sender: ${sender}`);
 
           // Identity Bridging: Link on-chain sender to Stockholm DB user
           const user = await prisma.user.findUnique({
-            where: { walletAddress: sender }
+            where: { walletAddress: sender },
           });
 
           // Atomic DB Upsert
@@ -50,25 +43,25 @@ export class AlchemyService {
           const result = await prisma.transaction.upsert({
             where: { orderId: orderId },
             update: {
-              status: "VERIFIED",
+              status: 'VERIFIED',
               txHash: log.transactionHash,
               updatedAt: new Date(),
             },
             create: {
               orderId: orderId,
-              userId: user?.id || "SYSTEM_ORPHAN",
+              userId: user?.id || 'SYSTEM_ORPHAN',
               txHash: log.transactionHash,
               sourceToken: fromToken,
               amountUsd: normalizedAmountUsd,
               payoutFiat: normalizedPayoutFiat,
-              status: "VERIFIED",
-              recipientName: "Processing",
+              status: 'VERIFIED',
+              recipientName: 'Processing',
               createdAt: new Date(),
             },
           });
 
           syncResults.push(result);
-          
+
           // TRIGGER: Return the event data for next-step processing (e.g. Paycrest)
           return { success: true, event: decoded, transaction: result };
         }

@@ -1,42 +1,34 @@
-"use client";
+'use client';
 
-import {
-  ArrowUpRight,
-  Bell,
-  Eye,
-  EyeOff,
-  FileText,
-  Home,
-  User,
-} from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
-import { CashOutSheet } from "../cash-out/CashOutSheet";
+import { ArrowUpRight, Bell, Eye, EyeOff, FileText, Home, User } from 'lucide-react';
+import Link from 'next/link';
+import { useState } from 'react';
+import { CashOutSheet } from '../cash-out/CashOutSheet';
 
 const MOCK_USER = {
-  name: "Callme_stone",
-  avatar: "https://api.dicebear.com/8.x/lorelei/svg?seed=callme_stone&backgroundColor=b6e3f4",
-  balance: "897.00",
+  name: 'Callme_stone',
+  avatar: 'https://api.dicebear.com/8.x/lorelei/svg?seed=callme_stone&backgroundColor=b6e3f4',
+  balance: '897.00',
 };
 
 const MOCK_TRANSACTIONS = [
   {
-    id: "tx1",
-    type: "sent",
-    label: "You sent money",
-    address: "0x1a8F...bee650",
-    amount: "230.86",
-    currency: "cKES",
-    date: "Today, 4:22 PM",
+    id: 'tx1',
+    type: 'sent',
+    label: 'You sent money',
+    address: '0x1a8F...bee650',
+    amount: '230.86',
+    currency: 'cKES',
+    date: 'Today, 4:22 PM',
   },
   {
-    id: "tx2",
-    type: "received",
-    label: "You received USDC",
-    address: "0xB3c2...4f91",
-    amount: "+150.00",
-    currency: "USDC",
-    date: "Yesterday, 10:11 AM",
+    id: 'tx2',
+    type: 'received',
+    label: 'You received USDC',
+    address: '0xB3c2...4f91',
+    amount: '+150.00',
+    currency: 'USDC',
+    date: 'Yesterday, 10:11 AM',
   },
 ];
 
@@ -69,11 +61,11 @@ export default function HomePage() {
         <div
           className="relative overflow-hidden"
           style={{
-            width: "100%",
-            height: "166px",
-            borderRadius: "15px",
-            background: "linear-gradient(180deg, #2261FE 0%, #143A98 154.82%)",
-            boxShadow: "7px -5px 4px 0px #BBCFFF5C inset",
+            width: '100%',
+            height: '166px',
+            borderRadius: '15px',
+            background: 'linear-gradient(180deg, #2261FE 0%, #143A98 154.82%)',
+            boxShadow: '7px -5px 4px 0px #BBCFFF5C inset',
           }}
         >
           {/* bg.svg — full card background texture */}
@@ -92,11 +84,11 @@ export default function HomePage() {
             aria-hidden
             className="absolute pointer-events-none select-none"
             style={{
-              left: "226px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              width: "253.59px",
-              height: "288.99px",
+              left: '226px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '253.59px',
+              height: '288.99px',
             }}
           />
 
@@ -105,17 +97,25 @@ export default function HomePage() {
             {/* Balance group */}
             <div
               style={{
-                width: "220px",
-                height: "81px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
+                width: '220px',
+                height: '81px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
               }}
             >
               <p className="text-blue-100 text-sm font-medium leading-none">Current balance</p>
               <div className="flex items-center gap-2">
-                <span className="tracking-tight" style={{ fontSize: "46px", fontWeight: 500, lineHeight: "100%", color: "#F6F6F6" }}>
-                  {balanceVisible ? `$${MOCK_USER.balance}` : "••••••"}
+                <span
+                  className="tracking-tight"
+                  style={{
+                    fontSize: '46px',
+                    fontWeight: 500,
+                    lineHeight: '100%',
+                    color: '#F6F6F6',
+                  }}
+                >
+                  {balanceVisible ? `$${MOCK_USER.balance}` : '••••••'}
                 </span>
                 <button
                   onClick={() => setBalanceVisible((v) => !v)}
@@ -148,7 +148,11 @@ export default function HomePage() {
 
         {/* Promo Banner */}
         <div className="w-full h-auto rounded-3xl overflow-hidden shadow-sm">
-          <img src="/instant.svg" alt="Instant, Global and Secure" className="w-full h-auto object-cover" />
+          <img
+            src="/instant.svg"
+            alt="Instant, Global and Secure"
+            className="w-full h-auto object-cover"
+          />
         </div>
 
         {/* Transaction History */}
@@ -167,12 +171,11 @@ export default function HomePage() {
             {MOCK_TRANSACTIONS.map((tx) => (
               <div key={tx.id} className="flex items-center gap-4 px-4 py-4">
                 <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${tx.type === "sent"
-                    ? "bg-red-50"
-                    : "bg-green-50"
-                    }`}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    tx.type === 'sent' ? 'bg-red-50' : 'bg-green-50'
+                  }`}
                 >
-                  {tx.type === "sent" ? (
+                  {tx.type === 'sent' ? (
                     <ArrowUpRight size={22} className="text-red-500 rotate-0" />
                   ) : (
                     <ArrowUpRight size={22} className="text-green-500 rotate-180" />
@@ -198,12 +201,9 @@ export default function HomePage() {
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full px-5 flex justify-center">
         <div
           className="w-full max-w-[320px] bg-[#D8E9FF] rounded-[70px] py-[15px] px-[30px] flex items-center justify-between shadow-[0px_4px_4px_0px_#00000040]"
-          style={{ height: "75px" }}
+          style={{ height: '75px' }}
         >
-          <Link
-            href="/home"
-            className="flex flex-col items-center gap-1 text-[#1C1C1C]"
-          >
+          <Link href="/home" className="flex flex-col items-center gap-1 text-[#1C1C1C]">
             <Home size={28} />
             <span className="font-semibold text-[13px]">Home</span>
           </Link>
