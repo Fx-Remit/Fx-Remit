@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated-client"
 }
 
 datasource db {
@@ -32,6 +33,7 @@ model Transaction {
   amountUsd     Decimal  @map("amount_usd") @db.Decimal(20, 2)
   payoutFiat    Decimal  @map("payout_fiat") @db.Decimal(20, 2)
   status        Status   @default(PENDING)
+  externalId    String?  @unique @map("external_id") // Paycrest Order ID
   recipientName String?  @map("recipient_name")
   recipientBank String?  @map("recipient_bank")
   recipientAcc  String?  @map("recipient_acc")
@@ -47,4 +49,5 @@ enum Status {
   VERIFIED
   COMPLETED
   FAILED
+  REFUNDING
 }
