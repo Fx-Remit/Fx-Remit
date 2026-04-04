@@ -26,13 +26,6 @@ export async function POST(req: Request) {
     // 1. Hand off to Sovereign Alchemy Service for decoding and user-sync
     const result = await AlchemyService.handleWebhook(payload);
 
-    if (result.success && result.event && result.transaction) {
-      const { orderId, amountToRemit, targetCurrency } = result.event.args as any;
-
-      // 2. Trigger the Paycrest Fiat Bridge
-      await PayoutService.triggerPayout(orderId, amountToRemit, targetCurrency);
-    }
-
     return NextResponse.json({
       success: true,
       message: 'Alchemy Watchtower Synchronized',

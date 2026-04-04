@@ -12,7 +12,10 @@
   "dependencies": {
     "@fx-remit/database": "workspace:*",
     "@privy-io/node": "0.12.0",
-    "viem": "^2.9.2"
+    "@types/node": "^20.11.24",
+    "axios": "^1.14.0",
+    "jsencrypt": "^3.5.4",
+    "viem": "2.47.10"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

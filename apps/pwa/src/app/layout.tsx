@@ -21,6 +21,8 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
+import { Providers } from '@/components/Providers';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -31,9 +33,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className="max-w-[430px] mx-auto min-h-screen relative overflow-hidden bg-white">
-          {children}
-        </div>
+        <Providers>
+          <div className="max-w-[430px] mx-auto min-h-screen relative overflow-hidden bg-white">
+            {children}
+          </div>
+        </Providers>
       </body>
     </html>
   );
