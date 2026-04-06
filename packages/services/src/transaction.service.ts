@@ -1,4 +1,4 @@
-import { prisma, Status, Transaction } from '@fx-remit/database';
+import { prisma, Status, Transaction, Prisma } from "@fx-remit/database";
 
 export interface TransactionResponse {
   id: string;
@@ -40,10 +40,14 @@ export class TransactionService {
   /**
    * Fetch transaction history for a specific user with pagination.
    */
-  static async getHistory(userId: string, limit: number = 20, offset: number = 0): Promise<TransactionResponse[]> {
+  static async getHistory(
+    userId: string,
+    limit: number = 20,
+    offset: number = 0,
+  ): Promise<TransactionResponse[]> {
     const transactions = await prisma.transaction.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limit,
       skip: offset,
     });
@@ -63,13 +67,23 @@ export class TransactionService {
     logIndex: number;
     sender: string;
     fromToken?: string;
-    amountUsd?: number;
+    amountUsd?: number | string;
   }) {
     // Attempt to resolve user by wallet address
     const user = await prisma.user.findUnique({
       where: { walletAddress: data.sender.toLowerCase() },
-      select: { id: true }
+      select: { id: true },
     });
+
+    const existing = await prisma.transaction.findUnique({
+      where: { orderId: data.orderId },
+      select: { status: true },
+    });
+
+    const newStatus: Status =
+      existing?.status === "PENDING" || !existing
+        ? "VERIFIED"
+        : (existing.status as Status);
 
     return await prisma.transaction.upsert({
       where: { orderId: data.orderId },
@@ -78,7 +92,7 @@ export class TransactionService {
         chainId: data.chainId,
         blockNumber: data.blockNumber,
         logIndex: data.logIndex,
-        status: 'VERIFIED',
+        status: newStatus,
       },
       create: {
         orderId: data.orderId,
@@ -86,12 +100,12 @@ export class TransactionService {
         chainId: data.chainId,
         blockNumber: data.blockNumber,
         logIndex: data.logIndex,
-        userId: user?.id || 'indexer-unlinked',
-        sourceToken: data.fromToken || 'CELO',
-        amountUsd: data.amountUsd || 0,
+        userId: user?.id || "indexer-unlinked",
+        sourceToken: data.fromToken || "CELO",
+        amountUsd: new Prisma.Decimal(data.amountUsd || 0),
         payoutFiat: 0,
-        status: 'VERIFIED',
-      }
+        status: "VERIFIED",
+      },
     });
   }
 
@@ -101,7 +115,7 @@ export class TransactionService {
   static async updateFromPaycrest(externalId: string, status: Status) {
     return await prisma.transaction.updateMany({
       where: { externalId },
-      data: { 
+      data: {
         status,
         updatedAt: new Date(),
       },
@@ -118,8 +132,8 @@ export class TransactionService {
     orderId: bigint;
     externalId: string;
     sourceToken: string;
-    amountUsd: number;
-    payoutFiat: number;
+    amountUsd: number | string;
+    payoutFiat: number | string;
     recipientName: string;
     recipientBank: string;
     recipientAcc: string;
@@ -130,17 +144,17 @@ export class TransactionService {
         orderId: data.orderId,
         externalId: data.externalId,
         sourceToken: data.sourceToken,
-        amountUsd: data.amountUsd,
-        payoutFiat: data.payoutFiat,
+        amountUsd: new Prisma.Decimal(data.amountUsd),
+        payoutFiat: new Prisma.Decimal(data.payoutFiat),
         recipientName: data.recipientName,
         recipientBank: data.recipientBank,
         recipientAcc: data.recipientAcc,
-        status: 'PENDING',
+        status: "PENDING",
         txHash: `pending-${data.externalId}`, // Temporary placeholder until indexer picks it up
-        chainId: 0, 
+        chainId: 0,
         blockNumber: 0n,
         logIndex: 0,
-      }
+      },
     });
   }
 }
