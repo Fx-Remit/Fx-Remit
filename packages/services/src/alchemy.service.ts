@@ -40,17 +40,26 @@ export class AlchemyService {
           const normalizedAmountUsd = (Number(amountIn) / 1e6).toString();
           const normalizedPayoutFiat = (Number(amountToRemit) / 1e6).toString();
 
+          // Extract indexing metadata
+          const blockNumber = BigInt(event.data.block.number);
+          const logIndex = Number(log.index);
+          const chainId = Number(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID || 8453); // Base default
+
           const result = await prisma.transaction.upsert({
             where: { orderId: orderId },
             update: {
               status: 'VERIFIED',
               txHash: log.transactionHash,
+              blockNumber,
               updatedAt: new Date(),
             },
             create: {
               orderId: orderId,
               userId: user?.id || 'SYSTEM_ORPHAN',
               txHash: log.transactionHash,
+              chainId,
+              blockNumber,
+              logIndex,
               sourceToken: fromToken,
               amountUsd: normalizedAmountUsd,
               payoutFiat: normalizedPayoutFiat,

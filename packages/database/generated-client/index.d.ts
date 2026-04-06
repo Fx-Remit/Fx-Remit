@@ -31,6 +31,7 @@ export namespace $Enums {
   export const Status: {
   PENDING: 'PENDING',
   VERIFIED: 'VERIFIED',
+  PROCESSING: 'PROCESSING',
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
   REFUNDING: 'REFUNDING'
@@ -1034,10 +1035,12 @@ export namespace Prisma {
     privyDid: string | null
     walletAddress: string | null
     fullName: string | null
+    displayName: string | null
     email: string | null
     avatarUrl: string | null
     totalSentUsd: Decimal | null
     transactionCount: number | null
+    lastLoginAt: Date | null
     createdAt: Date | null
     updatedAt: Date | null
   }
@@ -1047,10 +1050,12 @@ export namespace Prisma {
     privyDid: string | null
     walletAddress: string | null
     fullName: string | null
+    displayName: string | null
     email: string | null
     avatarUrl: string | null
     totalSentUsd: Decimal | null
     transactionCount: number | null
+    lastLoginAt: Date | null
     createdAt: Date | null
     updatedAt: Date | null
   }
@@ -1060,10 +1065,12 @@ export namespace Prisma {
     privyDid: number
     walletAddress: number
     fullName: number
+    displayName: number
     email: number
     avatarUrl: number
     totalSentUsd: number
     transactionCount: number
+    lastLoginAt: number
     createdAt: number
     updatedAt: number
     _all: number
@@ -1085,10 +1092,12 @@ export namespace Prisma {
     privyDid?: true
     walletAddress?: true
     fullName?: true
+    displayName?: true
     email?: true
     avatarUrl?: true
     totalSentUsd?: true
     transactionCount?: true
+    lastLoginAt?: true
     createdAt?: true
     updatedAt?: true
   }
@@ -1098,10 +1107,12 @@ export namespace Prisma {
     privyDid?: true
     walletAddress?: true
     fullName?: true
+    displayName?: true
     email?: true
     avatarUrl?: true
     totalSentUsd?: true
     transactionCount?: true
+    lastLoginAt?: true
     createdAt?: true
     updatedAt?: true
   }
@@ -1111,10 +1122,12 @@ export namespace Prisma {
     privyDid?: true
     walletAddress?: true
     fullName?: true
+    displayName?: true
     email?: true
     avatarUrl?: true
     totalSentUsd?: true
     transactionCount?: true
+    lastLoginAt?: true
     createdAt?: true
     updatedAt?: true
     _all?: true
@@ -1211,10 +1224,12 @@ export namespace Prisma {
     privyDid: string
     walletAddress: string
     fullName: string | null
+    displayName: string | null
     email: string | null
     avatarUrl: string | null
     totalSentUsd: Decimal
     transactionCount: number
+    lastLoginAt: Date | null
     createdAt: Date
     updatedAt: Date
     _count: UserCountAggregateOutputType | null
@@ -1243,10 +1258,12 @@ export namespace Prisma {
     privyDid?: boolean
     walletAddress?: boolean
     fullName?: boolean
+    displayName?: boolean
     email?: boolean
     avatarUrl?: boolean
     totalSentUsd?: boolean
     transactionCount?: boolean
+    lastLoginAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
     transactions?: boolean | User$transactionsArgs<ExtArgs>
@@ -1258,10 +1275,12 @@ export namespace Prisma {
     privyDid?: boolean
     walletAddress?: boolean
     fullName?: boolean
+    displayName?: boolean
     email?: boolean
     avatarUrl?: boolean
     totalSentUsd?: boolean
     transactionCount?: boolean
+    lastLoginAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }, ExtArgs["result"]["user"]>
@@ -1271,10 +1290,12 @@ export namespace Prisma {
     privyDid?: boolean
     walletAddress?: boolean
     fullName?: boolean
+    displayName?: boolean
     email?: boolean
     avatarUrl?: boolean
     totalSentUsd?: boolean
     transactionCount?: boolean
+    lastLoginAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }, ExtArgs["result"]["user"]>
@@ -1284,15 +1305,17 @@ export namespace Prisma {
     privyDid?: boolean
     walletAddress?: boolean
     fullName?: boolean
+    displayName?: boolean
     email?: boolean
     avatarUrl?: boolean
     totalSentUsd?: boolean
     transactionCount?: boolean
+    lastLoginAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }
 
-  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "privyDid" | "walletAddress" | "fullName" | "email" | "avatarUrl" | "totalSentUsd" | "transactionCount" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
+  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "privyDid" | "walletAddress" | "fullName" | "displayName" | "email" | "avatarUrl" | "totalSentUsd" | "transactionCount" | "lastLoginAt" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
   export type UserInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     transactions?: boolean | User$transactionsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
@@ -1310,10 +1333,12 @@ export namespace Prisma {
       privyDid: string
       walletAddress: string
       fullName: string | null
+      displayName: string | null
       email: string | null
       avatarUrl: string | null
       totalSentUsd: Prisma.Decimal
       transactionCount: number
+      lastLoginAt: Date | null
       createdAt: Date
       updatedAt: Date
     }, ExtArgs["result"]["user"]>
@@ -1744,10 +1769,12 @@ export namespace Prisma {
     readonly privyDid: FieldRef<"User", 'String'>
     readonly walletAddress: FieldRef<"User", 'String'>
     readonly fullName: FieldRef<"User", 'String'>
+    readonly displayName: FieldRef<"User", 'String'>
     readonly email: FieldRef<"User", 'String'>
     readonly avatarUrl: FieldRef<"User", 'String'>
     readonly totalSentUsd: FieldRef<"User", 'Decimal'>
     readonly transactionCount: FieldRef<"User", 'Int'>
+    readonly lastLoginAt: FieldRef<"User", 'DateTime'>
     readonly createdAt: FieldRef<"User", 'DateTime'>
     readonly updatedAt: FieldRef<"User", 'DateTime'>
   }
@@ -2199,12 +2226,18 @@ export namespace Prisma {
 
   export type TransactionAvgAggregateOutputType = {
     orderId: number | null
+    chainId: number | null
+    blockNumber: number | null
+    logIndex: number | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
   }
 
   export type TransactionSumAggregateOutputType = {
     orderId: bigint | null
+    chainId: number | null
+    blockNumber: bigint | null
+    logIndex: number | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
   }
@@ -2214,6 +2247,9 @@ export namespace Prisma {
     userId: string | null
     orderId: bigint | null
     txHash: string | null
+    chainId: number | null
+    blockNumber: bigint | null
+    logIndex: number | null
     sourceToken: string | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
@@ -2223,6 +2259,7 @@ export namespace Prisma {
     recipientBank: string | null
     recipientAcc: string | null
     createdAt: Date | null
+    updatedAt: Date | null
   }
 
   export type TransactionMaxAggregateOutputType = {
@@ -2230,6 +2267,9 @@ export namespace Prisma {
     userId: string | null
     orderId: bigint | null
     txHash: string | null
+    chainId: number | null
+    blockNumber: bigint | null
+    logIndex: number | null
     sourceToken: string | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
@@ -2239,6 +2279,7 @@ export namespace Prisma {
     recipientBank: string | null
     recipientAcc: string | null
     createdAt: Date | null
+    updatedAt: Date | null
   }
 
   export type TransactionCountAggregateOutputType = {
@@ -2246,6 +2287,9 @@ export namespace Prisma {
     userId: number
     orderId: number
     txHash: number
+    chainId: number
+    blockNumber: number
+    logIndex: number
     sourceToken: number
     amountUsd: number
     payoutFiat: number
@@ -2255,18 +2299,25 @@ export namespace Prisma {
     recipientBank: number
     recipientAcc: number
     createdAt: number
+    updatedAt: number
     _all: number
   }
 
 
   export type TransactionAvgAggregateInputType = {
     orderId?: true
+    chainId?: true
+    blockNumber?: true
+    logIndex?: true
     amountUsd?: true
     payoutFiat?: true
   }
 
   export type TransactionSumAggregateInputType = {
     orderId?: true
+    chainId?: true
+    blockNumber?: true
+    logIndex?: true
     amountUsd?: true
     payoutFiat?: true
   }
@@ -2276,6 +2327,9 @@ export namespace Prisma {
     userId?: true
     orderId?: true
     txHash?: true
+    chainId?: true
+    blockNumber?: true
+    logIndex?: true
     sourceToken?: true
     amountUsd?: true
     payoutFiat?: true
@@ -2285,6 +2339,7 @@ export namespace Prisma {
     recipientBank?: true
     recipientAcc?: true
     createdAt?: true
+    updatedAt?: true
   }
 
   export type TransactionMaxAggregateInputType = {
@@ -2292,6 +2347,9 @@ export namespace Prisma {
     userId?: true
     orderId?: true
     txHash?: true
+    chainId?: true
+    blockNumber?: true
+    logIndex?: true
     sourceToken?: true
     amountUsd?: true
     payoutFiat?: true
@@ -2301,6 +2359,7 @@ export namespace Prisma {
     recipientBank?: true
     recipientAcc?: true
     createdAt?: true
+    updatedAt?: true
   }
 
   export type TransactionCountAggregateInputType = {
@@ -2308,6 +2367,9 @@ export namespace Prisma {
     userId?: true
     orderId?: true
     txHash?: true
+    chainId?: true
+    blockNumber?: true
+    logIndex?: true
     sourceToken?: true
     amountUsd?: true
     payoutFiat?: true
@@ -2317,6 +2379,7 @@ export namespace Prisma {
     recipientBank?: true
     recipientAcc?: true
     createdAt?: true
+    updatedAt?: true
     _all?: true
   }
 
@@ -2411,6 +2474,9 @@ export namespace Prisma {
     userId: string
     orderId: bigint
     txHash: string
+    chainId: number
+    blockNumber: bigint
+    logIndex: number
     sourceToken: string
     amountUsd: Decimal
     payoutFiat: Decimal
@@ -2420,6 +2486,7 @@ export namespace Prisma {
     recipientBank: string | null
     recipientAcc: string | null
     createdAt: Date
+    updatedAt: Date
     _count: TransactionCountAggregateOutputType | null
     _avg: TransactionAvgAggregateOutputType | null
     _sum: TransactionSumAggregateOutputType | null
@@ -2446,6 +2513,9 @@ export namespace Prisma {
     userId?: boolean
     orderId?: boolean
     txHash?: boolean
+    chainId?: boolean
+    blockNumber?: boolean
+    logIndex?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
@@ -2455,6 +2525,7 @@ export namespace Prisma {
     recipientBank?: boolean
     recipientAcc?: boolean
     createdAt?: boolean
+    updatedAt?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -2463,6 +2534,9 @@ export namespace Prisma {
     userId?: boolean
     orderId?: boolean
     txHash?: boolean
+    chainId?: boolean
+    blockNumber?: boolean
+    logIndex?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
@@ -2472,6 +2546,7 @@ export namespace Prisma {
     recipientBank?: boolean
     recipientAcc?: boolean
     createdAt?: boolean
+    updatedAt?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -2480,6 +2555,9 @@ export namespace Prisma {
     userId?: boolean
     orderId?: boolean
     txHash?: boolean
+    chainId?: boolean
+    blockNumber?: boolean
+    logIndex?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
@@ -2489,6 +2567,7 @@ export namespace Prisma {
     recipientBank?: boolean
     recipientAcc?: boolean
     createdAt?: boolean
+    updatedAt?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -2497,6 +2576,9 @@ export namespace Prisma {
     userId?: boolean
     orderId?: boolean
     txHash?: boolean
+    chainId?: boolean
+    blockNumber?: boolean
+    logIndex?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
@@ -2506,9 +2588,10 @@ export namespace Prisma {
     recipientBank?: boolean
     recipientAcc?: boolean
     createdAt?: boolean
+    updatedAt?: boolean
   }
 
-  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "externalId" | "recipientName" | "recipientBank" | "recipientAcc" | "createdAt", ExtArgs["result"]["transaction"]>
+  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "chainId" | "blockNumber" | "logIndex" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "externalId" | "recipientName" | "recipientBank" | "recipientAcc" | "createdAt" | "updatedAt", ExtArgs["result"]["transaction"]>
   export type TransactionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     user?: boolean | UserDefaultArgs<ExtArgs>
   }
@@ -2529,6 +2612,9 @@ export namespace Prisma {
       userId: string
       orderId: bigint
       txHash: string
+      chainId: number
+      blockNumber: bigint
+      logIndex: number
       sourceToken: string
       amountUsd: Prisma.Decimal
       payoutFiat: Prisma.Decimal
@@ -2538,6 +2624,7 @@ export namespace Prisma {
       recipientBank: string | null
       recipientAcc: string | null
       createdAt: Date
+      updatedAt: Date
     }, ExtArgs["result"]["transaction"]>
     composites: {}
   }
@@ -2966,6 +3053,9 @@ export namespace Prisma {
     readonly userId: FieldRef<"Transaction", 'String'>
     readonly orderId: FieldRef<"Transaction", 'BigInt'>
     readonly txHash: FieldRef<"Transaction", 'String'>
+    readonly chainId: FieldRef<"Transaction", 'Int'>
+    readonly blockNumber: FieldRef<"Transaction", 'BigInt'>
+    readonly logIndex: FieldRef<"Transaction", 'Int'>
     readonly sourceToken: FieldRef<"Transaction", 'String'>
     readonly amountUsd: FieldRef<"Transaction", 'Decimal'>
     readonly payoutFiat: FieldRef<"Transaction", 'Decimal'>
@@ -2975,6 +3065,7 @@ export namespace Prisma {
     readonly recipientBank: FieldRef<"Transaction", 'String'>
     readonly recipientAcc: FieldRef<"Transaction", 'String'>
     readonly createdAt: FieldRef<"Transaction", 'DateTime'>
+    readonly updatedAt: FieldRef<"Transaction", 'DateTime'>
   }
     
 
@@ -3413,10 +3504,12 @@ export namespace Prisma {
     privyDid: 'privyDid',
     walletAddress: 'walletAddress',
     fullName: 'fullName',
+    displayName: 'displayName',
     email: 'email',
     avatarUrl: 'avatarUrl',
     totalSentUsd: 'totalSentUsd',
     transactionCount: 'transactionCount',
+    lastLoginAt: 'lastLoginAt',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
   };
@@ -3429,6 +3522,9 @@ export namespace Prisma {
     userId: 'userId',
     orderId: 'orderId',
     txHash: 'txHash',
+    chainId: 'chainId',
+    blockNumber: 'blockNumber',
+    logIndex: 'logIndex',
     sourceToken: 'sourceToken',
     amountUsd: 'amountUsd',
     payoutFiat: 'payoutFiat',
@@ -3437,7 +3533,8 @@ export namespace Prisma {
     recipientName: 'recipientName',
     recipientBank: 'recipientBank',
     recipientAcc: 'recipientAcc',
-    createdAt: 'createdAt'
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
   };
 
   export type TransactionScalarFieldEnum = (typeof TransactionScalarFieldEnum)[keyof typeof TransactionScalarFieldEnum]
@@ -3581,10 +3678,12 @@ export namespace Prisma {
     privyDid?: StringFilter<"User"> | string
     walletAddress?: StringFilter<"User"> | string
     fullName?: StringNullableFilter<"User"> | string | null
+    displayName?: StringNullableFilter<"User"> | string | null
     email?: StringNullableFilter<"User"> | string | null
     avatarUrl?: StringNullableFilter<"User"> | string | null
     totalSentUsd?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFilter<"User"> | number
+    lastLoginAt?: DateTimeNullableFilter<"User"> | Date | string | null
     createdAt?: DateTimeFilter<"User"> | Date | string
     updatedAt?: DateTimeFilter<"User"> | Date | string
     transactions?: TransactionListRelationFilter
@@ -3595,10 +3694,12 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrder
     fullName?: SortOrderInput | SortOrder
+    displayName?: SortOrderInput | SortOrder
     email?: SortOrderInput | SortOrder
     avatarUrl?: SortOrderInput | SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
+    lastLoginAt?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     transactions?: TransactionOrderByRelationAggregateInput
@@ -3613,9 +3714,11 @@ export namespace Prisma {
     OR?: UserWhereInput[]
     NOT?: UserWhereInput | UserWhereInput[]
     fullName?: StringNullableFilter<"User"> | string | null
+    displayName?: StringNullableFilter<"User"> | string | null
     avatarUrl?: StringNullableFilter<"User"> | string | null
     totalSentUsd?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFilter<"User"> | number
+    lastLoginAt?: DateTimeNullableFilter<"User"> | Date | string | null
     createdAt?: DateTimeFilter<"User"> | Date | string
     updatedAt?: DateTimeFilter<"User"> | Date | string
     transactions?: TransactionListRelationFilter
@@ -3626,10 +3729,12 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrder
     fullName?: SortOrderInput | SortOrder
+    displayName?: SortOrderInput | SortOrder
     email?: SortOrderInput | SortOrder
     avatarUrl?: SortOrderInput | SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
+    lastLoginAt?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     _count?: UserCountOrderByAggregateInput
@@ -3647,10 +3752,12 @@ export namespace Prisma {
     privyDid?: StringWithAggregatesFilter<"User"> | string
     walletAddress?: StringWithAggregatesFilter<"User"> | string
     fullName?: StringNullableWithAggregatesFilter<"User"> | string | null
+    displayName?: StringNullableWithAggregatesFilter<"User"> | string | null
     email?: StringNullableWithAggregatesFilter<"User"> | string | null
     avatarUrl?: StringNullableWithAggregatesFilter<"User"> | string | null
     totalSentUsd?: DecimalWithAggregatesFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactionCount?: IntWithAggregatesFilter<"User"> | number
+    lastLoginAt?: DateTimeNullableWithAggregatesFilter<"User"> | Date | string | null
     createdAt?: DateTimeWithAggregatesFilter<"User"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"User"> | Date | string
   }
@@ -3663,6 +3770,9 @@ export namespace Prisma {
     userId?: StringFilter<"Transaction"> | string
     orderId?: BigIntFilter<"Transaction"> | bigint | number
     txHash?: StringFilter<"Transaction"> | string
+    chainId?: IntFilter<"Transaction"> | number
+    blockNumber?: BigIntFilter<"Transaction"> | bigint | number
+    logIndex?: IntFilter<"Transaction"> | number
     sourceToken?: StringFilter<"Transaction"> | string
     amountUsd?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
@@ -3672,6 +3782,7 @@ export namespace Prisma {
     recipientBank?: StringNullableFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableFilter<"Transaction"> | string | null
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
+    updatedAt?: DateTimeFilter<"Transaction"> | Date | string
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
   }
 
@@ -3680,6 +3791,9 @@ export namespace Prisma {
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    chainId?: SortOrder
+    blockNumber?: SortOrder
+    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -3689,6 +3803,7 @@ export namespace Prisma {
     recipientBank?: SortOrderInput | SortOrder
     recipientAcc?: SortOrderInput | SortOrder
     createdAt?: SortOrder
+    updatedAt?: SortOrder
     user?: UserOrderByWithRelationInput
   }
 
@@ -3697,10 +3812,14 @@ export namespace Prisma {
     orderId?: bigint | number
     txHash?: string
     externalId?: string
+    chainId_blockNumber_logIndex?: TransactionChainIdBlockNumberLogIndexCompoundUniqueInput
     AND?: TransactionWhereInput | TransactionWhereInput[]
     OR?: TransactionWhereInput[]
     NOT?: TransactionWhereInput | TransactionWhereInput[]
     userId?: StringFilter<"Transaction"> | string
+    chainId?: IntFilter<"Transaction"> | number
+    blockNumber?: BigIntFilter<"Transaction"> | bigint | number
+    logIndex?: IntFilter<"Transaction"> | number
     sourceToken?: StringFilter<"Transaction"> | string
     amountUsd?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
@@ -3709,14 +3828,18 @@ export namespace Prisma {
     recipientBank?: StringNullableFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableFilter<"Transaction"> | string | null
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
+    updatedAt?: DateTimeFilter<"Transaction"> | Date | string
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
-  }, "id" | "orderId" | "txHash" | "externalId">
+  }, "id" | "orderId" | "txHash" | "externalId" | "chainId_blockNumber_logIndex">
 
   export type TransactionOrderByWithAggregationInput = {
     id?: SortOrder
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    chainId?: SortOrder
+    blockNumber?: SortOrder
+    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -3726,6 +3849,7 @@ export namespace Prisma {
     recipientBank?: SortOrderInput | SortOrder
     recipientAcc?: SortOrderInput | SortOrder
     createdAt?: SortOrder
+    updatedAt?: SortOrder
     _count?: TransactionCountOrderByAggregateInput
     _avg?: TransactionAvgOrderByAggregateInput
     _max?: TransactionMaxOrderByAggregateInput
@@ -3741,6 +3865,9 @@ export namespace Prisma {
     userId?: StringWithAggregatesFilter<"Transaction"> | string
     orderId?: BigIntWithAggregatesFilter<"Transaction"> | bigint | number
     txHash?: StringWithAggregatesFilter<"Transaction"> | string
+    chainId?: IntWithAggregatesFilter<"Transaction"> | number
+    blockNumber?: BigIntWithAggregatesFilter<"Transaction"> | bigint | number
+    logIndex?: IntWithAggregatesFilter<"Transaction"> | number
     sourceToken?: StringWithAggregatesFilter<"Transaction"> | string
     amountUsd?: DecimalWithAggregatesFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalWithAggregatesFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
@@ -3750,6 +3877,7 @@ export namespace Prisma {
     recipientBank?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"Transaction"> | Date | string
+    updatedAt?: DateTimeWithAggregatesFilter<"Transaction"> | Date | string
   }
 
   export type UserCreateInput = {
@@ -3757,10 +3885,12 @@ export namespace Prisma {
     privyDid: string
     walletAddress: string
     fullName?: string | null
+    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
+    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     transactions?: TransactionCreateNestedManyWithoutUserInput
@@ -3771,10 +3901,12 @@ export namespace Prisma {
     privyDid: string
     walletAddress: string
     fullName?: string | null
+    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
+    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
     transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
@@ -3785,10 +3917,12 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: StringFieldUpdateOperationsInput | string
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     transactions?: TransactionUpdateManyWithoutUserNestedInput
@@ -3799,10 +3933,12 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: StringFieldUpdateOperationsInput | string
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
@@ -3813,10 +3949,12 @@ export namespace Prisma {
     privyDid: string
     walletAddress: string
     fullName?: string | null
+    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
+    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
   }
@@ -3826,10 +3964,12 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: StringFieldUpdateOperationsInput | string
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -3839,10 +3979,12 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: StringFieldUpdateOperationsInput | string
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -3851,6 +3993,9 @@ export namespace Prisma {
     id?: string
     orderId: bigint | number
     txHash: string
+    chainId: number
+    blockNumber: bigint | number
+    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -3860,6 +4005,7 @@ export namespace Prisma {
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    updatedAt?: Date | string
     user: UserCreateNestedOneWithoutTransactionsInput
   }
 
@@ -3868,6 +4014,9 @@ export namespace Prisma {
     userId: string
     orderId: bigint | number
     txHash: string
+    chainId: number
+    blockNumber: bigint | number
+    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -3877,12 +4026,16 @@ export namespace Prisma {
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type TransactionUpdateInput = {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -3892,6 +4045,7 @@ export namespace Prisma {
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     user?: UserUpdateOneRequiredWithoutTransactionsNestedInput
   }
 
@@ -3900,6 +4054,9 @@ export namespace Prisma {
     userId?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -3909,6 +4066,7 @@ export namespace Prisma {
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type TransactionCreateManyInput = {
@@ -3916,6 +4074,9 @@ export namespace Prisma {
     userId: string
     orderId: bigint | number
     txHash: string
+    chainId: number
+    blockNumber: bigint | number
+    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -3925,12 +4086,16 @@ export namespace Prisma {
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type TransactionUpdateManyMutationInput = {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -3940,6 +4105,7 @@ export namespace Prisma {
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type TransactionUncheckedUpdateManyInput = {
@@ -3947,6 +4113,9 @@ export namespace Prisma {
     userId?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -3956,6 +4125,7 @@ export namespace Prisma {
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type StringFilter<$PrismaModel = never> = {
@@ -4010,6 +4180,17 @@ export namespace Prisma {
     not?: NestedIntFilter<$PrismaModel> | number
   }
 
+  export type DateTimeNullableFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
+  }
+
   export type DateTimeFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel>
@@ -4041,10 +4222,12 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrder
     fullName?: SortOrder
+    displayName?: SortOrder
     email?: SortOrder
     avatarUrl?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
+    lastLoginAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }
@@ -4059,10 +4242,12 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrder
     fullName?: SortOrder
+    displayName?: SortOrder
     email?: SortOrder
     avatarUrl?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
+    lastLoginAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }
@@ -4072,10 +4257,12 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrder
     fullName?: SortOrder
+    displayName?: SortOrder
     email?: SortOrder
     avatarUrl?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
+    lastLoginAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }
@@ -4153,6 +4340,20 @@ export namespace Prisma {
     _max?: NestedIntFilter<$PrismaModel>
   }
 
+  export type DateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedDateTimeNullableFilter<$PrismaModel>
+    _max?: NestedDateTimeNullableFilter<$PrismaModel>
+  }
+
   export type DateTimeWithAggregatesFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel>
@@ -4190,11 +4391,20 @@ export namespace Prisma {
     isNot?: UserWhereInput
   }
 
+  export type TransactionChainIdBlockNumberLogIndexCompoundUniqueInput = {
+    chainId: number
+    blockNumber: bigint | number
+    logIndex: number
+  }
+
   export type TransactionCountOrderByAggregateInput = {
     id?: SortOrder
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    chainId?: SortOrder
+    blockNumber?: SortOrder
+    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -4204,10 +4414,14 @@ export namespace Prisma {
     recipientBank?: SortOrder
     recipientAcc?: SortOrder
     createdAt?: SortOrder
+    updatedAt?: SortOrder
   }
 
   export type TransactionAvgOrderByAggregateInput = {
     orderId?: SortOrder
+    chainId?: SortOrder
+    blockNumber?: SortOrder
+    logIndex?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
   }
@@ -4217,6 +4431,9 @@ export namespace Prisma {
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    chainId?: SortOrder
+    blockNumber?: SortOrder
+    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -4226,6 +4443,7 @@ export namespace Prisma {
     recipientBank?: SortOrder
     recipientAcc?: SortOrder
     createdAt?: SortOrder
+    updatedAt?: SortOrder
   }
 
   export type TransactionMinOrderByAggregateInput = {
@@ -4233,6 +4451,9 @@ export namespace Prisma {
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    chainId?: SortOrder
+    blockNumber?: SortOrder
+    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -4242,10 +4463,14 @@ export namespace Prisma {
     recipientBank?: SortOrder
     recipientAcc?: SortOrder
     createdAt?: SortOrder
+    updatedAt?: SortOrder
   }
 
   export type TransactionSumOrderByAggregateInput = {
     orderId?: SortOrder
+    chainId?: SortOrder
+    blockNumber?: SortOrder
+    logIndex?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
   }
@@ -4312,6 +4537,10 @@ export namespace Prisma {
     decrement?: number
     multiply?: number
     divide?: number
+  }
+
+  export type NullableDateTimeFieldUpdateOperationsInput = {
+    set?: Date | string | null
   }
 
   export type DateTimeFieldUpdateOperationsInput = {
@@ -4422,6 +4651,17 @@ export namespace Prisma {
     not?: NestedIntFilter<$PrismaModel> | number
   }
 
+  export type NestedDateTimeNullableFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
+  }
+
   export type NestedDateTimeFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel>
@@ -4521,6 +4761,20 @@ export namespace Prisma {
     not?: NestedFloatFilter<$PrismaModel> | number
   }
 
+  export type NestedDateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedDateTimeNullableFilter<$PrismaModel>
+    _max?: NestedDateTimeNullableFilter<$PrismaModel>
+  }
+
   export type NestedDateTimeWithAggregatesFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel>
@@ -4583,6 +4837,9 @@ export namespace Prisma {
     id?: string
     orderId: bigint | number
     txHash: string
+    chainId: number
+    blockNumber: bigint | number
+    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -4592,12 +4849,16 @@ export namespace Prisma {
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type TransactionUncheckedCreateWithoutUserInput = {
     id?: string
     orderId: bigint | number
     txHash: string
+    chainId: number
+    blockNumber: bigint | number
+    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -4607,6 +4868,7 @@ export namespace Prisma {
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type TransactionCreateOrConnectWithoutUserInput = {
@@ -4643,6 +4905,9 @@ export namespace Prisma {
     userId?: StringFilter<"Transaction"> | string
     orderId?: BigIntFilter<"Transaction"> | bigint | number
     txHash?: StringFilter<"Transaction"> | string
+    chainId?: IntFilter<"Transaction"> | number
+    blockNumber?: BigIntFilter<"Transaction"> | bigint | number
+    logIndex?: IntFilter<"Transaction"> | number
     sourceToken?: StringFilter<"Transaction"> | string
     amountUsd?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
@@ -4652,6 +4917,7 @@ export namespace Prisma {
     recipientBank?: StringNullableFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableFilter<"Transaction"> | string | null
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
+    updatedAt?: DateTimeFilter<"Transaction"> | Date | string
   }
 
   export type UserCreateWithoutTransactionsInput = {
@@ -4659,10 +4925,12 @@ export namespace Prisma {
     privyDid: string
     walletAddress: string
     fullName?: string | null
+    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
+    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
   }
@@ -4672,10 +4940,12 @@ export namespace Prisma {
     privyDid: string
     walletAddress: string
     fullName?: string | null
+    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
+    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
   }
@@ -4701,10 +4971,12 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: StringFieldUpdateOperationsInput | string
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -4714,10 +4986,12 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: StringFieldUpdateOperationsInput | string
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -4726,6 +5000,9 @@ export namespace Prisma {
     id?: string
     orderId: bigint | number
     txHash: string
+    chainId: number
+    blockNumber: bigint | number
+    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -4735,12 +5012,16 @@ export namespace Prisma {
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type TransactionUpdateWithoutUserInput = {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -4750,12 +5031,16 @@ export namespace Prisma {
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type TransactionUncheckedUpdateWithoutUserInput = {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -4765,12 +5050,16 @@ export namespace Prisma {
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type TransactionUncheckedUpdateManyWithoutUserInput = {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -4780,6 +5069,7 @@ export namespace Prisma {
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
 

@@ -125,10 +125,12 @@ exports.Prisma.UserScalarFieldEnum = {
   privyDid: 'privyDid',
   walletAddress: 'walletAddress',
   fullName: 'fullName',
+  displayName: 'displayName',
   email: 'email',
   avatarUrl: 'avatarUrl',
   totalSentUsd: 'totalSentUsd',
   transactionCount: 'transactionCount',
+  lastLoginAt: 'lastLoginAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 };
@@ -138,6 +140,9 @@ exports.Prisma.TransactionScalarFieldEnum = {
   userId: 'userId',
   orderId: 'orderId',
   txHash: 'txHash',
+  chainId: 'chainId',
+  blockNumber: 'blockNumber',
+  logIndex: 'logIndex',
   sourceToken: 'sourceToken',
   amountUsd: 'amountUsd',
   payoutFiat: 'payoutFiat',
@@ -146,7 +151,8 @@ exports.Prisma.TransactionScalarFieldEnum = {
   recipientName: 'recipientName',
   recipientBank: 'recipientBank',
   recipientAcc: 'recipientAcc',
-  createdAt: 'createdAt'
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
 };
 
 exports.Prisma.SortOrder = {
@@ -166,6 +172,7 @@ exports.Prisma.NullsOrder = {
 exports.Status = exports.$Enums.Status = {
   PENDING: 'PENDING',
   VERIFIED: 'VERIFIED',
+  PROCESSING: 'PROCESSING',
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
   REFUNDING: 'REFUNDING'

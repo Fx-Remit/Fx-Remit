@@ -1,0 +1,55 @@
+{
+  "name": "fx-remit-mainnet-mirror",
+  "version": "1.0.0",
+  "description": "Real-time indexing for FX Remit multi-chain router events.",
+  "pipelines": [
+    {
+      "id": "base-remittance-mirror",
+      "source": {
+        "type": "event",
+        "network": "base-mainnet",
+        "address": "0x30F6A8457F8E42371E204a9c103f2Bd42341dD0F",
+        "abi_path": "packages/shared-sdk/src/abi/FXRemitRouter.json",
+        "event_name": "RemittanceInitiated",
+        "start_block": "latest"
+      },
+      "sink": {
+        "type": "webhook",
+        "url": "https://your-pwa-url.com/api/indexer/webhook",
+        "secret_name": "GOLDSKY_WEBHOOK_SECRET_KEY"
+      }
+    },
+    {
+      "id": "arbitrum-remittance-mirror",
+      "source": {
+        "type": "event",
+        "network": "arbitrum-mainnet",
+        "address": "0xE8bc3B607CfE68F47000E3d200310D49041148Fc",
+        "abi_path": "packages/shared-sdk/src/abi/FXRemitRouter.json",
+        "event_name": "RemittanceInitiated",
+        "start_block": "latest"
+      },
+      "sink": {
+        "type": "webhook",
+        "url": "https://your-pwa-url.com/api/indexer/webhook",
+        "secret_name": "GOLDSKY_WEBHOOK_SECRET_KEY"
+      }
+    },
+    {
+      "id": "celo-remittance-mirror",
+      "source": {
+        "type": "event",
+        "network": "celo-mainnet",
+        "address": "0xF418217E3f81092eF44b81C5C8336e6A6fDB0E4b",
+        "abi_path": "packages/shared-sdk/src/abi/FXRemitRouter.json",
+        "event_name": "RemittanceInitiated",
+        "start_block": "latest"
+      },
+      "sink": {
+        "type": "webhook",
+        "url": "https://your-pwa-url.com/api/indexer/webhook",
+        "secret_name": "GOLDSKY_WEBHOOK_SECRET_KEY"
+      }
+    }
+  ]
+}
