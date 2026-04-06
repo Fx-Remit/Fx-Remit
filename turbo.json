@@ -12,7 +12,7 @@
       "outputs": []
     },
     "type-check": {
-      "dependsOn": ["^generate"],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "test": {
