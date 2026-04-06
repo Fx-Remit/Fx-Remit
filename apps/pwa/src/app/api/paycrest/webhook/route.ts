@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { prisma, Status } from '@fx-remit/database';
+import { Status } from '@fx-remit/database';
+import { TransactionService } from '@fx-remit/services';
 
 /**
  * Paycrest v2 Webhook Receiver
@@ -45,25 +46,16 @@ export async function POST(req: NextRequest) {
      */
     switch (event) {
       case 'payment_order.settled':
-        await prisma.transaction.updateMany({
-          where: { externalId: data.id },
-          data: { status: 'COMPLETED' },
-        });
+        await TransactionService.updateFromPaycrest(data.id, 'COMPLETED');
         break;
 
       case 'payment_order.failed':
-        await prisma.transaction.updateMany({
-          where: { externalId: data.id },
-          data: { status: 'FAILED' },
-        });
+        await TransactionService.updateFromPaycrest(data.id, 'FAILED');
         break;
 
       case 'payment_order.refunding':
       case 'payment_order.refunded':
-        await prisma.transaction.updateMany({
-          where: { externalId: data.id },
-          data: { status: Status.REFUNDING },
-        });
+        await TransactionService.updateFromPaycrest(data.id, Status.REFUNDING);
         break;
 
       default:

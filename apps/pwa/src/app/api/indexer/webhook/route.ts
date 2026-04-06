@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@fx-remit/database';
+import { TransactionService } from '@fx-remit/services';
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,41 +16,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'ignored' });
     }
 
-    const { order_id, tx_hash, chain_id, sender } = data;
-
-    // Resolve user by wallet address (normalized to lowercase)
-    const user = await prisma.user.findUnique({
-      where: { walletAddress: sender.toLowerCase() },
-      select: { id: true }
-    });
-
-    if (!user) {
-      console.warn(`[Indexer] Event received for unregistered wallet: ${sender}`);
-    }
-
-    // Handle uint256 orderId and block numbers as BigInt
-    const orderId = BigInt(order_id);
-    const blockNumber = BigInt(data.block_number);
-
-    await prisma.transaction.upsert({
-      where: { orderId },
-      update: {
-        txHash: tx_hash,
-        chainId: Number(chain_id),
-        status: 'VERIFIED',
-        blockNumber,
-      },
-      create: {
-        orderId,
-        txHash: tx_hash,
-        chainId: Number(chain_id),
-        userId: user?.id || 'indexer-unlinked',
-        sourceToken: data.fromToken || 'CELO',
-        amountUsd: Number(data.amountUsd || 0),
-        payoutFiat: 0,
-        blockNumber,
-        logIndex: Number(data.log_index),
-      }
+    // Use the High-Fidelity TransactionService for data ingestion
+    await TransactionService.updateFromIndexer({
+      orderId: BigInt(data.order_id),
+      txHash: data.tx_hash,
+      chainId: Number(data.chain_id),
+      blockNumber: BigInt(data.block_number),
+      logIndex: Number(data.log_index),
+      sender: data.sender,
+      fromToken: data.fromToken,
+      amountUsd: Number(data.amountUsd || 0),
     });
 
     return NextResponse.json({ status: 'success' });
