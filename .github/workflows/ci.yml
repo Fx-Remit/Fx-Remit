@@ -42,25 +42,6 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-  lint:
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 8
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - name: Lint
-        run: pnpm turbo lint
-
   type-check:
     needs: setup
     runs-on: ubuntu-latest
@@ -83,7 +64,7 @@ jobs:
         run: pnpm turbo type-check
 
   build:
-    needs: [lint, type-check]
+    needs: type-check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

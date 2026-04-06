@@ -11,6 +11,10 @@
     "lint": {
       "outputs": []
     },
+    "type-check": {
+      "dependsOn": ["^generate"],
+      "outputs": []
+    },
     "test": {
       "outputs": []
     },
