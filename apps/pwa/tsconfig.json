@@ -7,7 +7,6 @@
     "noEmit": true,
     "incremental": true,
     "esModuleInterop": true,
-    "downlevelIteration": true,
     "target": "es2022",
     "module": "esnext",
     "moduleResolution": "bundler",

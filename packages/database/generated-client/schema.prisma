@@ -8,16 +8,18 @@ datasource db {
 }
 
 model User {
-  id               String   @id @default(uuid())
-  privyDid         String   @unique @map("privy_did")
-  walletAddress    String   @unique @map("wallet_address")
-  fullName         String?  @map("full_name")
-  email            String?  @unique
-  avatarUrl        String?  @map("avatar_url")
-  totalSentUsd     Decimal  @default(0.0) @map("total_sent_usd") @db.Decimal(20, 2)
-  transactionCount Int      @default(0) @map("transaction_count")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id               String    @id @default(uuid())
+  privyDid         String    @unique @map("privy_did")
+  walletAddress    String    @unique @map("wallet_address")
+  fullName         String?   @map("full_name")
+  displayName      String?   @map("display_name")
+  email            String?   @unique
+  avatarUrl        String?   @map("avatar_url")
+  totalSentUsd     Decimal   @default(0.0) @map("total_sent_usd") @db.Decimal(20, 2)
+  transactionCount Int       @default(0) @map("transaction_count")
+  lastLoginAt      DateTime? @map("last_login_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   transactions Transaction[]
 
@@ -25,10 +27,16 @@ model User {
 }
 
 model Transaction {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
-  orderId       BigInt   @unique @map("order_id") // The Idempotency Key (Contract)
-  txHash        String   @unique @map("tx_hash")
+  id      String @id @default(uuid())
+  userId  String @map("user_id")
+  orderId BigInt @unique @map("order_id") // The Idempotency Key (Contract)
+  txHash  String @unique @map("tx_hash")
+
+  // Indexing Metadata
+  chainId     Int    @map("chain_id")
+  blockNumber BigInt @map("block_number")
+  logIndex    Int    @map("log_index")
+
   sourceToken   String   @map("source_token")
   amountUsd     Decimal  @map("amount_usd") @db.Decimal(20, 2)
   payoutFiat    Decimal  @map("payout_fiat") @db.Decimal(20, 2)
@@ -38,15 +46,19 @@ model Transaction {
   recipientBank String?  @map("recipient_bank")
   recipientAcc  String?  @map("recipient_acc")
   createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id])
 
+  // Uniqueness for the on-chain event (Chain + Block + Log Index)
+  @@unique([chainId, blockNumber, logIndex])
   @@map("transactions")
 }
 
 enum Status {
   PENDING
   VERIFIED
+  PROCESSING
   COMPLETED
   FAILED
   REFUNDING

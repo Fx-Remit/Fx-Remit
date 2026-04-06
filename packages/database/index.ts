@@ -1,21 +1,28 @@
-import { PrismaClient } from './generated-client';
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "./generated-client";
 
-// Use any for the global to avoid type issues during setup
-const globalForPrisma = globalThis as unknown as { prisma: any };
+const prismaClientSingleton = () => {
+  const connectionString = process.env.DATABASE_URL;
 
-// High-fidelity lazy-init for Prisma (Build-Safe)
-export const prisma =
-  globalForPrisma.prisma ||
-  (process.env.DATABASE_URL
-    ? new PrismaClient({
-        datasource: {
-          url: process.env.DATABASE_URL,
-        },
-      } as any)
-    : null);
+  if (!connectionString) {
+    return new PrismaClient() as any;
+  }
 
-if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
+  const pool = new Pool({ connectionString });
+  const adapter = new PrismaPg(pool);
 
-export * from './generated-client';
+  return new PrismaClient({ adapter });
+};
+
+type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>;
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClientSingleton | undefined;
+};
+
+export const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
+
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+export * from "./generated-client";
