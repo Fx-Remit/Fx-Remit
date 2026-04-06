@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
     "target": "es2022",
-    "module": "esnext",
+    "module": "nodenext",
     "lib": ["dom", "dom.iterable", "esnext"],
     "jsx": "react-jsx",
-    "moduleResolution": "node",
+    "moduleResolution": "nodenext",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
