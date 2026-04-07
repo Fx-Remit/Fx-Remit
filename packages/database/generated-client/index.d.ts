@@ -34,7 +34,8 @@ export namespace $Enums {
   PROCESSING: 'PROCESSING',
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
-  REFUNDING: 'REFUNDING'
+  REFUNDING: 'REFUNDING',
+  REFUND_REQUIRED: 'REFUND_REQUIRED'
 };
 
 export type Status = (typeof Status)[keyof typeof Status]
@@ -3809,14 +3810,15 @@ export namespace Prisma {
 
   export type TransactionWhereUniqueInput = Prisma.AtLeast<{
     id?: string
-    orderId?: bigint | number
     txHash?: string
     externalId?: string
     chainId_blockNumber_logIndex?: TransactionChainIdBlockNumberLogIndexCompoundUniqueInput
+    orderId_chainId?: TransactionOrderIdChainIdCompoundUniqueInput
     AND?: TransactionWhereInput | TransactionWhereInput[]
     OR?: TransactionWhereInput[]
     NOT?: TransactionWhereInput | TransactionWhereInput[]
     userId?: StringFilter<"Transaction"> | string
+    orderId?: BigIntFilter<"Transaction"> | bigint | number
     chainId?: IntFilter<"Transaction"> | number
     blockNumber?: BigIntFilter<"Transaction"> | bigint | number
     logIndex?: IntFilter<"Transaction"> | number
@@ -3830,7 +3832,7 @@ export namespace Prisma {
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
-  }, "id" | "orderId" | "txHash" | "externalId" | "chainId_blockNumber_logIndex">
+  }, "id" | "txHash" | "externalId" | "chainId_blockNumber_logIndex" | "orderId_chainId">
 
   export type TransactionOrderByWithAggregationInput = {
     id?: SortOrder
@@ -4395,6 +4397,11 @@ export namespace Prisma {
     chainId: number
     blockNumber: bigint | number
     logIndex: number
+  }
+
+  export type TransactionOrderIdChainIdCompoundUniqueInput = {
+    orderId: bigint | number
+    chainId: number
   }
 
   export type TransactionCountOrderByAggregateInput = {

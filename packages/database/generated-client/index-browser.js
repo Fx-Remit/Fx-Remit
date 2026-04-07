@@ -175,7 +175,8 @@ exports.Status = exports.$Enums.Status = {
   PROCESSING: 'PROCESSING',
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
-  REFUNDING: 'REFUNDING'
+  REFUNDING: 'REFUNDING',
+  REFUND_REQUIRED: 'REFUND_REQUIRED'
 };
 
 exports.Prisma.ModelName = {
