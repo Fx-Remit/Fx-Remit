@@ -1,4 +1,4 @@
-import { prisma } from '@fx-remit/database';
+import { prisma, Prisma } from '@fx-remit/database';
 import { decodeEventLog } from 'viem';
 import routerAbi from './abi/FXRemitRouter.json';
 
@@ -37,8 +37,9 @@ export class AlchemyService {
           });
 
           // Atomic DB Upsert
-          const normalizedAmountUsd = (Number(amountIn) / 1e6).toString();
-          const normalizedPayoutFiat = (Number(amountToRemit) / 1e6).toString();
+          // Atomic DB Upsert: Higher precision math avoiding floating point issues
+          const normalizedAmountUsd = new Prisma.Decimal(amountIn.toString()).div(1_000_000);
+          const normalizedPayoutFiat = new Prisma.Decimal(amountToRemit.toString()).div(1_000_000);
 
           // Extract indexing metadata
           const blockNumber = BigInt(event.data.block.number);
@@ -46,7 +47,12 @@ export class AlchemyService {
           const chainId = Number(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID || 8453); // Base default
 
           const result = await prisma.transaction.upsert({
-            where: { orderId: orderId },
+            where: { 
+              orderId_chainId: {
+                orderId: orderId,
+                chainId: chainId,
+              }
+            },
             update: {
               status: 'VERIFIED',
               txHash: log.transactionHash,

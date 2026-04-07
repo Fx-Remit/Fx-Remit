@@ -76,7 +76,12 @@ export class TransactionService {
     });
 
     const existing = await prisma.transaction.findUnique({
-      where: { orderId: data.orderId },
+      where: {
+        orderId_chainId: {
+          orderId: data.orderId,
+          chainId: data.chainId,
+        },
+      },
       select: { status: true },
     });
 
@@ -86,7 +91,12 @@ export class TransactionService {
         : (existing.status as Status);
 
     return await prisma.transaction.upsert({
-      where: { orderId: data.orderId },
+      where: {
+        orderId_chainId: {
+          orderId: data.orderId,
+          chainId: data.chainId,
+        },
+      },
       update: {
         txHash: data.txHash,
         chainId: data.chainId,
