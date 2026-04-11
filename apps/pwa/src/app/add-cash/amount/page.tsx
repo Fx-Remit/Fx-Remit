@@ -1,14 +1,23 @@
 'use client';
 
-import { ChevronLeft, Copy, Share2 } from 'lucide-react';
+import { ChevronLeft, Copy, Share2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useMemo } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
+import { QRCodeSVG } from 'qrcode.react';
+import { useUserStore } from '@/store/user-store';
 
 const NETWORK_NAMES: Record<string, string> = {
   celo: 'Celo network',
   base: 'Base network',
   ethereum: 'Ethereum network',
+};
+
+const CHAIN_IDS: Record<string, number> = {
+  celo: 42220,
+  base: 8453,
+  ethereum: 1,
 };
 
 function AmountPageContent() {
@@ -18,14 +27,57 @@ function AmountPageContent() {
 
   const tokenSymbol = token.toUpperCase();
   const networkName = NETWORK_NAMES[network] || 'Celo network';
+  const chainId = CHAIN_IDS[network] || 42220;
 
+  const { user, ready } = usePrivy();
+  const { profile: dbUser } = useUserStore();
   const [copied, setCopied] = useState(false);
-  const walletAddress = '0x1e902e730C89EB9419a7a9cc53633f29A9C7f07E';
+  const [shared, setShared] = useState(false);
+
+  // Extract the user's wallet address from store (instant) or privy (fallback)
+  const walletAddress = useMemo(() => {
+    if (dbUser?.walletAddress) return dbUser.walletAddress;
+
+    if (ready && user) {
+      const wallet = user.linkedAccounts?.find((a) => a.type === 'wallet');
+      return wallet?.type === 'wallet' ? wallet.address : 'Loading...';
+    }
+
+    return 'Loading...';
+  }, [user, ready, dbUser]);
+
+  // Generate the QR value
+  const qrValue = useMemo(() => {
+    if (walletAddress === 'Loading...') return '';
+    return walletAddress;
+  }, [walletAddress]);
 
   const handleCopy = () => {
+    if (walletAddress === 'Loading...') return;
     navigator.clipboard.writeText(walletAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShare = async () => {
+    if (walletAddress === 'Loading...') return;
+
+    const shareMessage = `My FX Remit Deposit Address (${networkName}): ${walletAddress}`;
+
+    // TODO: Implement custom ShareActionSheet prompt for WhatsApp/SMS options
+    // This is currently limited by localhost/non-HTTPS security restrictions
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'FX Remit Address',
+          text: shareMessage,
+        });
+        setShared(true);
+        setTimeout(() => setShared(false), 2000);
+      } catch (error) {
+        console.error('Error sharing:', error);
+      }
+    }
   };
 
   return (
@@ -48,11 +100,18 @@ function AmountPageContent() {
         <div className="flex justify-center mb-6 text-center">
           <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100/50">
             <div className="w-[180px] h-[180px] bg-white flex items-center justify-center overflow-hidden">
-              <img
-                src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=0x1e902e730C89EB9419a7a9cc53633f29A9C7f07E"
-                alt="Deposit QR Code"
-                className="w-full h-full object-contain"
-              />
+              {walletAddress !== 'Loading...' && qrValue ? (
+                <QRCodeSVG
+                  value={qrValue}
+                  size={180}
+                  level="H"
+                  includeMargin={false}
+                />
+              ) : (
+                <div className="w-full h-full bg-gray-50 rounded-lg flex items-center justify-center animate-pulse">
+                  <div className="w-12 h-12 rounded-full border-2 border-blue-100 border-t-blue-500 animate-spin" />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -63,11 +122,15 @@ function AmountPageContent() {
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
               <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">
-                Tokens available
+                Deposit Address
               </p>
-              <p className="text-[#1C1C1C] text-[15px] font-medium break-all leading-relaxed pr-2">
-                {walletAddress}
-              </p>
+              <div className="mt-1">
+                {walletAddress !== 'Loading...' && (
+                  <p className="text-[#1C1C1C] text-[15px] font-medium break-all leading-relaxed pr-2">
+                    {walletAddress}
+                  </p>
+                )}
+              </div>
             </div>
             <button
               onClick={handleCopy}
@@ -111,9 +174,13 @@ function AmountPageContent() {
 
       {/* Footer Actions */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] p-5 flex justify-center items-center gap-[10px] z-50">
-        <button className="flex-1 h-[62px] bg-white border border-[#2261FE] text-[#2261FE] font-bold text-[16px] flex items-center justify-center gap-2 rounded-[7px] active:scale-95 transition-transform">
+        <button
+          onClick={handleShare}
+          className={`flex-1 h-[62px] font-bold text-[16px] flex items-center justify-center gap-2 rounded-[7px] active:scale-95 transition-all ${shared ? 'bg-green-500 text-white border-green-500' : 'bg-white border border-[#2261FE] text-[#2261FE]'
+            }`}
+        >
           <Share2 size={20} />
-          Share
+          {shared ? 'Copied!' : 'Share'}
         </button>
         <Link
           href="/home"
@@ -130,7 +197,10 @@ export default function AmountPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#f8fafd] flex items-center justify-center">Loading...</div>
+        <div className="min-h-screen bg-[#f8fafd] flex items-center justify-center flex-col gap-4">
+          <Loader2 className="w-10 h-10 animate-spin text-[#2261FE]" />
+          <p className="text-[#888888] font-medium">Loading deposit details...</p>
+        </div>
       }
     >
       <AmountPageContent />

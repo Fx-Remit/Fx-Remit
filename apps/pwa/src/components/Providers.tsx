@@ -4,6 +4,7 @@ import { PrivyProvider } from '@privy-io/react-auth';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider, createConfig, http } from 'wagmi';
 import { base, celo, polygon } from 'wagmi/chains';
+import { UserHydrator } from './UserHydrator';
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
+          <UserHydrator />
           {children}
         </QueryClientProvider>
       </WagmiProvider>
