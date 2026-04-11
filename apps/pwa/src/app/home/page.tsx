@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { CashOutSheet } from '../cash-out/CashOutSheet';
 import { usePrivy } from '@privy-io/react-auth';
-import { getMe } from '../actions/user.actions';
+import { useUserStore } from '@/store/user-store';
 
 const MOCK_TRANSACTIONS = [
   {
@@ -30,23 +30,12 @@ const MOCK_TRANSACTIONS = [
 
 export default function HomePage() {
   const { user: privyUser, ready, authenticated } = usePrivy();
-  const [dbUser, setDbUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { profile: dbUser, isLoading: storeLoading, isHydrated } = useUserStore();
+
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [cashOutOpen, setCashOutOpen] = useState(false);
 
-  useEffect(() => {
-    async function fetchData() {
-      if (ready && authenticated && privyUser?.id) {
-        const profile = await getMe(privyUser.id);
-        setDbUser(profile);
-        setLoading(false);
-      } else if (ready && !authenticated) {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, [ready, authenticated, privyUser]);
+  const loading = !ready || !isHydrated || (authenticated && storeLoading && !dbUser);
 
   const displayName = dbUser?.displayName || dbUser?.fullName || privyUser?.id?.slice(0, 10);
   const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${privyUser?.id}&backgroundColor=b6e3f4`;
