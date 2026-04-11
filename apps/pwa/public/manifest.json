@@ -1,0 +1,16 @@
+{
+  "name": "FX Remit",
+  "short_name": "FX Remit",
+  "description": "Send Money Across Africa Instantly",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#11205A",
+  "theme_color": "#2261FE",
+  "icons": [
+    {
+      "src": "/fx remit.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
