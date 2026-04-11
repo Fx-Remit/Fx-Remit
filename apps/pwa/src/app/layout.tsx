@@ -11,6 +11,9 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'FX Remit',
   },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
 };
 
 export const viewport: Viewport = {

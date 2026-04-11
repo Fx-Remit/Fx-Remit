@@ -2,14 +2,10 @@
 
 import { ArrowUpRight, Bell, Eye, EyeOff, FileText, Home, User } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CashOutSheet } from '../cash-out/CashOutSheet';
-
-const MOCK_USER = {
-  name: 'Callme_stone',
-  avatar: 'https://api.dicebear.com/8.x/lorelei/svg?seed=callme_stone&backgroundColor=b6e3f4',
-  balance: '897.00',
-};
+import { usePrivy } from '@privy-io/react-auth';
+import { getMe } from '../actions/user.actions';
 
 const MOCK_TRANSACTIONS = [
   {
@@ -33,21 +29,45 @@ const MOCK_TRANSACTIONS = [
 ];
 
 export default function HomePage() {
+  const { user: privyUser, ready, authenticated } = usePrivy();
+  const [dbUser, setDbUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [cashOutOpen, setCashOutOpen] = useState(false);
+
+  useEffect(() => {
+    async function fetchData() {
+      if (ready && authenticated && privyUser?.id) {
+        const profile = await getMe(privyUser.id);
+        setDbUser(profile);
+        setLoading(false);
+      } else if (ready && !authenticated) {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [ready, authenticated, privyUser]);
+
+  const displayName = dbUser?.displayName || dbUser?.fullName || privyUser?.id?.slice(0, 10);
+  const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${privyUser?.id}&backgroundColor=b6e3f4`;
+  const balance = dbUser?.totalSentUsd?.toString() || '0.00';
 
   return (
     <div className="min-h-screen bg-[#f8fafd] pb-28">
       {/* Header */}
       <div className="px-5 pt-12 pb-4 bg-white flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img
-            src={MOCK_USER.avatar}
-            alt={MOCK_USER.name}
-            className="w-12 h-12 rounded-full border-2 border-blue-100 bg-blue-50"
-          />
+          <div className="relative">
+            <img
+              src={avatar}
+              alt={displayName}
+              className="w-12 h-12 rounded-full border-2 border-blue-100 bg-blue-50 object-cover"
+            />
+          </div>
           <div>
-            <p className="font-bold text-gray-900 text-[16px] leading-tight">{MOCK_USER.name}</p>
+            <p className="font-bold text-gray-900 text-[16px] leading-tight">
+              {loading ? 'Loading...' : displayName}
+            </p>
             <p className="text-gray-400 text-sm">Welcome back 👋</p>
           </div>
         </div>
@@ -115,7 +135,7 @@ export default function HomePage() {
                     color: '#F6F6F6',
                   }}
                 >
-                  {balanceVisible ? `$${MOCK_USER.balance}` : '••••••'}
+                  {balanceVisible ? `$${balance}` : '•••••'}
                 </span>
                 <button
                   onClick={() => setBalanceVisible((v) => !v)}

@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Camera, Check, User as UserIcon, Loader2 } from 'lucide-react';
+import { useLogin, usePrivy } from '@privy-io/react-auth';
+import { createClient } from '@/utils/supabase/client';
 
 const SLIDES = [
   {
@@ -21,11 +23,31 @@ const SLIDES = [
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { ready, authenticated, user, getAccessToken } = usePrivy();
+  const supabase = createClient();
+
   const [current, setCurrent] = useState(0);
   const [exiting, setExiting] = useState(false);
+  const [isSettingUp, setIsSettingUp] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAvatarFile(file);
+      setAvatarPreview(URL.createObjectURL(file));
+    }
+  };
+
+  // Swipe handling
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
-
   const minSwipeDistance = 50;
 
   const onTouchStart = (e: React.TouchEvent) => {
@@ -53,11 +75,46 @@ export default function OnboardingPage() {
     }
   };
 
+  const { login } = useLogin({
+    onComplete: async (params) => {
+      console.log('Privy Login Complete', params);
+      const wallet = params.linkedAccounts.find((a) => a.type === 'wallet');
+      const emailAccount = params.linkedAccounts.find((a) => a.type === 'email');
+
+      try {
+        const token = await getAccessToken();
+        const response = await fetch('/api/user/onboard', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            walletAddress: wallet?.type === 'wallet' ? wallet.address : undefined,
+            email: emailAccount?.type === 'email' ? emailAccount.address : undefined
+          })
+        });
+        const data = await response.json();
+
+        // If user already has a name, go home
+        if (data.user?.fullName) {
+          router.push('/home');
+        } else {
+          // Otherwise, show the setup profile screen
+          setIsSettingUp(true);
+        }
+      } catch (err) {
+        console.error('Failed to sync user:', err);
+        setIsSettingUp(true); // Fallback to setup
+      }
+    }
+  });
+
   const isLast = current === SLIDES.length - 1;
 
   const advance = () => {
     if (isLast) {
-      router.push('/home');
+      login();
       return;
     }
     setExiting(true);
@@ -66,6 +123,212 @@ export default function OnboardingPage() {
       setExiting(false);
     }, 200);
   };
+
+  const handleProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fullName) return;
+
+    setIsSubmitting(true);
+    console.log('Profile Submission Started:', { fullName, displayName, hasFile: !!avatarFile, userId: user?.id });
+
+    try {
+      let avatarUrl = undefined;
+
+      if (avatarFile && user?.id) {
+        console.log('Uploading Profile Photo to Supabase...');
+        const fileExt = avatarFile.name.split('.').pop();
+        const fileName = `${user.id}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = fileName;
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, avatarFile);
+
+        if (uploadError) {
+          console.error('Supabase Upload Error:', uploadError);
+          throw new Error(`Avatar upload failed: ${uploadError.message}`);
+        } else {
+          const { data: { publicUrl } } = supabase.storage
+            .from('avatars')
+            .getPublicUrl(filePath);
+          avatarUrl = publicUrl;
+          console.log('Profile Photo Uploaded Successfully. URL:', avatarUrl);
+        }
+      } else if (avatarFile && !user?.id) {
+        throw new Error('User identity not confirmed. Please try logging in again.');
+      }
+
+      const wallet = user?.linkedAccounts?.find((a) => a.type === 'wallet');
+      const emailAccount = user?.linkedAccounts?.find((a) => a.type === 'email');
+
+      const token = await getAccessToken();
+      const response = await fetch('/api/user/onboard', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          fullName,
+          displayName,
+          avatarUrl,
+          walletAddress: wallet?.type === 'wallet' ? wallet.address : undefined,
+          email: emailAccount?.type === 'email' ? emailAccount.address : undefined
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.details || 'Failed to save profile');
+      }
+      setIsSuccess(true);
+      
+      setTimeout(() => {
+        router.push('/home');
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+      alert(err instanceof Error ? err.message : 'Failed to save profile');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Redirect if already authenticated and has a profile
+  useEffect(() => {
+    if (ready && authenticated && !isSettingUp) {
+      // Small delay to ensure we are not just logging in
+      const sync = async () => {
+        try {
+          const wallet = user?.linkedAccounts?.find((a) => a.type === 'wallet');
+          const emailAccount = user?.linkedAccounts?.find((a) => a.type === 'email');
+
+          const token = await getAccessToken();
+          const response = await fetch('/api/user/onboard', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              walletAddress: wallet?.type === 'wallet' ? wallet.address : undefined,
+              email: emailAccount?.type === 'email' ? emailAccount.address : undefined
+            })
+          });
+          const data = await response.json();
+          if (data.user?.fullName) {
+            router.push('/home');
+          } else {
+            setIsSettingUp(true);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+      sync();
+    }
+  }, [ready, authenticated, router, isSettingUp]);
+
+  if (!ready) return null;
+
+  if (isSettingUp) {
+    return (
+      <div className="h-screen w-full bg-[#11205A] px-7 py-20 flex flex-col items-center">
+        <div className="w-full max-w-[390px] flex flex-col items-center">
+          <h1 className="text-[30px] font-semibold text-[#F5F5F5] text-center mb-2">Create Profile</h1>
+          <p className="text-[16px] text-[#F6F6F6]/60 text-center mb-12">Let's personalize your account</p>
+
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            className="hidden"
+          />
+
+          <div className="relative mb-12">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="w-32 h-32 rounded-full bg-[#2261FE]/20 flex items-center justify-center border-2 border-dashed border-[#2261FE] overflow-hidden cursor-pointer active:scale-95 transition-transform"
+            >
+              {avatarPreview ? (
+                <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+              ) : (
+                <UserIcon className="text-[#2261FE]" size={48} />
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute bottom-0 right-0 w-10 h-10 bg-[#2261FE] rounded-full flex items-center justify-center border-4 border-[#11205A] active:scale-90 transition-transform"
+            >
+              <Camera size={20} className="text-white" />
+            </button>
+          </div>
+
+          <form onSubmit={handleProfileSubmit} className="w-full space-y-6">
+            <div className="space-y-2">
+              <label className="text-[14px] font-medium text-[#F6F6F6]/80 px-1">Legal Full Name</label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="John Doe"
+                className="w-full h-[60px] bg-white/5 border border-white/10 rounded-[12px] px-4 text-white outline-none focus:border-[#2261FE] transition-colors"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[14px] font-medium text-[#F6F6F6]/80 px-1">Display Name (Optional)</label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Johnny"
+                className="w-full h-[60px] bg-white/5 border border-white/10 rounded-[12px] px-4 text-white outline-none focus:border-[#2261FE] transition-colors"
+              />
+            </div>
+
+            <button
+              disabled={isSubmitting || !fullName}
+              className="w-full h-[65px] bg-[#2261FE] text-white rounded-[7px] font-bold text-[17px] mt-8 flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] transition-all"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  Complete Setup
+                  <Check size={20} strokeWidth={2.5} />
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {isSuccess && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#11205A]/90 backdrop-blur-md">
+            <div className="flex flex-col items-center gap-6 rounded-[24px] bg-white/10 p-10 text-center text-white shadow-2xl ring-1 ring-white/20 max-w-[80%] animate-in fade-in zoom-in duration-300">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)]">
+                <Check size={40} strokeWidth={3} className="text-white" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-[28px] font-bold tracking-tight">Success!</h2>
+                <p className="text-[16px] text-[#F6F6F6]/80 leading-relaxed">Profile Created Successfully!</p>
+              </div>
+              <div className="flex flex-col items-center gap-2 pt-4">
+                <Loader2 className="w-5 h-5 animate-spin text-[#2261FE]" />
+                <p className="text-[12px] text-[#F6F6F6]/40 uppercase tracking-widest font-medium">Redirecting to home</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const slide = SLIDES[current];
 
@@ -77,10 +340,7 @@ export default function OnboardingPage() {
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-
-
       <div className="overflow-hidden" style={{ height: '600px' }}>
-        {/* left (onbarding 2.svg) */}
         <img
           src="/onbarding 2.svg"
           alt=""
@@ -92,7 +352,6 @@ export default function OnboardingPage() {
             opacity: 1,
           }}
         />
-        {/* right */}
         <img
           src="/onbarding.svg"
           alt=""
@@ -111,7 +370,6 @@ export default function OnboardingPage() {
         className="absolute bottom-0 left-0 right-0 z-10 px-7 pb-16 flex flex-col justify-end"
         style={{ height: '55%' }}
       >
-        {/* Slide text */}
         <div
           key={current}
           className={`transition-opacity duration-200 flex flex-col items-center ${exiting ? 'opacity-0' : 'opacity-100'}`}
@@ -130,7 +388,6 @@ export default function OnboardingPage() {
           </p>
         </div>
 
-        {/* Pagination dots */}
         <div className="flex items-center gap-2 mb-10">
           {SLIDES.map((_, i) => (
             <button
@@ -146,7 +403,6 @@ export default function OnboardingPage() {
           ))}
         </div>
 
-        {/* Button  */}
         <div className="w-full flex justify-center">
           <button
             onClick={advance}
