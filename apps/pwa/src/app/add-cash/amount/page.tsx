@@ -27,7 +27,6 @@ function AmountPageContent() {
 
   const tokenSymbol = token.toUpperCase();
   const networkName = NETWORK_NAMES[network] || 'Celo network';
-  const chainId = CHAIN_IDS[network] || 42220;
 
   const { user, ready } = usePrivy();
   const { profile: dbUser } = useUserStore();
