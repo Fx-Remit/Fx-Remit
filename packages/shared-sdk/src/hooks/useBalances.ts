@@ -1,41 +1,41 @@
-import { useState, useEffect } from "react";
-import { Alchemy, Network, TokenBalanceType } from "alchemy-sdk";
+"use client";
 
-const config = {
-  apiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY,
-  network: Network.ETH_MAINNET, // Defaulting to Ethereum for tokens; update based on ChainID in logic
+import { useQuery } from "@tanstack/react-query";
+import { Alchemy, Network } from "alchemy-sdk";
+
+const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
+
+// Network Mapper for Alchemy SDK
+const getAlchemyNetwork = (chainId: number): Network => {
+  switch (chainId) {
+    case 8453: return Network.BASE_MAINNET;
+    case 42220: return Network.CELO_MAINNET;
+    case 42161: return Network.ARB_MAINNET;
+    default: return Network.BASE_MAINNET;
+  }
 };
-
-const alchemy = new Alchemy(config);
 
 export function useBalances(
   address: string | undefined,
   chainId: number = 8453,
 ) {
-  const [balances, setBalances] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  return useQuery({
+    queryKey: ["token-balances", address, chainId],
+    queryFn: async () => {
+      if (!address || !ALCHEMY_KEY) return [];
 
-  useEffect(() => {
-    if (!address) return;
+      const config = {
+        apiKey: ALCHEMY_KEY,
+        network: getAlchemyNetwork(chainId),
+      };
 
-    const fetchBalances = async () => {
-      setLoading(true);
-      try {
-        const response = await alchemy.nft.getNftsForOwner(address);
+      const alchemy = new Alchemy(config);
 
-        const tokenBalances = await alchemy.core.getTokenBalances(address);
-        setBalances(tokenBalances.tokenBalances);
-      } catch (error) {
-        console.error("[useBalances] Fetch Error:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchBalances();
-    const interval = setInterval(fetchBalances, 30000); // 30s refresh
-    return () => clearInterval(interval);
-  }, [address, chainId]);
-
-  return { balances, loading };
+      const response = await alchemy.core.getTokenBalances(address);
+      return response.tokenBalances;
+    },
+    enabled: !!address && !!ALCHEMY_KEY,
+    refetchInterval: 15000, // 15s refresh for performance/bank-grade accuracy
+    staleTime: 5000,
+  });
 }

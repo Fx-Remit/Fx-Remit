@@ -11,19 +11,29 @@ export async function POST(req: Request) {
 
     // HMAC Signature Verification (Sovereign Gatekeeper)
     const secret = process.env.ALCHEMY_WEBHOOK_SECRET;
-    if (secret && signature) {
-      const hmac = createHmac('sha256', secret);
-      const digest = hmac.update(rawBody).digest('hex');
+    
+    if (!secret || !signature) {
+      console.error(
+        "[Alchemy Webhook] Missing security credentials - Blocking request",
+      );
+      return NextResponse.json(
+        { error: "Unauthorized verification" },
+        { status: 401 },
+      );
+    }
 
-      if (signature !== digest) {
-        console.error('[Alchemy Webhook] Invalid Signature Encountered');
-        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-      }
+    const hmac = createHmac("sha256", secret);
+    const digest = hmac.update(rawBody).digest("hex");
+
+    if (signature !== digest) {
+      console.error(
+        "[Alchemy Webhook] Invalid Signature Encountered - Potential Spoofing",
+      );
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
     const payload = JSON.parse(rawBody);
 
-    // 1. Hand off to Sovereign Alchemy Service for decoding and user-sync
     const result = await AlchemyService.handleWebhook(payload);
 
     return NextResponse.json({

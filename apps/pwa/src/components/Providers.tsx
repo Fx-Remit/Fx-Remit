@@ -2,18 +2,29 @@
 
 import { PrivyProvider } from '@privy-io/react-auth';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { WagmiProvider, createConfig, http } from 'wagmi';
-import { base, celo, polygon } from 'wagmi/chains';
+import { WagmiProvider, createConfig, http, fallback } from 'wagmi';
+import { base, celo, arbitrum } from 'wagmi/chains';
 import { UserHydrator } from './UserHydrator';
 
 const queryClient = new QueryClient();
 
+const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
+
 export const wagmiConfig = createConfig({
-  chains: [base, celo, polygon],
+  chains: [base, celo, arbitrum],
   transports: {
-    [base.id]: http(),
-    [celo.id]: http(),
-    [polygon.id]: http(),
+    [base.id]: fallback([
+      http(`https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`),
+      http(),
+    ]),
+    [celo.id]: fallback([
+      http(`https://celo-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`),
+      http(),
+    ]),
+    [arbitrum.id]: fallback([
+      http(`https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`),
+      http(),
+    ]),
   },
 });
 

@@ -7,6 +7,9 @@ import { useState, Suspense, useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { QRCodeSVG } from 'qrcode.react';
 import { useUserStore } from '@/store/user-store';
+import { getLatestDeposit } from '@/app/actions/transaction.actions';
+import { AddCashSuccess } from '@/components/AddCashSuccess';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const NETWORK_NAMES: Record<string, string> = {
   celo: 'Celo network',
@@ -32,8 +35,23 @@ function AmountPageContent() {
   const { profile: dbUser } = useUserStore();
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
+  const queryClient = useQueryClient();
 
-  // Extract the user's wallet address from store (instant) or privy (fallback)
+  const { data: latestDeposit } = useQuery({
+    queryKey: ['latest-deposit', dbUser?.id],
+    queryFn: () => (dbUser?.id ? getLatestDeposit(dbUser.id) : null),
+    enabled: !!dbUser?.id,
+    refetchInterval: (query) => {
+      if (query.state.data?.status === 'COMPLETED') {
+        queryClient.invalidateQueries({ queryKey: ['user-profile', dbUser?.id] });
+        return false;
+      }
+      return 5000;
+    },
+  });
+
+  const isSuccess = latestDeposit?.status === 'COMPLETED';
+
   const walletAddress = useMemo(() => {
     if (dbUser?.walletAddress) return dbUser.walletAddress;
 
@@ -97,23 +115,37 @@ function AmountPageContent() {
       <div className="flex-1 px-5 pt-8 pb-32">
         {/* QR Code Section */}
         <div className="flex justify-center mb-6 text-center">
-          <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100/50">
-            <div className="w-[180px] h-[180px] bg-white flex items-center justify-center overflow-hidden">
-              {walletAddress !== 'Loading...' && qrValue ? (
-                <QRCodeSVG
-                  value={qrValue}
-                  size={180}
-                  level="H"
-                  includeMargin={false}
-                />
-              ) : (
-                <div className="w-full h-full bg-gray-50 rounded-lg flex items-center justify-center animate-pulse">
-                  <div className="w-12 h-12 rounded-full border-2 border-blue-100 border-t-blue-500 animate-spin" />
-                </div>
-              )}
-            </div>
+          <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100/50 min-h-[230px] flex items-center justify-center">
+            {isSuccess && latestDeposit ? (
+              <AddCashSuccess amount={latestDeposit.amountUsd} token={tokenSymbol} />
+            ) : (
+              <div className="w-[180px] h-[180px] bg-white flex items-center justify-center overflow-hidden">
+                {walletAddress !== 'Loading...' && qrValue ? (
+                  <QRCodeSVG
+                    value={qrValue}
+                    size={180}
+                    level="H"
+                    includeMargin={false}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-50 rounded-lg flex items-center justify-center animate-pulse">
+                    <div className="w-12 h-12 rounded-full border-2 border-blue-100 border-t-blue-500 animate-spin" />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Safety Warning Banner */}
+        {!isSuccess && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-[16px] p-4">
+            <p className="text-amber-800 text-[13px] font-semibold leading-relaxed">
+              IMPORTANT: Send ONLY {tokenSymbol} via the {networkName}.
+              Depositing any other asset or using a different network will result in permanent loss of funds.
+            </p>
+          </div>
+        )}
 
         {/* Details Card */}
         <div className="bg-white rounded-[24px] shadow-sm border border-gray-100/50 p-6 space-y-6">

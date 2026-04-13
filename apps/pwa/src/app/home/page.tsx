@@ -39,6 +39,7 @@ export default function HomePage() {
 
   const displayName = dbUser?.displayName || dbUser?.fullName || privyUser?.id?.slice(0, 10);
   const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${privyUser?.id}&backgroundColor=b6e3f4`;
+
   const balance = dbUser?.totalSentUsd?.toString() || '0.00';
 
   return (

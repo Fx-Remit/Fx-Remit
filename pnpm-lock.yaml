@@ -176,6 +176,9 @@ importers:
 
   packages/shared-sdk:
     dependencies:
+      '@tanstack/react-query':
+        specifier: ^5.96.2
+        version: 5.96.2(react@18.3.1)
       alchemy-sdk:
         specifier: ^3.6.5
         version: 3.6.5(typescript@5.9.3)
@@ -1403,7 +1406,7 @@ packages:
     dependencies:
       '@metamask/rpc-errors': 7.0.2
       eventemitter3: 5.0.1
-      viem: 2.47.10(typescript@5.9.3)(zod@3.25.76)
+      viem: 2.47.10(typescript@5.9.3)
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -6830,7 +6833,7 @@ packages:
       eventemitter3: 5.0.1
       mipd: 0.0.7(typescript@5.9.3)
       typescript: 5.9.3
-      viem: 2.47.10(typescript@5.9.3)(zod@3.25.76)
+      viem: 2.47.10(typescript@5.9.3)
       zustand: 5.0.0(@types/react@18.3.28)(react@18.3.1)(use-sync-external-store@1.4.0)
     transitivePeerDependencies:
       - '@types/react'
@@ -13093,8 +13096,8 @@ packages:
       ox: 0.9.17(typescript@5.9.3)(zod@4.3.6)
       react: 18.3.1
       typescript: 5.9.3
-      viem: 2.47.10(typescript@5.9.3)(zod@3.25.76)
-      wagmi: 2.19.5(@tanstack/react-query@5.96.2)(@types/react@18.3.28)(react@18.3.1)(typescript@5.9.3)(viem@2.47.10)(zod@3.25.76)
+      viem: 2.47.10(typescript@5.9.3)
+      wagmi: 2.19.5(@tanstack/react-query@5.96.2)(@types/react@18.3.28)(react@18.3.1)(typescript@5.9.3)(viem@2.47.10)
       zod: 4.3.6
       zustand: 5.0.12(@types/react@18.3.28)(react@18.3.1)(use-sync-external-store@1.4.0)
     transitivePeerDependencies:

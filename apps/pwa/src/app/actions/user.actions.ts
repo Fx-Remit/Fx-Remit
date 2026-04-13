@@ -9,7 +9,13 @@ export async function getMe(privyDid: string) {
     const user = await prisma.user.findUnique({
       where: { privyDid },
     });
-    return user;
+    
+    if (!user) return null;
+
+    return {
+      ...user,
+      totalSentUsd: user.totalSentUsd ? Number(user.totalSentUsd) : 0,
+    };
   } catch (error) {
     console.error('getMe error:', error);
     return null;
@@ -24,7 +30,11 @@ export async function updateProfile(privyDid: string, data: { fullName?: string;
       where: { privyDid },
       data,
     });
-    return user;
+    
+    return {
+      ...user,
+      totalSentUsd: user.totalSentUsd ? Number(user.totalSentUsd) : 0,
+    };
   } catch (error) {
     console.error('updateProfile error:', error);
     return null;
