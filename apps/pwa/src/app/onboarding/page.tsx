@@ -32,6 +32,7 @@ export default function OnboardingPage() {
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [fullName, setFullName] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -74,11 +75,24 @@ export default function OnboardingPage() {
       }, 200);
     }
   };
+  
+  // Helper to consistently pick the primary wallet (Privy Embedded > External)
+  const getPriorityWallet = (accounts: any[]) => {
+    const embeddedWallet = accounts.find(
+      (a) => a.type === 'wallet' && (a as any).walletClientType === 'privy'
+    );
+    if (embeddedWallet) return (embeddedWallet as any).address;
+
+    const externalWallet = accounts.find(
+      (a) => a.type === 'wallet' && (a as any).walletClientType !== 'privy'
+    );
+    return (externalWallet as any)?.address;
+  };
 
   const { login } = useLogin({
     onComplete: async (params) => {
-      console.log('Privy Login Complete', params);
-      const wallet = params.linkedAccounts.find((a) => a.type === 'wallet');
+      // Consistent wallet selection
+      const walletAddress = getPriorityWallet(params.linkedAccounts);
       const emailAccount = params.linkedAccounts.find((a) => a.type === 'email');
 
       try {
@@ -90,17 +104,21 @@ export default function OnboardingPage() {
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
-            walletAddress: wallet?.type === 'wallet' ? wallet.address : undefined,
-            email: emailAccount?.type === 'email' ? emailAccount.address : undefined
+            walletAddress,
+            email: emailAccount?.type === 'email' ? (emailAccount as any).address : undefined
           })
         });
         const data = await response.json();
 
-        // If user already has a name, go home
         if (data.user?.fullName) {
+          // Returning user with a complete profile — go home
           router.push('/home');
         } else {
-          // Otherwise, show the setup profile screen
+          // New user — show profile setup, pre-fill email if available
+          const linkedEmail = params.linkedAccounts.find(
+            (a: any) => a.type === 'email' || a.type === 'google_oauth'
+          );
+          if (linkedEmail) setEmail((linkedEmail as any).address ?? '');
           setIsSettingUp(true);
         }
       } catch (err) {
@@ -119,7 +137,7 @@ export default function OnboardingPage() {
     }
     setExiting(true);
     setTimeout(() => {
-      setCurrent((c) => c + 1);
+      setCurrent((c) => (c >= SLIDES.length - 1 ? c : c + 1));
       setExiting(false);
     }, 200);
   };
@@ -132,35 +150,43 @@ export default function OnboardingPage() {
     console.log('Profile Submission Started:', { fullName, displayName, hasFile: !!avatarFile, userId: user?.id });
 
     try {
+      if (!user?.id) throw new Error('User session not found. Please login again.');
+      
       let avatarUrl = undefined;
 
-      if (avatarFile && user?.id) {
-        console.log('Uploading Profile Photo to Supabase...');
+      if (avatarFile) {
+        console.log('[ONBOARD] Starting profile photo upload to Supabase...');
         const fileExt = avatarFile.name.split('.').pop();
-        const fileName = `${user.id}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const filePath = fileName;
+        const timestamp = Date.now();
+        const safeFileName = avatarFile.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+        const filePath = `avatars/${user.id}/${timestamp}-${safeFileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from('avatars')
-          .upload(filePath, avatarFile);
+          .upload(filePath, avatarFile, {
+            upsert: true,
+            contentType: avatarFile.type
+          });
 
         if (uploadError) {
-          console.error('Supabase Upload Error:', uploadError);
+          console.error('[ONBOARD] Supabase upload failed:', uploadError);
           throw new Error(`Avatar upload failed: ${uploadError.message}`);
         } else {
           const { data: { publicUrl } } = supabase.storage
             .from('avatars')
             .getPublicUrl(filePath);
           avatarUrl = publicUrl;
-          console.log('Profile Photo Uploaded Successfully. URL:', avatarUrl);
+          console.log('[ONBOARD] Profile photo uploaded successfully:', avatarUrl);
         }
       } else if (avatarFile && !user?.id) {
-        throw new Error('User identity not confirmed. Please try logging in again.');
+        console.error('[ONBOARD] Identity missing during upload');
+        throw new Error('Identity not confirmed. Please login again.');
       }
 
-      const wallet = user?.linkedAccounts?.find((a) => a.type === 'wallet');
-      const emailAccount = user?.linkedAccounts?.find((a) => a.type === 'email');
-
+      // Unified wallet selection
+      const walletAddress = getPriorityWallet(user?.linkedAccounts || []);
+      
+      console.log('[ONBOARD] Sending final profile sync to API...', { fullName, email, walletAddress });
       const token = await getAccessToken();
       const response = await fetch('/api/user/onboard', {
         method: 'POST',
@@ -170,10 +196,10 @@ export default function OnboardingPage() {
         },
         body: JSON.stringify({
           fullName,
-          displayName,
+          displayName: displayName || fullName,
           avatarUrl,
-          walletAddress: wallet?.type === 'wallet' ? wallet.address : undefined,
-          email: emailAccount?.type === 'email' ? emailAccount.address : undefined
+          email: email || undefined,
+          walletAddress,
         })
       });
 
@@ -193,41 +219,6 @@ export default function OnboardingPage() {
       setIsSubmitting(false);
     }
   };
-
-  // Redirect if already authenticated and has a profile
-  useEffect(() => {
-    if (ready && authenticated && !isSettingUp) {
-      // Small delay to ensure we are not just logging in
-      const sync = async () => {
-        try {
-          const wallet = user?.linkedAccounts?.find((a) => a.type === 'wallet');
-          const emailAccount = user?.linkedAccounts?.find((a) => a.type === 'email');
-
-          const token = await getAccessToken();
-          const response = await fetch('/api/user/onboard', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              walletAddress: wallet?.type === 'wallet' ? wallet.address : undefined,
-              email: emailAccount?.type === 'email' ? emailAccount.address : undefined
-            })
-          });
-          const data = await response.json();
-          if (data.user?.fullName) {
-            router.push('/home');
-          } else {
-            setIsSettingUp(true);
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      };
-      sync();
-    }
-  }, [ready, authenticated, router, isSettingUp]);
 
   if (!ready) return null;
 
@@ -280,18 +271,30 @@ export default function OnboardingPage() {
             </div>
 
             <div className="space-y-2">
+              <label className="text-[14px] font-medium text-[#F6F6F6]/80 px-1">Email Address</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full h-[60px] bg-white/5 border border-white/10 rounded-[12px] px-4 text-white outline-none focus:border-[#2261FE] transition-colors placeholder-white/30"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
               <label className="text-[14px] font-medium text-[#F6F6F6]/80 px-1">Display Name (Optional)</label>
               <input
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Johnny"
-                className="w-full h-[60px] bg-white/5 border border-white/10 rounded-[12px] px-4 text-white outline-none focus:border-[#2261FE] transition-colors"
+                className="w-full h-[60px] bg-white/5 border border-white/10 rounded-[12px] px-4 text-white outline-none focus:border-[#2261FE] transition-colors placeholder-white/30"
               />
             </div>
 
             <button
-              disabled={isSubmitting || !fullName}
+              disabled={isSubmitting || !fullName || !email}
               className="w-full h-[65px] bg-[#2261FE] text-white rounded-[7px] font-bold text-[17px] mt-8 flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] transition-all"
             >
               {isSubmitting ? (

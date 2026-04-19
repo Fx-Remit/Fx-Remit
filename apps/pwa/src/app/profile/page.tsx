@@ -10,14 +10,68 @@ import {
   LogOut,
   Settings,
   Edit2,
+  Lock,
+  Fingerprint,
+  ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import React from 'react';
+import { usePrivy } from '@privy-io/react-auth';
+import { useUserStore } from '@/store/user-store';
+import { useSecurityStore } from '@/store/security-store';
+import { hashPin, generateSalt, registerBiometrics, isBiometricSupported } from '@/lib/security';
+import { SecuritySetup } from '@/components/security/SecuritySetup';
 
 export default function ProfilePage() {
+  const { logout, exportWallet, user: privyUser } = usePrivy();
+  const { profile: dbUser, setProfile } = useUserStore();
+  const {
+    isSecurityEnabled,
+    isBiometricEnabled,
+    setPin,
+    setBiometricEnabled,
+    setBiometricCredentialId,
+    clearSecurity
+  } = useSecurityStore();
+
+  const router = useRouter();
+  const [isBioSupported, setIsBioSupported] = React.useState(false);
+  const [showSetup, setShowSetup] = React.useState(false);
+
+  React.useEffect(() => {
+    isBiometricSupported().then(setIsBioSupported);
+  }, []);
+
+  const handleLogout = async () => {
+    await logout();
+    setProfile(null);
+    router.push('/');
+  };
+
+  const handleSetupSecurity = () => {
+    setShowSetup(true);
+  };
+
+  const handleExportWallet = async () => {
+    try {
+      await exportWallet();
+    } catch (err) {
+      console.error('Export failed', err);
+    }
+  };
+
+  const displayName = dbUser?.displayName || dbUser?.fullName || 'User';
+  const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${dbUser?.id}&backgroundColor=b6e3f4`;
+  const emailOrWallet = dbUser?.email || (dbUser?.walletAddress ? `${dbUser.walletAddress.slice(0, 6)}...${dbUser.walletAddress.slice(-4)}` : '');
+
+  // Only Privy embedded wallet users can export — MetaMask users own their own keys
+  const hasEmbeddedWallet = privyUser?.linkedAccounts?.some(
+    (a: any) => a.type === 'wallet' && a.walletClientType === 'privy'
+  );
+
   return (
     <div className="min-h-screen bg-[#F8FAFD] flex flex-col items-center">
-      {/* Main PWA Container */}
       <div className="w-full max-w-[430px] flex flex-col min-h-screen relative pb-32">
         {/* Header Section */}
         <div className="pt-16 px-6 pb-8 flex flex-col items-center">
@@ -32,12 +86,16 @@ export default function ProfilePage() {
           <div className="w-full flex items-center justify-between bg-white rounded-[24px] p-5 shadow-[0px_4px_25px_rgba(0,0,0,0.02)] border border-gray-100">
             <div className="flex items-center gap-4">
               {/* Avatar */}
-              <div className="w-[64px] h-[64px] rounded-full bg-[#E0E7FF] flex items-center justify-center text-[#2261FE] font-bold text-xl border-2 border-white shadow-sm">
-                JD
+              <div className="w-[64px] h-[64px] rounded-full overflow-hidden border-2 border-white shadow-sm bg-[#E0E7FF]">
+                <img src={avatar} alt="" className="w-full h-full object-cover" />
               </div>
               <div className="flex flex-col">
-                <h2 className="text-[20px] font-bold text-[#1C1C1C]">Jane Doe</h2>
-                <p className="text-[#6D6D6D] text-[15px] font-medium">+254 712 345 678</p>
+                <h2 className="text-[20px] font-bold text-[#1C1C1C] truncate max-w-[180px]">
+                  {displayName}
+                </h2>
+                <p className="text-[#6D6D6D] text-[14px] font-medium truncate max-w-[180px]">
+                  {emailOrWallet}
+                </p>
               </div>
             </div>
             <button className="w-10 h-10 flex items-center justify-center bg-[#F8FAFD] rounded-full text-[#1C1C1C] active:scale-95 transition-all">
@@ -54,10 +112,9 @@ export default function ProfilePage() {
               <div className="w-[45px] h-[45px] mb-3 flex items-center justify-center">
                 <img src="/total sent.svg" alt="" className="w-full h-full object-contain" />
               </div>
-              <p className="text-[#6D6D6D] text-[11px] font-semibold mb-1 uppercase tracking-wider">
-                Total Sent
-              </p>
-              <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">$24,500</h3>
+              <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">
+                ${dbUser?.totalSentUsd?.toString() || '0.00'}
+              </h3>
             </div>
 
             {/* Total Transactions */}
@@ -69,10 +126,9 @@ export default function ProfilePage() {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <p className="text-[#6D6D6D] text-[11px] font-semibold mb-1 uppercase tracking-wider">
-                Total Tx
-              </p>
-              <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">142</h3>
+              <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">
+                {dbUser?.transactionCount || 0}
+              </h3>
             </div>
 
             {/* Fees Paid */}
@@ -80,10 +136,7 @@ export default function ProfilePage() {
               <div className="w-[45px] h-[45px] mb-3 flex items-center justify-center">
                 <img src="/fees.svg" alt="" className="w-full h-full object-contain" />
               </div>
-              <p className="text-[#6D6D6D] text-[11px] font-semibold mb-1 uppercase tracking-wider">
-                Fees Paid
-              </p>
-              <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">$185.00</h3>
+              <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">$0.00</h3>
             </div>
           </div>
         </div>
@@ -91,35 +144,85 @@ export default function ProfilePage() {
         {/* Menu Section */}
         <div className="px-6 space-y-4">
           <h3 className="text-[#6D6D6D] text-[14px] font-bold uppercase tracking-widest px-1">
-            Settings
+            Security & Support
           </h3>
 
           <div className="bg-white rounded-[24px] overflow-hidden border border-gray-100 shadow-[0px_4px_25px_rgba(0,0,0,0.02)]">
-            <MenuButton
-              icon={<ShieldCheck size={20} className="text-[#10B981]" />}
-              label="Security Settings"
-              subLabel="Biometrics & PIN"
-            />
+            <button 
+              onClick={isSecurityEnabled ? undefined : handleSetupSecurity}
+              className="w-full text-left outline-none"
+            >
+              <MenuButton
+                icon={<ShieldCheck size={20} className={isSecurityEnabled ? "text-green-500" : "text-[#10B981]"} />}
+                label={isSecurityEnabled ? "Security Active" : "Setup App Lock"}
+                subLabel={isSecurityEnabled ? "Protection is running" : "Set a 6-digit PIN"}
+              />
+            </button>
             <div className="h-[1px] bg-gray-50 mx-5" />
+
+            {isSecurityEnabled && (
+              <>
+                <button 
+                  onClick={() => {
+                    if (!isBiometricEnabled) {
+                      // Can't enable biometrics without going through setup
+                      setShowSetup(true);
+                    } else {
+                      setBiometricEnabled(false);
+                    }
+                  }}
+                  className="w-full text-left outline-none"
+                >
+                  <MenuButton
+                    icon={<Fingerprint size={20} className={isBiometricEnabled ? "text-blue-500" : "text-gray-400"} />}
+                    label="FaceID / TouchID"
+                    subLabel={isBiometricEnabled ? "Enabled" : "Disabled"}
+                  />
+                </button>
+                <div className="h-[1px] bg-gray-50 mx-5" />
+                <button 
+                  onClick={() => {
+                    if (window.confirm('Remove App Lock? This will disable your PIN and biometric protection.')) {
+                      clearSecurity();
+                    }
+                  }}
+                  className="w-full text-left outline-none"
+                >
+                  <MenuButton
+                    icon={<Lock size={20} className="text-red-400" />}
+                    label="Remove App Lock"
+                    subLabel="Disable all security"
+                  />
+                </button>
+                <div className="h-[1px] bg-gray-50 mx-5" />
+              </>
+            )}
+            
+            {hasEmbeddedWallet && (
+              <>
+                <button onClick={handleExportWallet} className="w-full text-left outline-none">
+                  <MenuButton
+                    icon={<ArrowRight size={20} className="text-orange-500" />}
+                    label="Export Private Key"
+                    subLabel="Securely backup your wallet"
+                  />
+                </button>
+                <div className="h-[1px] bg-gray-50 mx-5" />
+              </>
+            )}
+            
             <MenuButton
               icon={<HelpCircle size={20} className="text-[#2261FE]" />}
               label="Contact Support"
               subLabel="Help Center & Chat"
             />
-            <div className="h-[1px] bg-gray-50 mx-5" />
-            <MenuButton
-              icon={
-                <div className="w-5 h-5">
-                  <img src="/export.svg" alt="" className="w-full h-full" />
-                </div>
-              }
-              label="Export History"
-              subLabel="Download PDF/CSV"
-            />
           </div>
 
           <div className="pt-2">
-            <button className="w-full flex items-center justify-between bg-white rounded-[20px] p-5 border border-red-50 group hover:bg-red-50/30 transition-all">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center justify-between bg-white rounded-[20px] p-5 border border-red-50 group hover:bg-red-50/30 transition-all active:scale-[0.98]"
+            >
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 group-hover:bg-red-100 transition-colors">
                   <LogOut size={20} />
@@ -162,7 +265,26 @@ export default function ProfilePage() {
             </Link>
           </div>
         </div>
+        {/* Profile Footer */}
+        <div className="pt-8 pb-12 flex flex-col items-center opacity-30">
+          <p className="text-[12px] font-bold tracking-widest text-[#1C1C1C] uppercase">
+            Fx-Remit v1.0.42
+          </p>
+          <p className="text-[10px] font-medium text-[#1C1C1C]">
+            Secure Production Environment
+          </p>
+        </div>
       </div>
+
+      {/* Security Setup Modal */}
+      {showSetup && (
+        <SecuritySetup
+          onComplete={() => setShowSetup(false)}
+          onCancel={() => setShowSetup(false)}
+          userId={dbUser?.id || 'user'}
+          userName={dbUser?.displayName || 'User'}
+        />
+      )}
     </div>
   );
 }

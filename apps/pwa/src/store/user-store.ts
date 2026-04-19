@@ -9,6 +9,7 @@ interface UserProfile {
   walletAddress?: string;
   email?: string;
   totalSentUsd?: number;
+  transactionCount?: number;
 }
 
 interface UserState {

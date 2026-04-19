@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TransactionService } from '@fx-remit/services';
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
@@ -16,7 +18,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'ignored' });
     }
 
-    // Use the High-Fidelity TransactionService for data ingestion
     await TransactionService.updateFromIndexer({
       orderId: BigInt(data.order_id),
       txHash: data.tx_hash,

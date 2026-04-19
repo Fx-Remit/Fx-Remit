@@ -233,6 +233,7 @@ export default function HomePage() {
           </Link>
         </div>
       </div>
+
       <CashOutSheet isOpen={cashOutOpen} onClose={() => setCashOutOpen(false)} />
     </div>
   );
