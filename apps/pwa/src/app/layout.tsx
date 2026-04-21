@@ -11,6 +11,10 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'FX Remit',
   },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
   other: {
     'mobile-web-app-capable': 'yes',
   },
@@ -30,6 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         <link
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"

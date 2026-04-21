@@ -23,6 +23,7 @@ roadmap.md
 cache/
 broadcast/
 lib/
+!apps/pwa/src/lib/
 !lib/forge-std # Keep forge-std if it's already staged, but usually we ignore lib/
 
 # Hardhat

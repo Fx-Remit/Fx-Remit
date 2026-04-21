@@ -26,6 +26,9 @@ importers:
       '@privy-io/react-auth':
         specifier: ^1.99.1
         version: 1.99.1(@solana/web3.js@1.98.4)(@types/react@18.3.28)(bs58@6.0.0)(react-dom@18.3.1)(react@18.3.1)(typescript@5.9.3)(zod@3.25.76)
+      '@privy-io/server-auth':
+        specifier: ^1.32.5
+        version: 1.32.5(typescript@5.9.3)(viem@2.47.10)
       '@radix-ui/react-avatar':
         specifier: ^1.1.11
         version: 1.1.11(@types/react-dom@18.3.7)(@types/react@18.3.28)(react-dom@18.3.1)(react@18.3.1)
@@ -50,6 +53,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      jose:
+        specifier: ^6.2.2
+        version: 6.2.2
       lucide-react:
         specifier: ^1.7.0
         version: 1.7.0(react@18.3.1)
@@ -1406,7 +1412,7 @@ packages:
     dependencies:
       '@metamask/rpc-errors': 7.0.2
       eventemitter3: 5.0.1
-      viem: 2.47.10(typescript@5.9.3)
+      viem: 2.47.10(typescript@5.9.3)(zod@3.25.76)
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -2805,6 +2811,12 @@ packages:
       zod: 3.25.76
     dev: false
 
+  /@privy-io/api-base@1.7.0:
+    resolution: {integrity: sha512-ji6ARQAAuW/FzRTgft9NCjRuouWX9t+J7JMmvLPsnXQJDFEV9mqh4sWXZhQ8ddTq/iDZ4z/yz1ORJqN8bYAi4Q==}
+    dependencies:
+      zod: 3.25.76
+    dev: false
+
   /@privy-io/api-base@1.8.2:
     resolution: {integrity: sha512-pEvZ73GnC2OB/w35MGCPhqZ8mnApXgUpXxM0t9qZmNzvDNoMKBLPgysUXouAx7E4jO8REJPuwX70Y1AqJ/51kg==}
     dependencies:
@@ -2922,6 +2934,20 @@ packages:
       - utf-8-validate
     dev: false
 
+  /@privy-io/public-api@2.45.2(typescript@5.9.3):
+    resolution: {integrity: sha512-TSuaFq65PPInb0CBJ9dO/vLh4u4oWXVpv5KxShbVsuaArZ8lig+Orl/HUR1Hri6643zXoBqWlWx9wDt4MQvz9A==}
+    dependencies:
+      '@privy-io/api-base': 1.7.0
+      bs58: 5.0.0
+      libphonenumber-js: 1.12.40
+      viem: 2.47.10(typescript@5.9.3)(zod@3.25.76)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - bufferutil
+      - typescript
+      - utf-8-validate
+    dev: false
+
   /@privy-io/react-auth@1.99.1(@solana/web3.js@1.98.4)(@types/react@18.3.28)(bs58@6.0.0)(react-dom@18.3.1)(react@18.3.1)(typescript@5.9.3)(zod@3.25.76):
     resolution: {integrity: sha512-t95cOpYIfMlfFvBCu8e8HjxPEG8g5B5nYISRa88sxOEbxCYXPpaRkN8VcNB00mJ/SWhyZi+DgNSe/OCUzJ1lsA==}
     peerDependencies:
@@ -3017,6 +3043,41 @@ packages:
       - use-sync-external-store
       - utf-8-validate
       - zod
+    dev: false
+
+  /@privy-io/server-auth@1.32.5(typescript@5.9.3)(viem@2.47.10):
+    resolution: {integrity: sha512-e087vImrFHP4yAMx8alyCeCm6gk2JG/q7eSklFoST5mPTUV9TGKx7XNIyKOQQHxwKMpk5SBVIlkyJcqg3CuxSw==}
+    deprecated: This package is deprecated. If you are looking for the latest features and support, use @privy-io/node instead.
+    peerDependencies:
+      ethers: ^6
+      viem: ^2.24.1
+    peerDependenciesMeta:
+      ethers:
+        optional: true
+      viem:
+        optional: true
+    dependencies:
+      '@hpke/chacha20poly1305': 1.8.0
+      '@hpke/core': 1.9.0
+      '@noble/curves': 1.9.7
+      '@noble/hashes': 1.8.0
+      '@privy-io/public-api': 2.45.2(typescript@5.9.3)
+      '@scure/base': 1.2.6
+      '@solana/web3.js': 1.98.4(typescript@5.9.3)
+      canonicalize: 2.1.0
+      dotenv: 16.6.1
+      jose: 4.15.9
+      node-fetch-native: 1.6.7
+      redaxios: 0.5.1
+      svix: 1.90.0
+      ts-case-convert: 2.1.0
+      type-fest: 3.13.1
+      viem: 2.47.10(typescript@5.9.3)(zod@3.25.76)
+    transitivePeerDependencies:
+      - bufferutil
+      - encoding
+      - typescript
+      - utf-8-validate
     dev: false
 
   /@radix-ui/number@1.1.1:
@@ -6833,7 +6894,7 @@ packages:
       eventemitter3: 5.0.1
       mipd: 0.0.7(typescript@5.9.3)
       typescript: 5.9.3
-      viem: 2.47.10(typescript@5.9.3)
+      viem: 2.47.10(typescript@5.9.3)(zod@3.25.76)
       zustand: 5.0.0(@types/react@18.3.28)(react@18.3.1)(use-sync-external-store@1.4.0)
     transitivePeerDependencies:
       - '@types/react'
@@ -13096,8 +13157,8 @@ packages:
       ox: 0.9.17(typescript@5.9.3)(zod@4.3.6)
       react: 18.3.1
       typescript: 5.9.3
-      viem: 2.47.10(typescript@5.9.3)
-      wagmi: 2.19.5(@tanstack/react-query@5.96.2)(@types/react@18.3.28)(react@18.3.1)(typescript@5.9.3)(viem@2.47.10)
+      viem: 2.47.10(typescript@5.9.3)(zod@3.25.76)
+      wagmi: 2.19.5(@tanstack/react-query@5.96.2)(@types/react@18.3.28)(react@18.3.1)(typescript@5.9.3)(viem@2.47.10)(zod@3.25.76)
       zod: 4.3.6
       zustand: 5.0.12(@types/react@18.3.28)(react@18.3.1)(use-sync-external-store@1.4.0)
     transitivePeerDependencies:
@@ -13716,6 +13777,10 @@ packages:
     dependencies:
       minimatch: 3.1.5
     dev: true
+
+  /redaxios@0.5.1:
+    resolution: {integrity: sha512-FSD2AmfdbkYwl7KDExYQlVvIrFz6Yd83pGfaGjBzM9F6rpq8g652Q4Yq5QD4c+nf4g2AgeElv1y+8ajUPiOYMg==}
+    dev: false
 
   /reduce-flatten@2.0.0:
     resolution: {integrity: sha512-EJ4UNY/U1t2P/2k6oqotuX2Cc3T6nxJwsM0N0asT7dhrtH1ltUxDn4NalSYmPE2rCkVpcf/X6R0wDwcFpzhd4w==}
@@ -14837,6 +14902,10 @@ packages:
     resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
     dev: false
 
+  /ts-case-convert@2.1.0:
+    resolution: {integrity: sha512-Ye79el/pHYXfoew6kqhMwCoxp4NWjKNcm2kBzpmEMIU9dd9aBmHNNFtZ+WTm0rz1ngyDmfqDXDlyUnBXayiD0w==}
+    dev: false
+
   /ts-command-line-args@2.5.1:
     resolution: {integrity: sha512-H69ZwTw3rFHb5WYpQya40YAX2/w7Ut75uUECbgBIsLmM+BNuYnxsltfyyLMxy6sEeKxgijLTnQtLd0nKd6+IYw==}
     hasBin: true
@@ -15029,6 +15098,11 @@ packages:
     resolution: {integrity: sha512-Ne2YiiGN8bmrmJJEuTWTLJR32nh/JdL1+PSicowtNb0WFpn59GK8/lfD61bVtzguz7b3PBt74nxpv/Pw5po5Rg==}
     engines: {node: '>=8'}
     dev: true
+
+  /type-fest@3.13.1:
+    resolution: {integrity: sha512-tLq3bSNx+xSpwvAJnzrK0Ep5CLNWjvFTOp71URMaAEWBfRb9nnJiBoUe0tF8bI4ZFO3omgBR6NvnbzVUT3Ly4g==}
+    engines: {node: '>=14.16'}
+    dev: false
 
   /type-fest@5.5.0:
     resolution: {integrity: sha512-PlBfpQwiUvGViBNX84Yxwjsdhd1TUlXr6zjX7eoirtCPIr08NAmxwa+fcYBTeRQxHo9YC9wwF3m9i700sHma8g==}
