@@ -9,7 +9,15 @@ import { AppShield } from './security/AppShield';
 import { useSecurityStore } from '@/store/security-store';
 import React, { useEffect } from 'react';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5000, // Consider data fresh for 5 seconds
+      refetchOnWindowFocus: false, // Stop spamming API when switching tabs
+      retry: 1, // Only retry once before failing
+    },
+  },
+});
 
 const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
 
