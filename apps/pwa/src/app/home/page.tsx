@@ -6,31 +6,25 @@ import { useState, useEffect } from 'react';
 import { CashOutSheet } from '../cash-out/CashOutSheet';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
-
-const MOCK_TRANSACTIONS = [
-  {
-    id: 'tx1',
-    type: 'sent',
-    label: 'You sent money',
-    address: '0x1a8F...bee650',
-    amount: '230.86',
-    currency: 'cKES',
-    date: 'Today, 4:22 PM',
-  },
-  {
-    id: 'tx2',
-    type: 'received',
-    label: 'You received USDC',
-    address: '0xB3c2...4f91',
-    amount: '+150.00',
-    currency: 'USDC',
-    date: 'Yesterday, 10:11 AM',
-  },
-];
+import { useQuery } from '@tanstack/react-query';
 
 export default function HomePage() {
-  const { user: privyUser, ready, authenticated } = usePrivy();
+  const { user: privyUser, ready, authenticated, getAccessToken } = usePrivy();
   const { profile: dbUser, isLoading: storeLoading, isHydrated } = useUserStore();
+
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['transaction-history', dbUser?.id],
+    queryFn: async () => {
+      const token = await getAccessToken();
+      const res = await fetch('/api/user/history?limit=10', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.json();
+    },
+    enabled: !!dbUser?.id && !!authenticated,
+  });
+
+  const transactions = historyData?.transactions || [];
 
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [cashOutOpen, setCashOutOpen] = useState(false);
@@ -169,7 +163,7 @@ export default function HomePage() {
         <div>
           <div className="flex items-center justify-between mb-3 mt-2">
             <h2 className="font-bold text-gray-900 text-lg">Transaction history</h2>
-            <button className="text-blue-500 text-sm font-medium hover:underline">See all</button>
+            <Link href="/history" className="text-blue-500 text-sm font-medium hover:underline">See all</Link>
           </div>
 
           <div className="bg-white rounded-3xl shadow-sm overflow-hidden divide-y divide-gray-50">
@@ -178,28 +172,41 @@ export default function HomePage() {
               <div className="w-10 h-1 rounded-full bg-gray-200" />
             </div>
 
-            {MOCK_TRANSACTIONS.map((tx) => (
+            {historyLoading && (
+              <div className="py-8 text-center text-gray-400 text-sm">Loading transactions...</div>
+            )}
+
+            {!historyLoading && transactions.length === 0 && (
+              <div className="py-8 text-center text-gray-400 text-sm">No transactions yet</div>
+            )}
+
+            {transactions.map((tx: any) => (
               <div key={tx.id} className="flex items-center gap-4 px-4 py-4">
                 <div
                   className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    tx.type === 'sent' ? 'bg-red-50' : 'bg-green-50'
+                    tx.status === 'FAILED' ? 'bg-red-50' : 'bg-green-50'
                   }`}
                 >
-                  {tx.type === 'sent' ? (
-                    <ArrowUpRight size={22} className="text-red-500 rotate-0" />
-                  ) : (
-                    <ArrowUpRight size={22} className="text-green-500 rotate-180" />
-                  )}
+                  <ArrowUpRight 
+                    size={22} 
+                    className={`${tx.status === 'FAILED' ? 'text-red-400' : 'text-blue-500'} rotate-0`} 
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 text-[15px] truncate">{tx.label}</p>
-                  <p className="text-gray-400 text-sm truncate">{tx.address}</p>
+                  <p className="font-semibold text-gray-900 text-[15px] truncate">
+                    {tx.recipientName ? `Sent to ${tx.recipientName}` : 'Remittance Sent'}
+                  </p>
+                  <p className="text-gray-400 text-sm truncate">
+                    {tx.txHash ? `${tx.txHash.slice(0, 6)}...${tx.txHash.slice(-4)}` : 'Processing...'}
+                  </p>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="font-bold text-gray-900 text-[15px]">
-                    {tx.amount} {tx.currency}
+                    ${Number(tx.amountUsd).toFixed(2)}
                   </p>
-                  <p className="text-gray-400 text-xs">{tx.date}</p>
+                  <p className="text-gray-400 text-xs">
+                    {new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </p>
                 </div>
               </div>
             ))}

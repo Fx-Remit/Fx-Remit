@@ -1,8 +1,8 @@
-'use client';
-
-import { X } from 'lucide-react';
+import { X, AlertCircle } from 'lucide-react';
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { usePrivy } from '@privy-io/react-auth';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ConfirmTransactionSheetProps {
   isOpen: boolean;
@@ -28,6 +28,9 @@ export function ConfirmTransactionSheet({
   bankName,
 }: ConfirmTransactionSheetProps) {
   const [status, setStatus] = useState<'idle' | 'processing' | 'success'>('idle');
+  const { getAccessToken } = usePrivy();
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -39,11 +42,40 @@ export function ConfirmTransactionSheet({
   // Dynamic Name Logic
   const firstName = accName.split(' ')[0];
 
-  const handleSend = () => {
+  const handleSend = async () => {
     setStatus('processing');
-    setTimeout(() => {
+    setError(null);
+    try {
+      const accessToken = await getAccessToken();
+      const response = await fetch('/api/transaction/create-pending', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          amountUsd: sendAmount,
+          recipientName: accName,
+          recipientBank: bankName,
+          recipientAcc: accNum,
+          payoutFiat: receiveAmount,
+          token: token,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to create transaction');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+
       setStatus('success');
-    }, 2500);
+    } catch (err) {
+      console.error('[CONFIRM] Transaction failed:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      setStatus('idle');
+    }
   };
 
   return (
@@ -128,6 +160,18 @@ export function ConfirmTransactionSheet({
               </div>
             </div>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="w-[390px] mb-4 p-4 bg-red-50 border border-red-100 rounded-[12px] flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <AlertCircle size={16} className="text-red-500" />
+              </div>
+              <p className="text-red-600 text-[13px] font-medium leading-tight">
+                {error}
+              </p>
+            </div>
+          )}
 
           {/* Action Buttons (Outside the detail card) */}
           <div className="w-[390px] max-w-full space-y-4 mt-auto">
