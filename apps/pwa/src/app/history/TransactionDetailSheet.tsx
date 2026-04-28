@@ -83,11 +83,10 @@ export function TransactionDetailSheet({
             {/* Amount Card */}
             <div className="w-full bg-white rounded-[25px] p-6 sm:p-8 shadow-[0px_4px_25px_rgba(0,0,0,0.02)] border border-gray-100 mb-6 flex flex-col items-center">
               <p className="text-[#6D6D6D] text-[15px] sm:text-[16px] font-medium mb-2 text-center">
-                Total amount sent
+                {transaction.type === 'DEPOSIT' ? 'Total deposited' : 'Total amount sent'}
               </p>
               <h1 className="text-[28px] sm:text-[36px] font-bold text-[#1C1C1C] mb-6 text-center leading-tight">
-                {transaction.sentAmount}
-                {transaction.sentToken}
+                {transaction.type === 'DEPOSIT' ? '+' : ''}{transaction.sentAmount} {transaction.sentToken}
               </h1>
 
               {/* Fluid Progress Tracker */}
@@ -187,14 +186,27 @@ export function TransactionDetailSheet({
                   transaction.orderId ? navigator.clipboard.writeText(transaction.orderId) : null
                 }
               />
-              <DetailRow label="Exchange rate" value={transaction.rate || '1 USDT = 1,460 NGN'} />
-              <DetailRow
-                label="Recipient gets"
-                value={`${transaction.receivedToken}${transaction.receivedAmount} only`}
-                isBold
-              />
+              {transaction.type !== 'DEPOSIT' && (
+                <>
+                  <DetailRow label="Exchange rate" value={transaction.rate || '1 USDT = 1,460 NGN'} />
+                  <DetailRow
+                    label="Recipient gets"
+                    value={`${transaction.receivedToken}${transaction.receivedAmount} only`}
+                    isBold
+                  />
+                </>
+              )}
+              {transaction.type === 'DEPOSIT' && (
+                <DetailRow
+                  label="Credited to"
+                  value="FX Remit Wallet"
+                  isBold
+                />
+              )}
               <DetailRow label="Network" value={transaction.network || 'Celo Network'} showIcon />
-              <DetailRow label="Off-ramp Provider" value={transaction.provider || 'YellowCard'} />
+              {transaction.type !== 'DEPOSIT' && (
+                <DetailRow label="Off-ramp Provider" value={transaction.provider || 'YellowCard'} />
+              )}
             </div>
 
             {/* Action Buttons */}

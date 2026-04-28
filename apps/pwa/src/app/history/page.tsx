@@ -1,15 +1,17 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ArrowLeft, ArrowUpRight, Search, Filter } from 'lucide-react';
 import Link from 'next/link';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
+import { TransactionDetailSheet } from './TransactionDetailSheet';
 
 export default function HistoryPage() {
   const { authenticated, getAccessToken } = usePrivy();
   const { profile: dbUser } = useUserStore();
+  const [selectedTx, setSelectedTx] = useState<any>(null);
 
   const { data: historyData, isLoading } = useQuery({
     queryKey: ['transaction-history-full', dbUser?.id],
@@ -24,6 +26,21 @@ export default function HistoryPage() {
   });
 
   const transactions = historyData?.transactions || [];
+
+  const mapToDetail = (tx: any) => ({
+    id: tx.id,
+    type: tx.type || 'REMITTANCE',
+    pair: `${tx.sourceToken || 'USDT'}/NGN`,
+    date: new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+    status: (tx.status?.toLowerCase() === 'verified' || tx.status?.toLowerCase() === 'completed') ? 'completed' : tx.status?.toLowerCase() === 'failed' ? 'failed' : 'pending',
+    sentAmount: Number(tx.amountUsd).toFixed(2),
+    sentToken: tx.sourceToken || 'USDT',
+    receivedAmount: Number(tx.payoutFiat || 0).toFixed(2),
+    receivedToken: 'NGN',
+    orderId: tx.orderId,
+    network: 'Celo Network',
+    provider: 'Paycrest',
+  });
 
   return (
     <div className="min-h-screen bg-[#F8FAFD] flex flex-col">
@@ -65,7 +82,7 @@ export default function HistoryPage() {
             </div>
             <div className="space-y-1">
               <h3 className="font-bold text-gray-900">No transactions yet</h3>
-              <p className="text-gray-400 text-sm max-w-[200px]">Your remittance activities will appear here.</p>
+              <p className="text-gray-400 text-sm max-w-[200px]">Your activities will appear here.</p>
             </div>
           </div>
         ) : (
@@ -73,7 +90,11 @@ export default function HistoryPage() {
             {/* Grouped by Date (Simplified list for now) */}
             <div className="bg-white rounded-[32px] shadow-sm border border-gray-100/50 overflow-hidden divide-y divide-gray-50">
               {transactions.map((tx: any) => (
-                <div key={tx.id} className="flex items-center gap-4 px-5 py-5 hover:bg-gray-50 transition-colors pointer-events-auto">
+                <div 
+                  key={tx.id} 
+                  onClick={() => setSelectedTx(mapToDetail(tx))}
+                  className="flex items-center gap-4 px-5 py-5 hover:bg-gray-50 transition-colors cursor-pointer"
+                >
                   <div
                     className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
                       tx.status === 'FAILED' ? 'bg-red-50' : 'bg-green-50'
@@ -81,16 +102,16 @@ export default function HistoryPage() {
                   >
                     <ArrowUpRight 
                       size={22} 
-                      className={`${tx.status === 'FAILED' ? 'text-red-400' : 'text-blue-500'} rotate-0`} 
+                      className={`${tx.status === 'FAILED' ? 'text-red-400' : 'text-blue-500'} ${tx.type === 'DEPOSIT' ? 'rotate-180' : 'rotate-0'}`} 
                     />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-gray-900 text-[16px] truncate">
-                      {tx.recipientName ? `Sent to ${tx.recipientName}` : 'Remittance Sent'}
+                      {tx.type === 'DEPOSIT' ? 'Deposit' : (tx.recipientName ? `Sent to ${tx.recipientName}` : 'Remittance Sent')}
                     </p>
                     <div className="flex items-center gap-2">
                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                         tx.status === 'COMPLETED' ? 'bg-green-100 text-green-600' : 
+                         (tx.status === 'COMPLETED' || tx.status === 'VERIFIED') ? 'bg-green-100 text-green-600' : 
                          tx.status === 'FAILED' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
                        }`}>
                          {tx.status}
@@ -101,8 +122,8 @@ export default function HistoryPage() {
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="font-bold text-gray-900 text-[16px]">
-                      ${Number(tx.amountUsd).toFixed(2)}
+                    <p className={`font-bold text-[16px] ${tx.type === 'DEPOSIT' ? 'text-green-600' : 'text-gray-900'}`}>
+                      {tx.type === 'DEPOSIT' ? '+' : ''}${Number(tx.amountUsd).toFixed(2)}
                     </p>
                     <p className="text-gray-400 text-[12px] font-medium">
                       {new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -114,6 +135,12 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+
+      <TransactionDetailSheet 
+        isOpen={!!selectedTx} 
+        onClose={() => setSelectedTx(null)} 
+        transaction={selectedTx} 
+      />
     </div>
   );
 }

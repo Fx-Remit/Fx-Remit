@@ -66,14 +66,28 @@ export class TransactionService {
     blockNumber: bigint;
     logIndex: number;
     sender: string;
+    recipient?: string;
     fromToken?: string;
     amountUsd?: number | string;
   }) {
-    // Attempt to resolve user by wallet address
-    const user = await prisma.user.findUnique({
-      where: { walletAddress: data.sender.toLowerCase() },
-      select: { id: true },
+    const allUsers = await prisma.user.findMany({
+      select: { id: true, walletAddress: true },
     });
+
+    const user = allUsers.find(
+      (u: any) =>
+        u.walletAddress?.toLowerCase() === data.sender.toLowerCase() ||
+        u.walletAddress?.toLowerCase() === data.recipient?.toLowerCase(),
+    );
+
+    if (!user) {
+      console.error(
+        `[ERROR] No user found for Sender: ${data.sender} or Recipient: ${data.recipient}`,
+      );
+      return null; // Don't try to create a transaction for a user that doesn't exist
+    }
+
+    const amount = new Prisma.Decimal(data.amountUsd || 0);
 
     const existing = await prisma.transaction.findUnique({
       where: {
@@ -82,40 +96,63 @@ export class TransactionService {
           chainId: data.chainId,
         },
       },
-      select: { status: true },
     });
+
+    const isIncoming =
+      data.recipient?.toLowerCase() === user.walletAddress?.toLowerCase();
+    const type: "DEPOSIT" | "REMITTANCE" =
+      isIncoming && !existing?.recipientAcc ? "DEPOSIT" : "REMITTANCE";
 
     const newStatus: Status =
       existing?.status === "PENDING" || !existing
         ? "VERIFIED"
         : (existing.status as Status);
 
-    return await prisma.transaction.upsert({
-      where: {
-        orderId_chainId: {
-          orderId: data.orderId,
-          chainId: data.chainId,
+    // 3. Perform atomic update: Transaction + User Stats
+    return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const dbTx = await tx.transaction.upsert({
+        where: {
+          orderId_chainId: {
+            orderId: data.orderId,
+            chainId: data.chainId,
+          },
         },
-      },
-      update: {
-        txHash: data.txHash,
-        chainId: data.chainId,
-        blockNumber: data.blockNumber,
-        logIndex: data.logIndex,
-        status: newStatus,
-      },
-      create: {
-        orderId: data.orderId,
-        txHash: data.txHash,
-        chainId: data.chainId,
-        blockNumber: data.blockNumber,
-        logIndex: data.logIndex,
-        userId: user?.id || "indexer-unlinked",
-        sourceToken: data.fromToken || "CELO",
-        amountUsd: new Prisma.Decimal(data.amountUsd || 0),
-        payoutFiat: 0,
-        status: "VERIFIED",
-      },
+        update: {
+          txHash: data.txHash,
+          chainId: data.chainId,
+          blockNumber: data.blockNumber,
+          logIndex: data.logIndex,
+          status: newStatus,
+          type,
+        },
+        create: {
+          orderId: data.orderId,
+          txHash: data.txHash,
+          chainId: data.chainId,
+          blockNumber: data.blockNumber,
+          logIndex: data.logIndex,
+          userId: user.id,
+          sourceToken: data.fromToken || "CELO",
+          amountUsd: amount,
+          payoutFiat: 0,
+          status: "VERIFIED",
+          type,
+        },
+      });
+
+      // 4. Update User Stats if the transaction just became VERIFIED
+      if (existing?.status === "PENDING" || !existing) {
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            walletBalance: { increment: type === "DEPOSIT" ? amount : 0 },
+            totalSentUsd: { increment: type === "REMITTANCE" ? amount : 0 },
+            transactionCount: { increment: 1 },
+          },
+        });
+      }
+
+      return dbTx;
     });
   }
 
@@ -160,6 +197,7 @@ export class TransactionService {
         recipientBank: data.recipientBank,
         recipientAcc: data.recipientAcc,
         status: "PENDING",
+        type: "REMITTANCE",
         txHash: `pending-${data.externalId}`, // Temporary placeholder until indexer picks it up
         chainId: 0,
         blockNumber: 0n,

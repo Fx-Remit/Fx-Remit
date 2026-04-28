@@ -7,6 +7,7 @@ import { CashOutSheet } from '../cash-out/CashOutSheet';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
+import { TransactionDetailSheet } from '../history/TransactionDetailSheet';
 
 export default function HomePage() {
   const { user: privyUser, ready, authenticated, getAccessToken } = usePrivy();
@@ -40,6 +41,23 @@ export default function HomePage() {
   const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${privyUser?.id}&backgroundColor=b6e3f4`;
 
   const balance = (dbUser as any)?.walletBalance?.toString() || '0.00';
+
+  const [selectedTx, setSelectedTx] = useState<any>(null);
+
+  const mapToDetail = (tx: any) => ({
+    id: tx.id,
+    type: tx.type || 'REMITTANCE',
+    pair: `${tx.sourceToken || 'USDT'}/NGN`,
+    date: new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+    status: (tx.status?.toLowerCase() === 'verified' || tx.status?.toLowerCase() === 'completed') ? 'completed' : tx.status?.toLowerCase() === 'failed' ? 'failed' : 'pending',
+    sentAmount: Number(tx.amountUsd).toFixed(2),
+    sentToken: tx.sourceToken || 'USDT',
+    receivedAmount: Number(tx.payoutFiat || 0).toFixed(2),
+    receivedToken: 'NGN',
+    orderId: tx.orderId,
+    network: 'Celo Network',
+    provider: 'Paycrest',
+  });
 
   return (
     <div className="min-h-screen bg-[#f8fafd] pb-28">
@@ -186,7 +204,11 @@ export default function HomePage() {
             )}
 
             {transactions.map((tx: any) => (
-              <div key={tx.id} className="flex items-center gap-4 px-4 py-4">
+              <div 
+                key={tx.id} 
+                onClick={() => setSelectedTx(mapToDetail(tx))}
+                className="flex items-center gap-4 px-4 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
                 <div
                   className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
                     tx.status === 'FAILED' ? 'bg-red-50' : 'bg-green-50'
@@ -194,20 +216,20 @@ export default function HomePage() {
                 >
                   <ArrowUpRight 
                     size={22} 
-                    className={`${tx.status === 'FAILED' ? 'text-red-400' : 'text-blue-500'} rotate-0`} 
+                    className={`${tx.status === 'FAILED' ? 'text-red-400' : 'text-blue-500'} ${tx.type === 'DEPOSIT' ? 'rotate-180' : 'rotate-0'}`} 
                   />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 text-[15px] truncate">
-                    {tx.recipientName ? `Sent to ${tx.recipientName}` : 'Remittance Sent'}
+                    {tx.type === 'DEPOSIT' ? 'Deposit' : (tx.recipientName ? `Sent to ${tx.recipientName}` : 'Remittance Sent')}
                   </p>
                   <p className="text-gray-400 text-sm truncate">
                     {tx.txHash ? `${tx.txHash.slice(0, 6)}...${tx.txHash.slice(-4)}` : 'Processing...'}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <p className="font-bold text-gray-900 text-[15px]">
-                    ${Number(tx.amountUsd).toFixed(2)}
+                  <p className={`font-bold text-[15px] ${tx.type === 'DEPOSIT' ? 'text-green-600' : 'text-gray-900'}`}>
+                    {tx.type === 'DEPOSIT' ? '+' : ''}${Number(tx.amountUsd).toFixed(2)}
                   </p>
                   <p className="text-gray-400 text-xs">
                     {new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -247,6 +269,7 @@ export default function HomePage() {
       </div>
 
       <CashOutSheet isOpen={cashOutOpen} onClose={() => setCashOutOpen(false)} />
+      <TransactionDetailSheet isOpen={!!selectedTx} onClose={() => setSelectedTx(null)} transaction={selectedTx} />
     </div>
   );
 }
