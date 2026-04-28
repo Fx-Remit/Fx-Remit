@@ -8,53 +8,46 @@ datasource db {
 }
 
 model User {
-  id               String   @id @default(uuid())
-  privyDid         String   @unique @map("privy_did")
-  walletAddress    String?  @unique @map("wallet_address")
-  fullName         String?  @map("full_name")
-  displayName      String?  @map("display_name")
-  email            String?  @unique
-  avatarUrl        String?  @map("avatar_url")
-  walletBalance     Decimal  @default(0.0) @map("wallet_balance") @db.Decimal(20, 2)
-  totalSentUsd     Decimal  @default(0.0) @map("total_sent_usd") @db.Decimal(20, 2)
-  transactionCount Int      @default(0) @map("transaction_count")
-  lastLoginAt      DateTime? @map("last_login_at")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-
-  transactions Transaction[]
+  id               String        @id @default(uuid())
+  privyDid         String        @unique @map("privy_did")
+  walletAddress    String?       @unique @map("wallet_address")
+  fullName         String?       @map("full_name")
+  email            String?       @unique
+  avatarUrl        String?       @map("avatar_url")
+  totalSentUsd     Decimal       @default(0.0) @map("total_sent_usd") @db.Decimal(20, 2)
+  transactionCount Int           @default(0) @map("transaction_count")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  displayName      String?       @map("display_name")
+  lastLoginAt      DateTime?     @map("last_login_at")
+  walletBalance    Decimal       @default(0.0) @map("wallet_balance") @db.Decimal(20, 2)
+  transactions     Transaction[]
 
   @@map("users")
 }
 
 model Transaction {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
+  id            String          @id @default(uuid())
+  userId        String          @map("user_id")
+  orderId       BigInt          @map("order_id")
+  txHash        String          @unique @map("tx_hash")
+  sourceToken   String          @map("source_token")
+  amountUsd     Decimal         @map("amount_usd") @db.Decimal(20, 2)
+  payoutFiat    Decimal         @map("payout_fiat") @db.Decimal(20, 2)
+  status        Status          @default(PENDING)
+  recipientName String?         @map("recipient_name")
+  recipientBank String?         @map("recipient_bank")
+  recipientAcc  String?         @map("recipient_acc")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  blockNumber   BigInt          @map("block_number")
+  chainId       Int             @map("chain_id")
+  externalId    String?         @unique @map("external_id")
+  logIndex      Int             @map("log_index")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
   type          TransactionType @default(REMITTANCE)
-  orderId       BigInt   @map("order_id") // The Idempotency Key — unique per chain
-  txHash        String   @unique @map("tx_hash")
-  
-  // Indexing Metadata
-  chainId       Int      @map("chain_id")
-  blockNumber   BigInt   @map("block_number")
-  logIndex      Int      @map("log_index")
+  user          User            @relation(fields: [userId], references: [id])
 
-  sourceToken   String   @map("source_token")
-  amountUsd     Decimal  @map("amount_usd") @db.Decimal(20, 2)
-  payoutFiat    Decimal  @map("payout_fiat") @db.Decimal(20, 2)
-  status        Status   @default(PENDING)
-  externalId    String?  @unique @map("external_id") // Paycrest Order ID
-  recipientName String?  @map("recipient_name")
-  recipientBank String?  @map("recipient_bank")
-  recipientAcc  String?  @map("recipient_acc")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id])
-
-  // Uniqueness for the on-chain event (Chain + Block + Log Index)
   @@unique([chainId, blockNumber, logIndex])
-  // Cross-chain idempotency: orderId is only unique within a single chain's contract
   @@unique([orderId, chainId])
   @@map("transactions")
 }
@@ -67,9 +60,9 @@ enum TransactionType {
 enum Status {
   PENDING
   VERIFIED
-  PROCESSING
   COMPLETED
   FAILED
+  PROCESSING
   REFUNDING
-  REFUND_REQUIRED // Unrecoverable: no recipient data, requires manual ops intervention
+  REFUND_REQUIRED
 }

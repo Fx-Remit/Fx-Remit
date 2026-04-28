@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
       blockNumber: BigInt(data.block_number),
       logIndex: Number(data.log_index),
       sender: data.sender,
+      recipient: data.recipient,
       fromToken: data.fromToken,
       amountUsd: Number(data.amountUsd || 0),
     });
