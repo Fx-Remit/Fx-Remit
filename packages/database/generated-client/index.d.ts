@@ -39,9 +39,9 @@ export type TransactionType = (typeof TransactionType)[keyof typeof TransactionT
 export const Status: {
   PENDING: 'PENDING',
   VERIFIED: 'VERIFIED',
-  PROCESSING: 'PROCESSING',
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
+  PROCESSING: 'PROCESSING',
   REFUNDING: 'REFUNDING',
   REFUND_REQUIRED: 'REFUND_REQUIRED'
 };
@@ -1034,15 +1034,15 @@ export namespace Prisma {
   }
 
   export type UserAvgAggregateOutputType = {
-    walletBalance: Decimal | null
     totalSentUsd: Decimal | null
     transactionCount: number | null
+    walletBalance: Decimal | null
   }
 
   export type UserSumAggregateOutputType = {
-    walletBalance: Decimal | null
     totalSentUsd: Decimal | null
     transactionCount: number | null
+    walletBalance: Decimal | null
   }
 
   export type UserMinAggregateOutputType = {
@@ -1050,15 +1050,15 @@ export namespace Prisma {
     privyDid: string | null
     walletAddress: string | null
     fullName: string | null
-    displayName: string | null
     email: string | null
     avatarUrl: string | null
-    walletBalance: Decimal | null
     totalSentUsd: Decimal | null
     transactionCount: number | null
-    lastLoginAt: Date | null
     createdAt: Date | null
     updatedAt: Date | null
+    displayName: string | null
+    lastLoginAt: Date | null
+    walletBalance: Decimal | null
   }
 
   export type UserMaxAggregateOutputType = {
@@ -1066,15 +1066,15 @@ export namespace Prisma {
     privyDid: string | null
     walletAddress: string | null
     fullName: string | null
-    displayName: string | null
     email: string | null
     avatarUrl: string | null
-    walletBalance: Decimal | null
     totalSentUsd: Decimal | null
     transactionCount: number | null
-    lastLoginAt: Date | null
     createdAt: Date | null
     updatedAt: Date | null
+    displayName: string | null
+    lastLoginAt: Date | null
+    walletBalance: Decimal | null
   }
 
   export type UserCountAggregateOutputType = {
@@ -1082,29 +1082,29 @@ export namespace Prisma {
     privyDid: number
     walletAddress: number
     fullName: number
-    displayName: number
     email: number
     avatarUrl: number
-    walletBalance: number
     totalSentUsd: number
     transactionCount: number
-    lastLoginAt: number
     createdAt: number
     updatedAt: number
+    displayName: number
+    lastLoginAt: number
+    walletBalance: number
     _all: number
   }
 
 
   export type UserAvgAggregateInputType = {
-    walletBalance?: true
     totalSentUsd?: true
     transactionCount?: true
+    walletBalance?: true
   }
 
   export type UserSumAggregateInputType = {
-    walletBalance?: true
     totalSentUsd?: true
     transactionCount?: true
+    walletBalance?: true
   }
 
   export type UserMinAggregateInputType = {
@@ -1112,15 +1112,15 @@ export namespace Prisma {
     privyDid?: true
     walletAddress?: true
     fullName?: true
-    displayName?: true
     email?: true
     avatarUrl?: true
-    walletBalance?: true
     totalSentUsd?: true
     transactionCount?: true
-    lastLoginAt?: true
     createdAt?: true
     updatedAt?: true
+    displayName?: true
+    lastLoginAt?: true
+    walletBalance?: true
   }
 
   export type UserMaxAggregateInputType = {
@@ -1128,15 +1128,15 @@ export namespace Prisma {
     privyDid?: true
     walletAddress?: true
     fullName?: true
-    displayName?: true
     email?: true
     avatarUrl?: true
-    walletBalance?: true
     totalSentUsd?: true
     transactionCount?: true
-    lastLoginAt?: true
     createdAt?: true
     updatedAt?: true
+    displayName?: true
+    lastLoginAt?: true
+    walletBalance?: true
   }
 
   export type UserCountAggregateInputType = {
@@ -1144,15 +1144,15 @@ export namespace Prisma {
     privyDid?: true
     walletAddress?: true
     fullName?: true
-    displayName?: true
     email?: true
     avatarUrl?: true
-    walletBalance?: true
     totalSentUsd?: true
     transactionCount?: true
-    lastLoginAt?: true
     createdAt?: true
     updatedAt?: true
+    displayName?: true
+    lastLoginAt?: true
+    walletBalance?: true
     _all?: true
   }
 
@@ -1247,15 +1247,15 @@ export namespace Prisma {
     privyDid: string
     walletAddress: string | null
     fullName: string | null
-    displayName: string | null
     email: string | null
     avatarUrl: string | null
-    walletBalance: Decimal
     totalSentUsd: Decimal
     transactionCount: number
-    lastLoginAt: Date | null
     createdAt: Date
     updatedAt: Date
+    displayName: string | null
+    lastLoginAt: Date | null
+    walletBalance: Decimal
     _count: UserCountAggregateOutputType | null
     _avg: UserAvgAggregateOutputType | null
     _sum: UserSumAggregateOutputType | null
@@ -1282,15 +1282,15 @@ export namespace Prisma {
     privyDid?: boolean
     walletAddress?: boolean
     fullName?: boolean
-    displayName?: boolean
     email?: boolean
     avatarUrl?: boolean
-    walletBalance?: boolean
     totalSentUsd?: boolean
     transactionCount?: boolean
-    lastLoginAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
+    displayName?: boolean
+    lastLoginAt?: boolean
+    walletBalance?: boolean
     transactions?: boolean | User$transactionsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["user"]>
@@ -1300,15 +1300,15 @@ export namespace Prisma {
     privyDid?: boolean
     walletAddress?: boolean
     fullName?: boolean
-    displayName?: boolean
     email?: boolean
     avatarUrl?: boolean
-    walletBalance?: boolean
     totalSentUsd?: boolean
     transactionCount?: boolean
-    lastLoginAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
+    displayName?: boolean
+    lastLoginAt?: boolean
+    walletBalance?: boolean
   }, ExtArgs["result"]["user"]>
 
   export type UserSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -1316,15 +1316,15 @@ export namespace Prisma {
     privyDid?: boolean
     walletAddress?: boolean
     fullName?: boolean
-    displayName?: boolean
     email?: boolean
     avatarUrl?: boolean
-    walletBalance?: boolean
     totalSentUsd?: boolean
     transactionCount?: boolean
-    lastLoginAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
+    displayName?: boolean
+    lastLoginAt?: boolean
+    walletBalance?: boolean
   }, ExtArgs["result"]["user"]>
 
   export type UserSelectScalar = {
@@ -1332,18 +1332,18 @@ export namespace Prisma {
     privyDid?: boolean
     walletAddress?: boolean
     fullName?: boolean
-    displayName?: boolean
     email?: boolean
     avatarUrl?: boolean
-    walletBalance?: boolean
     totalSentUsd?: boolean
     transactionCount?: boolean
-    lastLoginAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
+    displayName?: boolean
+    lastLoginAt?: boolean
+    walletBalance?: boolean
   }
 
-  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "privyDid" | "walletAddress" | "fullName" | "displayName" | "email" | "avatarUrl" | "walletBalance" | "totalSentUsd" | "transactionCount" | "lastLoginAt" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
+  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "privyDid" | "walletAddress" | "fullName" | "email" | "avatarUrl" | "totalSentUsd" | "transactionCount" | "createdAt" | "updatedAt" | "displayName" | "lastLoginAt" | "walletBalance", ExtArgs["result"]["user"]>
   export type UserInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     transactions?: boolean | User$transactionsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
@@ -1361,15 +1361,15 @@ export namespace Prisma {
       privyDid: string
       walletAddress: string | null
       fullName: string | null
-      displayName: string | null
       email: string | null
       avatarUrl: string | null
-      walletBalance: Prisma.Decimal
       totalSentUsd: Prisma.Decimal
       transactionCount: number
-      lastLoginAt: Date | null
       createdAt: Date
       updatedAt: Date
+      displayName: string | null
+      lastLoginAt: Date | null
+      walletBalance: Prisma.Decimal
     }, ExtArgs["result"]["user"]>
     composites: {}
   }
@@ -1798,15 +1798,15 @@ export namespace Prisma {
     readonly privyDid: FieldRef<"User", 'String'>
     readonly walletAddress: FieldRef<"User", 'String'>
     readonly fullName: FieldRef<"User", 'String'>
-    readonly displayName: FieldRef<"User", 'String'>
     readonly email: FieldRef<"User", 'String'>
     readonly avatarUrl: FieldRef<"User", 'String'>
-    readonly walletBalance: FieldRef<"User", 'Decimal'>
     readonly totalSentUsd: FieldRef<"User", 'Decimal'>
     readonly transactionCount: FieldRef<"User", 'Int'>
-    readonly lastLoginAt: FieldRef<"User", 'DateTime'>
     readonly createdAt: FieldRef<"User", 'DateTime'>
     readonly updatedAt: FieldRef<"User", 'DateTime'>
+    readonly displayName: FieldRef<"User", 'String'>
+    readonly lastLoginAt: FieldRef<"User", 'DateTime'>
+    readonly walletBalance: FieldRef<"User", 'Decimal'>
   }
     
 
@@ -2256,166 +2256,166 @@ export namespace Prisma {
 
   export type TransactionAvgAggregateOutputType = {
     orderId: number | null
-    chainId: number | null
-    blockNumber: number | null
-    logIndex: number | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
+    blockNumber: number | null
+    chainId: number | null
+    logIndex: number | null
   }
 
   export type TransactionSumAggregateOutputType = {
     orderId: bigint | null
-    chainId: number | null
-    blockNumber: bigint | null
-    logIndex: number | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
+    blockNumber: bigint | null
+    chainId: number | null
+    logIndex: number | null
   }
 
   export type TransactionMinAggregateOutputType = {
     id: string | null
     userId: string | null
-    type: $Enums.TransactionType | null
     orderId: bigint | null
     txHash: string | null
-    chainId: number | null
-    blockNumber: bigint | null
-    logIndex: number | null
     sourceToken: string | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
     status: $Enums.Status | null
-    externalId: string | null
     recipientName: string | null
     recipientBank: string | null
     recipientAcc: string | null
     createdAt: Date | null
+    blockNumber: bigint | null
+    chainId: number | null
+    externalId: string | null
+    logIndex: number | null
     updatedAt: Date | null
+    type: $Enums.TransactionType | null
   }
 
   export type TransactionMaxAggregateOutputType = {
     id: string | null
     userId: string | null
-    type: $Enums.TransactionType | null
     orderId: bigint | null
     txHash: string | null
-    chainId: number | null
-    blockNumber: bigint | null
-    logIndex: number | null
     sourceToken: string | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
     status: $Enums.Status | null
-    externalId: string | null
     recipientName: string | null
     recipientBank: string | null
     recipientAcc: string | null
     createdAt: Date | null
+    blockNumber: bigint | null
+    chainId: number | null
+    externalId: string | null
+    logIndex: number | null
     updatedAt: Date | null
+    type: $Enums.TransactionType | null
   }
 
   export type TransactionCountAggregateOutputType = {
     id: number
     userId: number
-    type: number
     orderId: number
     txHash: number
-    chainId: number
-    blockNumber: number
-    logIndex: number
     sourceToken: number
     amountUsd: number
     payoutFiat: number
     status: number
-    externalId: number
     recipientName: number
     recipientBank: number
     recipientAcc: number
     createdAt: number
+    blockNumber: number
+    chainId: number
+    externalId: number
+    logIndex: number
     updatedAt: number
+    type: number
     _all: number
   }
 
 
   export type TransactionAvgAggregateInputType = {
     orderId?: true
-    chainId?: true
-    blockNumber?: true
-    logIndex?: true
     amountUsd?: true
     payoutFiat?: true
+    blockNumber?: true
+    chainId?: true
+    logIndex?: true
   }
 
   export type TransactionSumAggregateInputType = {
     orderId?: true
-    chainId?: true
-    blockNumber?: true
-    logIndex?: true
     amountUsd?: true
     payoutFiat?: true
+    blockNumber?: true
+    chainId?: true
+    logIndex?: true
   }
 
   export type TransactionMinAggregateInputType = {
     id?: true
     userId?: true
-    type?: true
     orderId?: true
     txHash?: true
-    chainId?: true
-    blockNumber?: true
-    logIndex?: true
     sourceToken?: true
     amountUsd?: true
     payoutFiat?: true
     status?: true
-    externalId?: true
     recipientName?: true
     recipientBank?: true
     recipientAcc?: true
     createdAt?: true
+    blockNumber?: true
+    chainId?: true
+    externalId?: true
+    logIndex?: true
     updatedAt?: true
+    type?: true
   }
 
   export type TransactionMaxAggregateInputType = {
     id?: true
     userId?: true
-    type?: true
     orderId?: true
     txHash?: true
-    chainId?: true
-    blockNumber?: true
-    logIndex?: true
     sourceToken?: true
     amountUsd?: true
     payoutFiat?: true
     status?: true
-    externalId?: true
     recipientName?: true
     recipientBank?: true
     recipientAcc?: true
     createdAt?: true
+    blockNumber?: true
+    chainId?: true
+    externalId?: true
+    logIndex?: true
     updatedAt?: true
+    type?: true
   }
 
   export type TransactionCountAggregateInputType = {
     id?: true
     userId?: true
-    type?: true
     orderId?: true
     txHash?: true
-    chainId?: true
-    blockNumber?: true
-    logIndex?: true
     sourceToken?: true
     amountUsd?: true
     payoutFiat?: true
     status?: true
-    externalId?: true
     recipientName?: true
     recipientBank?: true
     recipientAcc?: true
     createdAt?: true
+    blockNumber?: true
+    chainId?: true
+    externalId?: true
+    logIndex?: true
     updatedAt?: true
+    type?: true
     _all?: true
   }
 
@@ -2508,22 +2508,22 @@ export namespace Prisma {
   export type TransactionGroupByOutputType = {
     id: string
     userId: string
-    type: $Enums.TransactionType
     orderId: bigint
     txHash: string
-    chainId: number
-    blockNumber: bigint
-    logIndex: number
     sourceToken: string
     amountUsd: Decimal
     payoutFiat: Decimal
     status: $Enums.Status
-    externalId: string | null
     recipientName: string | null
     recipientBank: string | null
     recipientAcc: string | null
     createdAt: Date
+    blockNumber: bigint
+    chainId: number
+    externalId: string | null
+    logIndex: number
     updatedAt: Date
+    type: $Enums.TransactionType
     _count: TransactionCountAggregateOutputType | null
     _avg: TransactionAvgAggregateOutputType | null
     _sum: TransactionSumAggregateOutputType | null
@@ -2548,91 +2548,91 @@ export namespace Prisma {
   export type TransactionSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
     id?: boolean
     userId?: boolean
-    type?: boolean
     orderId?: boolean
     txHash?: boolean
-    chainId?: boolean
-    blockNumber?: boolean
-    logIndex?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
     status?: boolean
-    externalId?: boolean
     recipientName?: boolean
     recipientBank?: boolean
     recipientAcc?: boolean
     createdAt?: boolean
+    blockNumber?: boolean
+    chainId?: boolean
+    externalId?: boolean
+    logIndex?: boolean
     updatedAt?: boolean
+    type?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
   export type TransactionSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
     id?: boolean
     userId?: boolean
-    type?: boolean
     orderId?: boolean
     txHash?: boolean
-    chainId?: boolean
-    blockNumber?: boolean
-    logIndex?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
     status?: boolean
-    externalId?: boolean
     recipientName?: boolean
     recipientBank?: boolean
     recipientAcc?: boolean
     createdAt?: boolean
+    blockNumber?: boolean
+    chainId?: boolean
+    externalId?: boolean
+    logIndex?: boolean
     updatedAt?: boolean
+    type?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
   export type TransactionSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
     id?: boolean
     userId?: boolean
-    type?: boolean
     orderId?: boolean
     txHash?: boolean
-    chainId?: boolean
-    blockNumber?: boolean
-    logIndex?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
     status?: boolean
-    externalId?: boolean
     recipientName?: boolean
     recipientBank?: boolean
     recipientAcc?: boolean
     createdAt?: boolean
+    blockNumber?: boolean
+    chainId?: boolean
+    externalId?: boolean
+    logIndex?: boolean
     updatedAt?: boolean
+    type?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
   export type TransactionSelectScalar = {
     id?: boolean
     userId?: boolean
-    type?: boolean
     orderId?: boolean
     txHash?: boolean
-    chainId?: boolean
-    blockNumber?: boolean
-    logIndex?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
     status?: boolean
-    externalId?: boolean
     recipientName?: boolean
     recipientBank?: boolean
     recipientAcc?: boolean
     createdAt?: boolean
+    blockNumber?: boolean
+    chainId?: boolean
+    externalId?: boolean
+    logIndex?: boolean
     updatedAt?: boolean
+    type?: boolean
   }
 
-  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "type" | "orderId" | "txHash" | "chainId" | "blockNumber" | "logIndex" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "externalId" | "recipientName" | "recipientBank" | "recipientAcc" | "createdAt" | "updatedAt", ExtArgs["result"]["transaction"]>
+  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type", ExtArgs["result"]["transaction"]>
   export type TransactionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     user?: boolean | UserDefaultArgs<ExtArgs>
   }
@@ -2651,22 +2651,22 @@ export namespace Prisma {
     scalars: $Extensions.GetPayloadResult<{
       id: string
       userId: string
-      type: $Enums.TransactionType
       orderId: bigint
       txHash: string
-      chainId: number
-      blockNumber: bigint
-      logIndex: number
       sourceToken: string
       amountUsd: Prisma.Decimal
       payoutFiat: Prisma.Decimal
       status: $Enums.Status
-      externalId: string | null
       recipientName: string | null
       recipientBank: string | null
       recipientAcc: string | null
       createdAt: Date
+      blockNumber: bigint
+      chainId: number
+      externalId: string | null
+      logIndex: number
       updatedAt: Date
+      type: $Enums.TransactionType
     }, ExtArgs["result"]["transaction"]>
     composites: {}
   }
@@ -3093,22 +3093,22 @@ export namespace Prisma {
   interface TransactionFieldRefs {
     readonly id: FieldRef<"Transaction", 'String'>
     readonly userId: FieldRef<"Transaction", 'String'>
-    readonly type: FieldRef<"Transaction", 'TransactionType'>
     readonly orderId: FieldRef<"Transaction", 'BigInt'>
     readonly txHash: FieldRef<"Transaction", 'String'>
-    readonly chainId: FieldRef<"Transaction", 'Int'>
-    readonly blockNumber: FieldRef<"Transaction", 'BigInt'>
-    readonly logIndex: FieldRef<"Transaction", 'Int'>
     readonly sourceToken: FieldRef<"Transaction", 'String'>
     readonly amountUsd: FieldRef<"Transaction", 'Decimal'>
     readonly payoutFiat: FieldRef<"Transaction", 'Decimal'>
     readonly status: FieldRef<"Transaction", 'Status'>
-    readonly externalId: FieldRef<"Transaction", 'String'>
     readonly recipientName: FieldRef<"Transaction", 'String'>
     readonly recipientBank: FieldRef<"Transaction", 'String'>
     readonly recipientAcc: FieldRef<"Transaction", 'String'>
     readonly createdAt: FieldRef<"Transaction", 'DateTime'>
+    readonly blockNumber: FieldRef<"Transaction", 'BigInt'>
+    readonly chainId: FieldRef<"Transaction", 'Int'>
+    readonly externalId: FieldRef<"Transaction", 'String'>
+    readonly logIndex: FieldRef<"Transaction", 'Int'>
     readonly updatedAt: FieldRef<"Transaction", 'DateTime'>
+    readonly type: FieldRef<"Transaction", 'TransactionType'>
   }
     
 
@@ -3547,15 +3547,15 @@ export namespace Prisma {
     privyDid: 'privyDid',
     walletAddress: 'walletAddress',
     fullName: 'fullName',
-    displayName: 'displayName',
     email: 'email',
     avatarUrl: 'avatarUrl',
-    walletBalance: 'walletBalance',
     totalSentUsd: 'totalSentUsd',
     transactionCount: 'transactionCount',
-    lastLoginAt: 'lastLoginAt',
     createdAt: 'createdAt',
-    updatedAt: 'updatedAt'
+    updatedAt: 'updatedAt',
+    displayName: 'displayName',
+    lastLoginAt: 'lastLoginAt',
+    walletBalance: 'walletBalance'
   };
 
   export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
@@ -3564,22 +3564,22 @@ export namespace Prisma {
   export const TransactionScalarFieldEnum: {
     id: 'id',
     userId: 'userId',
-    type: 'type',
     orderId: 'orderId',
     txHash: 'txHash',
-    chainId: 'chainId',
-    blockNumber: 'blockNumber',
-    logIndex: 'logIndex',
     sourceToken: 'sourceToken',
     amountUsd: 'amountUsd',
     payoutFiat: 'payoutFiat',
     status: 'status',
-    externalId: 'externalId',
     recipientName: 'recipientName',
     recipientBank: 'recipientBank',
     recipientAcc: 'recipientAcc',
     createdAt: 'createdAt',
-    updatedAt: 'updatedAt'
+    blockNumber: 'blockNumber',
+    chainId: 'chainId',
+    externalId: 'externalId',
+    logIndex: 'logIndex',
+    updatedAt: 'updatedAt',
+    type: 'type'
   };
 
   export type TransactionScalarFieldEnum = (typeof TransactionScalarFieldEnum)[keyof typeof TransactionScalarFieldEnum]
@@ -3671,20 +3671,6 @@ export namespace Prisma {
 
 
   /**
-   * Reference to a field of type 'TransactionType'
-   */
-  export type EnumTransactionTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TransactionType'>
-    
-
-
-  /**
-   * Reference to a field of type 'TransactionType[]'
-   */
-  export type ListEnumTransactionTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TransactionType[]'>
-    
-
-
-  /**
    * Reference to a field of type 'BigInt'
    */
   export type BigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt'>
@@ -3713,6 +3699,20 @@ export namespace Prisma {
 
 
   /**
+   * Reference to a field of type 'TransactionType'
+   */
+  export type EnumTransactionTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TransactionType'>
+    
+
+
+  /**
+   * Reference to a field of type 'TransactionType[]'
+   */
+  export type ListEnumTransactionTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TransactionType[]'>
+    
+
+
+  /**
    * Reference to a field of type 'Float'
    */
   export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
@@ -3737,15 +3737,15 @@ export namespace Prisma {
     privyDid?: StringFilter<"User"> | string
     walletAddress?: StringNullableFilter<"User"> | string | null
     fullName?: StringNullableFilter<"User"> | string | null
-    displayName?: StringNullableFilter<"User"> | string | null
     email?: StringNullableFilter<"User"> | string | null
     avatarUrl?: StringNullableFilter<"User"> | string | null
-    walletBalance?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     totalSentUsd?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFilter<"User"> | number
-    lastLoginAt?: DateTimeNullableFilter<"User"> | Date | string | null
     createdAt?: DateTimeFilter<"User"> | Date | string
     updatedAt?: DateTimeFilter<"User"> | Date | string
+    displayName?: StringNullableFilter<"User"> | string | null
+    lastLoginAt?: DateTimeNullableFilter<"User"> | Date | string | null
+    walletBalance?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactions?: TransactionListRelationFilter
   }
 
@@ -3754,15 +3754,15 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrderInput | SortOrder
     fullName?: SortOrderInput | SortOrder
-    displayName?: SortOrderInput | SortOrder
     email?: SortOrderInput | SortOrder
     avatarUrl?: SortOrderInput | SortOrder
-    walletBalance?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
-    lastLoginAt?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    displayName?: SortOrderInput | SortOrder
+    lastLoginAt?: SortOrderInput | SortOrder
+    walletBalance?: SortOrder
     transactions?: TransactionOrderByRelationAggregateInput
   }
 
@@ -3775,14 +3775,14 @@ export namespace Prisma {
     OR?: UserWhereInput[]
     NOT?: UserWhereInput | UserWhereInput[]
     fullName?: StringNullableFilter<"User"> | string | null
-    displayName?: StringNullableFilter<"User"> | string | null
     avatarUrl?: StringNullableFilter<"User"> | string | null
-    walletBalance?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     totalSentUsd?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFilter<"User"> | number
-    lastLoginAt?: DateTimeNullableFilter<"User"> | Date | string | null
     createdAt?: DateTimeFilter<"User"> | Date | string
     updatedAt?: DateTimeFilter<"User"> | Date | string
+    displayName?: StringNullableFilter<"User"> | string | null
+    lastLoginAt?: DateTimeNullableFilter<"User"> | Date | string | null
+    walletBalance?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactions?: TransactionListRelationFilter
   }, "id" | "privyDid" | "walletAddress" | "email">
 
@@ -3791,15 +3791,15 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrderInput | SortOrder
     fullName?: SortOrderInput | SortOrder
-    displayName?: SortOrderInput | SortOrder
     email?: SortOrderInput | SortOrder
     avatarUrl?: SortOrderInput | SortOrder
-    walletBalance?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
-    lastLoginAt?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    displayName?: SortOrderInput | SortOrder
+    lastLoginAt?: SortOrderInput | SortOrder
+    walletBalance?: SortOrder
     _count?: UserCountOrderByAggregateInput
     _avg?: UserAvgOrderByAggregateInput
     _max?: UserMaxOrderByAggregateInput
@@ -3815,15 +3815,15 @@ export namespace Prisma {
     privyDid?: StringWithAggregatesFilter<"User"> | string
     walletAddress?: StringNullableWithAggregatesFilter<"User"> | string | null
     fullName?: StringNullableWithAggregatesFilter<"User"> | string | null
-    displayName?: StringNullableWithAggregatesFilter<"User"> | string | null
     email?: StringNullableWithAggregatesFilter<"User"> | string | null
     avatarUrl?: StringNullableWithAggregatesFilter<"User"> | string | null
-    walletBalance?: DecimalWithAggregatesFilter<"User"> | Decimal | DecimalJsLike | number | string
     totalSentUsd?: DecimalWithAggregatesFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactionCount?: IntWithAggregatesFilter<"User"> | number
-    lastLoginAt?: DateTimeNullableWithAggregatesFilter<"User"> | Date | string | null
     createdAt?: DateTimeWithAggregatesFilter<"User"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"User"> | Date | string
+    displayName?: StringNullableWithAggregatesFilter<"User"> | string | null
+    lastLoginAt?: DateTimeNullableWithAggregatesFilter<"User"> | Date | string | null
+    walletBalance?: DecimalWithAggregatesFilter<"User"> | Decimal | DecimalJsLike | number | string
   }
 
   export type TransactionWhereInput = {
@@ -3832,44 +3832,44 @@ export namespace Prisma {
     NOT?: TransactionWhereInput | TransactionWhereInput[]
     id?: StringFilter<"Transaction"> | string
     userId?: StringFilter<"Transaction"> | string
-    type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     orderId?: BigIntFilter<"Transaction"> | bigint | number
     txHash?: StringFilter<"Transaction"> | string
-    chainId?: IntFilter<"Transaction"> | number
-    blockNumber?: BigIntFilter<"Transaction"> | bigint | number
-    logIndex?: IntFilter<"Transaction"> | number
     sourceToken?: StringFilter<"Transaction"> | string
     amountUsd?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     status?: EnumStatusFilter<"Transaction"> | $Enums.Status
-    externalId?: StringNullableFilter<"Transaction"> | string | null
     recipientName?: StringNullableFilter<"Transaction"> | string | null
     recipientBank?: StringNullableFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableFilter<"Transaction"> | string | null
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
+    blockNumber?: BigIntFilter<"Transaction"> | bigint | number
+    chainId?: IntFilter<"Transaction"> | number
+    externalId?: StringNullableFilter<"Transaction"> | string | null
+    logIndex?: IntFilter<"Transaction"> | number
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
+    type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
   }
 
   export type TransactionOrderByWithRelationInput = {
     id?: SortOrder
     userId?: SortOrder
-    type?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
-    chainId?: SortOrder
-    blockNumber?: SortOrder
-    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
     status?: SortOrder
-    externalId?: SortOrderInput | SortOrder
     recipientName?: SortOrderInput | SortOrder
     recipientBank?: SortOrderInput | SortOrder
     recipientAcc?: SortOrderInput | SortOrder
     createdAt?: SortOrder
+    blockNumber?: SortOrder
+    chainId?: SortOrder
+    externalId?: SortOrderInput | SortOrder
+    logIndex?: SortOrder
     updatedAt?: SortOrder
+    type?: SortOrder
     user?: UserOrderByWithRelationInput
   }
 
@@ -3883,11 +3883,7 @@ export namespace Prisma {
     OR?: TransactionWhereInput[]
     NOT?: TransactionWhereInput | TransactionWhereInput[]
     userId?: StringFilter<"Transaction"> | string
-    type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     orderId?: BigIntFilter<"Transaction"> | bigint | number
-    chainId?: IntFilter<"Transaction"> | number
-    blockNumber?: BigIntFilter<"Transaction"> | bigint | number
-    logIndex?: IntFilter<"Transaction"> | number
     sourceToken?: StringFilter<"Transaction"> | string
     amountUsd?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
@@ -3896,29 +3892,33 @@ export namespace Prisma {
     recipientBank?: StringNullableFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableFilter<"Transaction"> | string | null
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
+    blockNumber?: BigIntFilter<"Transaction"> | bigint | number
+    chainId?: IntFilter<"Transaction"> | number
+    logIndex?: IntFilter<"Transaction"> | number
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
+    type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
   }, "id" | "txHash" | "externalId" | "chainId_blockNumber_logIndex" | "orderId_chainId">
 
   export type TransactionOrderByWithAggregationInput = {
     id?: SortOrder
     userId?: SortOrder
-    type?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
-    chainId?: SortOrder
-    blockNumber?: SortOrder
-    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
     status?: SortOrder
-    externalId?: SortOrderInput | SortOrder
     recipientName?: SortOrderInput | SortOrder
     recipientBank?: SortOrderInput | SortOrder
     recipientAcc?: SortOrderInput | SortOrder
     createdAt?: SortOrder
+    blockNumber?: SortOrder
+    chainId?: SortOrder
+    externalId?: SortOrderInput | SortOrder
+    logIndex?: SortOrder
     updatedAt?: SortOrder
+    type?: SortOrder
     _count?: TransactionCountOrderByAggregateInput
     _avg?: TransactionAvgOrderByAggregateInput
     _max?: TransactionMaxOrderByAggregateInput
@@ -3932,22 +3932,22 @@ export namespace Prisma {
     NOT?: TransactionScalarWhereWithAggregatesInput | TransactionScalarWhereWithAggregatesInput[]
     id?: StringWithAggregatesFilter<"Transaction"> | string
     userId?: StringWithAggregatesFilter<"Transaction"> | string
-    type?: EnumTransactionTypeWithAggregatesFilter<"Transaction"> | $Enums.TransactionType
     orderId?: BigIntWithAggregatesFilter<"Transaction"> | bigint | number
     txHash?: StringWithAggregatesFilter<"Transaction"> | string
-    chainId?: IntWithAggregatesFilter<"Transaction"> | number
-    blockNumber?: BigIntWithAggregatesFilter<"Transaction"> | bigint | number
-    logIndex?: IntWithAggregatesFilter<"Transaction"> | number
     sourceToken?: StringWithAggregatesFilter<"Transaction"> | string
     amountUsd?: DecimalWithAggregatesFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalWithAggregatesFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     status?: EnumStatusWithAggregatesFilter<"Transaction"> | $Enums.Status
-    externalId?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     recipientName?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     recipientBank?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"Transaction"> | Date | string
+    blockNumber?: BigIntWithAggregatesFilter<"Transaction"> | bigint | number
+    chainId?: IntWithAggregatesFilter<"Transaction"> | number
+    externalId?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    logIndex?: IntWithAggregatesFilter<"Transaction"> | number
     updatedAt?: DateTimeWithAggregatesFilter<"Transaction"> | Date | string
+    type?: EnumTransactionTypeWithAggregatesFilter<"Transaction"> | $Enums.TransactionType
   }
 
   export type UserCreateInput = {
@@ -3955,15 +3955,15 @@ export namespace Prisma {
     privyDid: string
     walletAddress?: string | null
     fullName?: string | null
-    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
-    walletBalance?: Decimal | DecimalJsLike | number | string
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
-    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionCreateNestedManyWithoutUserInput
   }
 
@@ -3972,15 +3972,15 @@ export namespace Prisma {
     privyDid: string
     walletAddress?: string | null
     fullName?: string | null
-    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
-    walletBalance?: Decimal | DecimalJsLike | number | string
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
-    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
   }
 
@@ -3989,15 +3989,15 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
-    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
-    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
-    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUpdateManyWithoutUserNestedInput
   }
 
@@ -4006,15 +4006,15 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
-    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
-    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
-    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
   }
 
@@ -4023,15 +4023,15 @@ export namespace Prisma {
     privyDid: string
     walletAddress?: string | null
     fullName?: string | null
-    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
-    walletBalance?: Decimal | DecimalJsLike | number | string
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
-    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
   }
 
   export type UserUpdateManyMutationInput = {
@@ -4039,15 +4039,15 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
-    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
-    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
-    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
   }
 
   export type UserUncheckedUpdateManyInput = {
@@ -4055,161 +4055,161 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
-    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
-    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
-    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
   }
 
   export type TransactionCreateInput = {
     id?: string
-    type?: $Enums.TransactionType
     orderId: bigint | number
     txHash: string
-    chainId: number
-    blockNumber: bigint | number
-    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
     status?: $Enums.Status
-    externalId?: string | null
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    blockNumber: bigint | number
+    chainId: number
+    externalId?: string | null
+    logIndex: number
     updatedAt?: Date | string
+    type?: $Enums.TransactionType
     user: UserCreateNestedOneWithoutTransactionsInput
   }
 
   export type TransactionUncheckedCreateInput = {
     id?: string
     userId: string
-    type?: $Enums.TransactionType
     orderId: bigint | number
     txHash: string
-    chainId: number
-    blockNumber: bigint | number
-    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
     status?: $Enums.Status
-    externalId?: string | null
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    blockNumber: bigint | number
+    chainId: number
+    externalId?: string | null
+    logIndex: number
     updatedAt?: Date | string
+    type?: $Enums.TransactionType
   }
 
   export type TransactionUpdateInput = {
     id?: StringFieldUpdateOperationsInput | string
-    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
-    chainId?: IntFieldUpdateOperationsInput | number
-    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
-    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     status?: EnumStatusFieldUpdateOperationsInput | $Enums.Status
-    externalId?: NullableStringFieldUpdateOperationsInput | string | null
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    chainId?: IntFieldUpdateOperationsInput | number
+    externalId?: NullableStringFieldUpdateOperationsInput | string | null
+    logIndex?: IntFieldUpdateOperationsInput | number
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     user?: UserUpdateOneRequiredWithoutTransactionsNestedInput
   }
 
   export type TransactionUncheckedUpdateInput = {
     id?: StringFieldUpdateOperationsInput | string
     userId?: StringFieldUpdateOperationsInput | string
-    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
-    chainId?: IntFieldUpdateOperationsInput | number
-    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
-    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     status?: EnumStatusFieldUpdateOperationsInput | $Enums.Status
-    externalId?: NullableStringFieldUpdateOperationsInput | string | null
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    chainId?: IntFieldUpdateOperationsInput | number
+    externalId?: NullableStringFieldUpdateOperationsInput | string | null
+    logIndex?: IntFieldUpdateOperationsInput | number
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
   }
 
   export type TransactionCreateManyInput = {
     id?: string
     userId: string
-    type?: $Enums.TransactionType
     orderId: bigint | number
     txHash: string
-    chainId: number
-    blockNumber: bigint | number
-    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
     status?: $Enums.Status
-    externalId?: string | null
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    blockNumber: bigint | number
+    chainId: number
+    externalId?: string | null
+    logIndex: number
     updatedAt?: Date | string
+    type?: $Enums.TransactionType
   }
 
   export type TransactionUpdateManyMutationInput = {
     id?: StringFieldUpdateOperationsInput | string
-    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
-    chainId?: IntFieldUpdateOperationsInput | number
-    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
-    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     status?: EnumStatusFieldUpdateOperationsInput | $Enums.Status
-    externalId?: NullableStringFieldUpdateOperationsInput | string | null
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    chainId?: IntFieldUpdateOperationsInput | number
+    externalId?: NullableStringFieldUpdateOperationsInput | string | null
+    logIndex?: IntFieldUpdateOperationsInput | number
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
   }
 
   export type TransactionUncheckedUpdateManyInput = {
     id?: StringFieldUpdateOperationsInput | string
     userId?: StringFieldUpdateOperationsInput | string
-    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
-    chainId?: IntFieldUpdateOperationsInput | number
-    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
-    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     status?: EnumStatusFieldUpdateOperationsInput | $Enums.Status
-    externalId?: NullableStringFieldUpdateOperationsInput | string | null
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    chainId?: IntFieldUpdateOperationsInput | number
+    externalId?: NullableStringFieldUpdateOperationsInput | string | null
+    logIndex?: IntFieldUpdateOperationsInput | number
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
   }
 
   export type StringFilter<$PrismaModel = never> = {
@@ -4264,17 +4264,6 @@ export namespace Prisma {
     not?: NestedIntFilter<$PrismaModel> | number
   }
 
-  export type DateTimeNullableFilter<$PrismaModel = never> = {
-    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
-    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
-    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
-    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
-  }
-
   export type DateTimeFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel>
@@ -4284,6 +4273,17 @@ export namespace Prisma {
     gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     not?: NestedDateTimeFilter<$PrismaModel> | Date | string
+  }
+
+  export type DateTimeNullableFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
   }
 
   export type TransactionListRelationFilter = {
@@ -4306,21 +4306,21 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrder
     fullName?: SortOrder
-    displayName?: SortOrder
     email?: SortOrder
     avatarUrl?: SortOrder
-    walletBalance?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
-    lastLoginAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    displayName?: SortOrder
+    lastLoginAt?: SortOrder
+    walletBalance?: SortOrder
   }
 
   export type UserAvgOrderByAggregateInput = {
-    walletBalance?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
+    walletBalance?: SortOrder
   }
 
   export type UserMaxOrderByAggregateInput = {
@@ -4328,15 +4328,15 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrder
     fullName?: SortOrder
-    displayName?: SortOrder
     email?: SortOrder
     avatarUrl?: SortOrder
-    walletBalance?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
-    lastLoginAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    displayName?: SortOrder
+    lastLoginAt?: SortOrder
+    walletBalance?: SortOrder
   }
 
   export type UserMinOrderByAggregateInput = {
@@ -4344,21 +4344,21 @@ export namespace Prisma {
     privyDid?: SortOrder
     walletAddress?: SortOrder
     fullName?: SortOrder
-    displayName?: SortOrder
     email?: SortOrder
     avatarUrl?: SortOrder
-    walletBalance?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
-    lastLoginAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
+    displayName?: SortOrder
+    lastLoginAt?: SortOrder
+    walletBalance?: SortOrder
   }
 
   export type UserSumOrderByAggregateInput = {
-    walletBalance?: SortOrder
     totalSentUsd?: SortOrder
     transactionCount?: SortOrder
+    walletBalance?: SortOrder
   }
 
   export type StringWithAggregatesFilter<$PrismaModel = never> = {
@@ -4429,20 +4429,6 @@ export namespace Prisma {
     _max?: NestedIntFilter<$PrismaModel>
   }
 
-  export type DateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
-    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
-    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
-    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
-    _count?: NestedIntNullableFilter<$PrismaModel>
-    _min?: NestedDateTimeNullableFilter<$PrismaModel>
-    _max?: NestedDateTimeNullableFilter<$PrismaModel>
-  }
-
   export type DateTimeWithAggregatesFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel>
@@ -4457,11 +4443,18 @@ export namespace Prisma {
     _max?: NestedDateTimeFilter<$PrismaModel>
   }
 
-  export type EnumTransactionTypeFilter<$PrismaModel = never> = {
-    equals?: $Enums.TransactionType | EnumTransactionTypeFieldRefInput<$PrismaModel>
-    in?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
-    notIn?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
-    not?: NestedEnumTransactionTypeFilter<$PrismaModel> | $Enums.TransactionType
+  export type DateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedDateTimeNullableFilter<$PrismaModel>
+    _max?: NestedDateTimeNullableFilter<$PrismaModel>
   }
 
   export type BigIntFilter<$PrismaModel = never> = {
@@ -4480,6 +4473,13 @@ export namespace Prisma {
     in?: $Enums.Status[] | ListEnumStatusFieldRefInput<$PrismaModel>
     notIn?: $Enums.Status[] | ListEnumStatusFieldRefInput<$PrismaModel>
     not?: NestedEnumStatusFilter<$PrismaModel> | $Enums.Status
+  }
+
+  export type EnumTransactionTypeFilter<$PrismaModel = never> = {
+    equals?: $Enums.TransactionType | EnumTransactionTypeFieldRefInput<$PrismaModel>
+    in?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
+    notIn?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
+    not?: NestedEnumTransactionTypeFilter<$PrismaModel> | $Enums.TransactionType
   }
 
   export type UserScalarRelationFilter = {
@@ -4501,92 +4501,82 @@ export namespace Prisma {
   export type TransactionCountOrderByAggregateInput = {
     id?: SortOrder
     userId?: SortOrder
-    type?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
-    chainId?: SortOrder
-    blockNumber?: SortOrder
-    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
     status?: SortOrder
-    externalId?: SortOrder
     recipientName?: SortOrder
     recipientBank?: SortOrder
     recipientAcc?: SortOrder
     createdAt?: SortOrder
+    blockNumber?: SortOrder
+    chainId?: SortOrder
+    externalId?: SortOrder
+    logIndex?: SortOrder
     updatedAt?: SortOrder
+    type?: SortOrder
   }
 
   export type TransactionAvgOrderByAggregateInput = {
     orderId?: SortOrder
-    chainId?: SortOrder
-    blockNumber?: SortOrder
-    logIndex?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
+    blockNumber?: SortOrder
+    chainId?: SortOrder
+    logIndex?: SortOrder
   }
 
   export type TransactionMaxOrderByAggregateInput = {
     id?: SortOrder
     userId?: SortOrder
-    type?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
-    chainId?: SortOrder
-    blockNumber?: SortOrder
-    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
     status?: SortOrder
-    externalId?: SortOrder
     recipientName?: SortOrder
     recipientBank?: SortOrder
     recipientAcc?: SortOrder
     createdAt?: SortOrder
+    blockNumber?: SortOrder
+    chainId?: SortOrder
+    externalId?: SortOrder
+    logIndex?: SortOrder
     updatedAt?: SortOrder
+    type?: SortOrder
   }
 
   export type TransactionMinOrderByAggregateInput = {
     id?: SortOrder
     userId?: SortOrder
-    type?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
-    chainId?: SortOrder
-    blockNumber?: SortOrder
-    logIndex?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
     status?: SortOrder
-    externalId?: SortOrder
     recipientName?: SortOrder
     recipientBank?: SortOrder
     recipientAcc?: SortOrder
     createdAt?: SortOrder
+    blockNumber?: SortOrder
+    chainId?: SortOrder
+    externalId?: SortOrder
+    logIndex?: SortOrder
     updatedAt?: SortOrder
+    type?: SortOrder
   }
 
   export type TransactionSumOrderByAggregateInput = {
     orderId?: SortOrder
-    chainId?: SortOrder
-    blockNumber?: SortOrder
-    logIndex?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
-  }
-
-  export type EnumTransactionTypeWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: $Enums.TransactionType | EnumTransactionTypeFieldRefInput<$PrismaModel>
-    in?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
-    notIn?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
-    not?: NestedEnumTransactionTypeWithAggregatesFilter<$PrismaModel> | $Enums.TransactionType
-    _count?: NestedIntFilter<$PrismaModel>
-    _min?: NestedEnumTransactionTypeFilter<$PrismaModel>
-    _max?: NestedEnumTransactionTypeFilter<$PrismaModel>
+    blockNumber?: SortOrder
+    chainId?: SortOrder
+    logIndex?: SortOrder
   }
 
   export type BigIntWithAggregatesFilter<$PrismaModel = never> = {
@@ -4613,6 +4603,16 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedEnumStatusFilter<$PrismaModel>
     _max?: NestedEnumStatusFilter<$PrismaModel>
+  }
+
+  export type EnumTransactionTypeWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.TransactionType | EnumTransactionTypeFieldRefInput<$PrismaModel>
+    in?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
+    notIn?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
+    not?: NestedEnumTransactionTypeWithAggregatesFilter<$PrismaModel> | $Enums.TransactionType
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumTransactionTypeFilter<$PrismaModel>
+    _max?: NestedEnumTransactionTypeFilter<$PrismaModel>
   }
 
   export type TransactionCreateNestedManyWithoutUserInput = {
@@ -4653,12 +4653,12 @@ export namespace Prisma {
     divide?: number
   }
 
-  export type NullableDateTimeFieldUpdateOperationsInput = {
-    set?: Date | string | null
-  }
-
   export type DateTimeFieldUpdateOperationsInput = {
     set?: Date | string
+  }
+
+  export type NullableDateTimeFieldUpdateOperationsInput = {
+    set?: Date | string | null
   }
 
   export type TransactionUpdateManyWithoutUserNestedInput = {
@@ -4695,10 +4695,6 @@ export namespace Prisma {
     connect?: UserWhereUniqueInput
   }
 
-  export type EnumTransactionTypeFieldUpdateOperationsInput = {
-    set?: $Enums.TransactionType
-  }
-
   export type BigIntFieldUpdateOperationsInput = {
     set?: bigint | number
     increment?: bigint | number
@@ -4709,6 +4705,10 @@ export namespace Prisma {
 
   export type EnumStatusFieldUpdateOperationsInput = {
     set?: $Enums.Status
+  }
+
+  export type EnumTransactionTypeFieldUpdateOperationsInput = {
+    set?: $Enums.TransactionType
   }
 
   export type UserUpdateOneRequiredWithoutTransactionsNestedInput = {
@@ -4769,17 +4769,6 @@ export namespace Prisma {
     not?: NestedIntFilter<$PrismaModel> | number
   }
 
-  export type NestedDateTimeNullableFilter<$PrismaModel = never> = {
-    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
-    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
-    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
-    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
-  }
-
   export type NestedDateTimeFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel>
@@ -4789,6 +4778,17 @@ export namespace Prisma {
     gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     not?: NestedDateTimeFilter<$PrismaModel> | Date | string
+  }
+
+  export type NestedDateTimeNullableFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
   }
 
   export type NestedStringWithAggregatesFilter<$PrismaModel = never> = {
@@ -4879,20 +4879,6 @@ export namespace Prisma {
     not?: NestedFloatFilter<$PrismaModel> | number
   }
 
-  export type NestedDateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
-    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
-    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
-    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
-    _count?: NestedIntNullableFilter<$PrismaModel>
-    _min?: NestedDateTimeNullableFilter<$PrismaModel>
-    _max?: NestedDateTimeNullableFilter<$PrismaModel>
-  }
-
   export type NestedDateTimeWithAggregatesFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel>
@@ -4907,11 +4893,18 @@ export namespace Prisma {
     _max?: NestedDateTimeFilter<$PrismaModel>
   }
 
-  export type NestedEnumTransactionTypeFilter<$PrismaModel = never> = {
-    equals?: $Enums.TransactionType | EnumTransactionTypeFieldRefInput<$PrismaModel>
-    in?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
-    notIn?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
-    not?: NestedEnumTransactionTypeFilter<$PrismaModel> | $Enums.TransactionType
+  export type NestedDateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel> | null
+    in?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    notIn?: Date[] | string[] | ListDateTimeFieldRefInput<$PrismaModel> | null
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeNullableWithAggregatesFilter<$PrismaModel> | Date | string | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedDateTimeNullableFilter<$PrismaModel>
+    _max?: NestedDateTimeNullableFilter<$PrismaModel>
   }
 
   export type NestedBigIntFilter<$PrismaModel = never> = {
@@ -4932,14 +4925,11 @@ export namespace Prisma {
     not?: NestedEnumStatusFilter<$PrismaModel> | $Enums.Status
   }
 
-  export type NestedEnumTransactionTypeWithAggregatesFilter<$PrismaModel = never> = {
+  export type NestedEnumTransactionTypeFilter<$PrismaModel = never> = {
     equals?: $Enums.TransactionType | EnumTransactionTypeFieldRefInput<$PrismaModel>
     in?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
     notIn?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
-    not?: NestedEnumTransactionTypeWithAggregatesFilter<$PrismaModel> | $Enums.TransactionType
-    _count?: NestedIntFilter<$PrismaModel>
-    _min?: NestedEnumTransactionTypeFilter<$PrismaModel>
-    _max?: NestedEnumTransactionTypeFilter<$PrismaModel>
+    not?: NestedEnumTransactionTypeFilter<$PrismaModel> | $Enums.TransactionType
   }
 
   export type NestedBigIntWithAggregatesFilter<$PrismaModel = never> = {
@@ -4968,44 +4958,54 @@ export namespace Prisma {
     _max?: NestedEnumStatusFilter<$PrismaModel>
   }
 
+  export type NestedEnumTransactionTypeWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.TransactionType | EnumTransactionTypeFieldRefInput<$PrismaModel>
+    in?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
+    notIn?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
+    not?: NestedEnumTransactionTypeWithAggregatesFilter<$PrismaModel> | $Enums.TransactionType
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumTransactionTypeFilter<$PrismaModel>
+    _max?: NestedEnumTransactionTypeFilter<$PrismaModel>
+  }
+
   export type TransactionCreateWithoutUserInput = {
     id?: string
-    type?: $Enums.TransactionType
     orderId: bigint | number
     txHash: string
-    chainId: number
-    blockNumber: bigint | number
-    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
     status?: $Enums.Status
-    externalId?: string | null
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    blockNumber: bigint | number
+    chainId: number
+    externalId?: string | null
+    logIndex: number
     updatedAt?: Date | string
+    type?: $Enums.TransactionType
   }
 
   export type TransactionUncheckedCreateWithoutUserInput = {
     id?: string
-    type?: $Enums.TransactionType
     orderId: bigint | number
     txHash: string
-    chainId: number
-    blockNumber: bigint | number
-    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
     status?: $Enums.Status
-    externalId?: string | null
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    blockNumber: bigint | number
+    chainId: number
+    externalId?: string | null
+    logIndex: number
     updatedAt?: Date | string
+    type?: $Enums.TransactionType
   }
 
   export type TransactionCreateOrConnectWithoutUserInput = {
@@ -5040,22 +5040,22 @@ export namespace Prisma {
     NOT?: TransactionScalarWhereInput | TransactionScalarWhereInput[]
     id?: StringFilter<"Transaction"> | string
     userId?: StringFilter<"Transaction"> | string
-    type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     orderId?: BigIntFilter<"Transaction"> | bigint | number
     txHash?: StringFilter<"Transaction"> | string
-    chainId?: IntFilter<"Transaction"> | number
-    blockNumber?: BigIntFilter<"Transaction"> | bigint | number
-    logIndex?: IntFilter<"Transaction"> | number
     sourceToken?: StringFilter<"Transaction"> | string
     amountUsd?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     status?: EnumStatusFilter<"Transaction"> | $Enums.Status
-    externalId?: StringNullableFilter<"Transaction"> | string | null
     recipientName?: StringNullableFilter<"Transaction"> | string | null
     recipientBank?: StringNullableFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableFilter<"Transaction"> | string | null
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
+    blockNumber?: BigIntFilter<"Transaction"> | bigint | number
+    chainId?: IntFilter<"Transaction"> | number
+    externalId?: StringNullableFilter<"Transaction"> | string | null
+    logIndex?: IntFilter<"Transaction"> | number
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
+    type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
   }
 
   export type UserCreateWithoutTransactionsInput = {
@@ -5063,15 +5063,15 @@ export namespace Prisma {
     privyDid: string
     walletAddress?: string | null
     fullName?: string | null
-    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
-    walletBalance?: Decimal | DecimalJsLike | number | string
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
-    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
   }
 
   export type UserUncheckedCreateWithoutTransactionsInput = {
@@ -5079,15 +5079,15 @@ export namespace Prisma {
     privyDid: string
     walletAddress?: string | null
     fullName?: string | null
-    displayName?: string | null
     email?: string | null
     avatarUrl?: string | null
-    walletBalance?: Decimal | DecimalJsLike | number | string
     totalSentUsd?: Decimal | DecimalJsLike | number | string
     transactionCount?: number
-    lastLoginAt?: Date | string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
   }
 
   export type UserCreateOrConnectWithoutTransactionsInput = {
@@ -5111,15 +5111,15 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
-    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
-    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
-    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
   }
 
   export type UserUncheckedUpdateWithoutTransactionsInput = {
@@ -5127,95 +5127,95 @@ export namespace Prisma {
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
-    displayName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
-    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactionCount?: IntFieldUpdateOperationsInput | number
-    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
   }
 
   export type TransactionCreateManyUserInput = {
     id?: string
-    type?: $Enums.TransactionType
     orderId: bigint | number
     txHash: string
-    chainId: number
-    blockNumber: bigint | number
-    logIndex: number
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
     status?: $Enums.Status
-    externalId?: string | null
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
     createdAt?: Date | string
+    blockNumber: bigint | number
+    chainId: number
+    externalId?: string | null
+    logIndex: number
     updatedAt?: Date | string
+    type?: $Enums.TransactionType
   }
 
   export type TransactionUpdateWithoutUserInput = {
     id?: StringFieldUpdateOperationsInput | string
-    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
-    chainId?: IntFieldUpdateOperationsInput | number
-    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
-    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     status?: EnumStatusFieldUpdateOperationsInput | $Enums.Status
-    externalId?: NullableStringFieldUpdateOperationsInput | string | null
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    chainId?: IntFieldUpdateOperationsInput | number
+    externalId?: NullableStringFieldUpdateOperationsInput | string | null
+    logIndex?: IntFieldUpdateOperationsInput | number
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
   }
 
   export type TransactionUncheckedUpdateWithoutUserInput = {
     id?: StringFieldUpdateOperationsInput | string
-    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
-    chainId?: IntFieldUpdateOperationsInput | number
-    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
-    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     status?: EnumStatusFieldUpdateOperationsInput | $Enums.Status
-    externalId?: NullableStringFieldUpdateOperationsInput | string | null
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    chainId?: IntFieldUpdateOperationsInput | number
+    externalId?: NullableStringFieldUpdateOperationsInput | string | null
+    logIndex?: IntFieldUpdateOperationsInput | number
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
   }
 
   export type TransactionUncheckedUpdateManyWithoutUserInput = {
     id?: StringFieldUpdateOperationsInput | string
-    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
-    chainId?: IntFieldUpdateOperationsInput | number
-    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
-    logIndex?: IntFieldUpdateOperationsInput | number
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     status?: EnumStatusFieldUpdateOperationsInput | $Enums.Status
-    externalId?: NullableStringFieldUpdateOperationsInput | string | null
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
+    chainId?: IntFieldUpdateOperationsInput | number
+    externalId?: NullableStringFieldUpdateOperationsInput | string | null
+    logIndex?: IntFieldUpdateOperationsInput | number
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
   }
 
 
