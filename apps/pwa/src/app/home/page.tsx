@@ -19,9 +19,14 @@ export default function HomePage() {
       const res = await fetch('/api/user/history?limit=10', {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `History fetch failed: ${res.status}`);
+      }
       return res.json();
     },
     enabled: !!dbUser?.id && !!authenticated,
+    retry: 1,
   });
 
   const transactions = historyData?.transactions || [];
@@ -34,7 +39,7 @@ export default function HomePage() {
   const displayName = dbUser?.displayName || dbUser?.fullName || privyUser?.id?.slice(0, 10);
   const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${privyUser?.id}&backgroundColor=b6e3f4`;
 
-  const balance = dbUser?.totalSentUsd?.toString() || '0.00';
+  const balance = (dbUser as any)?.walletBalance?.toString() || '0.00';
 
   return (
     <div className="min-h-screen bg-[#f8fafd] pb-28">

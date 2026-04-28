@@ -46,7 +46,7 @@ export async function POST(req: Request) {
         },
         create: {
           privyDid: claims.userId,
-          walletAddress: walletAddress ?? "",
+          walletAddress: walletAddress || undefined,  // NULL in DB if no wallet connected
           email: email || undefined,
           fullName: fullName || undefined,
           displayName: displayName || undefined,

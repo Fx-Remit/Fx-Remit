@@ -13,18 +13,22 @@ export default function SplashPage() {
   const hasRouted = useRef(false);
 
   useEffect(() => {
-    if (!ready || !userStoreReady || hasRouted.current) return;
+    const isProfileLoading = authenticated && !userStoreReady;
+
+    if (!ready || isProfileLoading || hasRouted.current) return;
 
     hasRouted.current = true;
 
     const splashTimer = setTimeout(() => {
       if (!authenticated) {
         router.replace('/onboarding');
-      } else {
+        return;
+      }
+
+      if (userStoreReady) {
         if (!dbUser?.fullName) {
           router.replace('/onboarding');
         } else {
-
           router.replace('/home');
         }
       }

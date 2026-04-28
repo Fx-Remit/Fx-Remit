@@ -1,5 +1,5 @@
 import { X, AlertCircle } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePrivy } from '@privy-io/react-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -31,6 +31,11 @@ export function ConfirmTransactionSheet({
   const { getAccessToken } = usePrivy();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+
+  const isMounted = useRef(true);
+  useEffect(() => {
+    return () => { isMounted.current = false; };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -70,11 +75,13 @@ export function ConfirmTransactionSheet({
 
       queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
 
-      setStatus('success');
+      if (isMounted.current) setStatus('success');
     } catch (err) {
       console.error('[CONFIRM] Transaction failed:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-      setStatus('idle');
+      if (isMounted.current) {
+        setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+        setStatus('idle');
+      }
     }
   };
 

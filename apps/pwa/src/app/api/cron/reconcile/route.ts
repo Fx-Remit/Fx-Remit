@@ -12,12 +12,9 @@ export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
 
-    // Secure the endpoint using Vercel's CRON_SECRET or a custom environment variable
-    if (process.env.NODE_ENV === 'production') {
-      if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        console.warn('[Cron Reconcile] Unauthorized access attempt');
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+    if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      console.warn("[Cron Reconcile] Unauthorized access attempt");
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     console.log('[Cron Reconcile] Triggering stuck transaction recovery...');
