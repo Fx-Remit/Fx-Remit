@@ -45,8 +45,7 @@ export default function GlobalError({
               </button>
             </div>
           </div>
-          
-          {/* Debug Info (Only in dev) */}
+
           {process.env.NODE_ENV !== 'production' && (
             <div className="mt-8 max-w-[400px] text-left">
                <details className="cursor-pointer">

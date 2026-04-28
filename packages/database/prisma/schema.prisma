@@ -10,7 +10,7 @@ datasource db {
 model User {
   id               String   @id @default(uuid())
   privyDid         String   @unique @map("privy_did")
-  walletAddress    String   @unique @map("wallet_address")
+  walletAddress    String?  @unique @map("wallet_address")
   fullName         String?  @map("full_name")
   displayName      String?  @map("display_name")
   email            String?  @unique

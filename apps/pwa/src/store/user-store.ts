@@ -31,14 +31,14 @@ export const useUserStore = create<UserState>()(
       setProfile: (profile) => set({ profile, isLoading: false }),
       setLoading: (isLoading) => set({ isLoading }),
       setHydrated: (isHydrated) => set({ isHydrated }),
-      clear: () => set({ profile: null, isLoading: false }),
+      clear: () => set({ profile: null, isLoading: false, isHydrated: false }),
     }),
     {
-      name: 'fx-remit-user-storage',
+      name: "fx-remit-user-storage",
       storage: createJSONStorage(() => localStorage),
       onRehydrateStorage: () => (state) => {
-        state?.setHydrated(true);
+        // Do not set hydrated=true here, wait for DB sync in UserHydrator
       },
-    }
-  )
+    },
+  ),
 );

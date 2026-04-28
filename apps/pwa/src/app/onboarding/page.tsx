@@ -34,6 +34,7 @@ export default function OnboardingPage() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -108,13 +109,24 @@ export default function OnboardingPage() {
             email: emailAccount?.type === 'email' ? (emailAccount as any).address : undefined
           })
         });
+
+        if (!response.ok) {
+          console.error('[ONBOARD] Sync failed with status:', response.status);
+
+          if (params.id) {
+            router.push('/home');
+            return;
+          }
+
+          setIsSettingUp(true);
+          return;
+        }
+
         const data = await response.json();
 
         if (data.user?.fullName) {
-          // Returning user with a complete profile — go home
           router.push('/home');
         } else {
-          // New user — show profile setup, pre-fill email if available
           const linkedEmail = params.linkedAccounts.find(
             (a: any) => a.type === 'email' || a.type === 'google_oauth'
           );
@@ -122,8 +134,8 @@ export default function OnboardingPage() {
           setIsSettingUp(true);
         }
       } catch (err) {
-        console.error('Failed to sync user:', err);
-        setIsSettingUp(true); // Fallback to setup
+        console.error('[ONBOARD] Failed to sync user on login:', err);
+        setIsSettingUp(true); 
       }
     }
   });
@@ -147,19 +159,17 @@ export default function OnboardingPage() {
     if (!fullName) return;
 
     setIsSubmitting(true);
-    console.log('Profile Submission Started:', { fullName, displayName, hasFile: !!avatarFile, userId: user?.id });
+    setSubmitError(null);
 
     try {
-      if (!user?.id) throw new Error('User session not found. Please login again.');
-      
+      if (!user?.id) throw new Error('User session not found. Please try logging in again.');
+
       let avatarUrl = undefined;
 
       if (avatarFile) {
-        console.log('[ONBOARD] Starting profile photo upload to Supabase...');
-        const fileExt = avatarFile.name.split('.').pop();
         const timestamp = Date.now();
         const safeFileName = avatarFile.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
-        const filePath = `avatars/${user.id}/${timestamp}-${safeFileName}`;
+        const filePath = `avatars/${timestamp}-${safeFileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from('avatars')
@@ -169,24 +179,17 @@ export default function OnboardingPage() {
           });
 
         if (uploadError) {
-          console.error('[ONBOARD] Supabase upload failed:', uploadError);
-          throw new Error(`Avatar upload failed: ${uploadError.message}`);
-        } else {
-          const { data: { publicUrl } } = supabase.storage
-            .from('avatars')
-            .getPublicUrl(filePath);
-          avatarUrl = publicUrl;
-          console.log('[ONBOARD] Profile photo uploaded successfully:', avatarUrl);
+          throw new Error(`Profile photo upload failed. Please try again.`);
         }
-      } else if (avatarFile && !user?.id) {
-        console.error('[ONBOARD] Identity missing during upload');
-        throw new Error('Identity not confirmed. Please login again.');
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+        avatarUrl = publicUrl;
       }
 
-      // Unified wallet selection
       const walletAddress = getPriorityWallet(user?.linkedAccounts || []);
-      
-      console.log('[ONBOARD] Sending final profile sync to API...', { fullName, email, walletAddress });
+
       const token = await getAccessToken();
       const response = await fetch('/api/user/onboard', {
         method: 'POST',
@@ -204,17 +207,15 @@ export default function OnboardingPage() {
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.details || 'Failed to save profile');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.details || errData.error || 'Profile save failed. Please try again.');
       }
+
       setIsSuccess(true);
-      
-      setTimeout(() => {
-        router.push('/home');
-      }, 2000);
+      setTimeout(() => router.push('/home'), 2000);
+
     } catch (err) {
-      console.error('Failed to save profile:', err);
-      alert(err instanceof Error ? err.message : 'Failed to save profile');
+      setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -292,6 +293,15 @@ export default function OnboardingPage() {
                 className="w-full h-[60px] bg-white/5 border border-white/10 rounded-[12px] px-4 text-white outline-none focus:border-[#2261FE] transition-colors placeholder-white/30"
               />
             </div>
+
+            {submitError && (
+              <div className="flex items-start gap-3 rounded-[12px] bg-red-500/10 border border-red-500/20 px-4 py-3">
+                <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-red-400 text-[11px] font-bold">!</span>
+                </div>
+                <p className="text-red-400 text-[13px] font-medium leading-snug">{submitError}</p>
+              </div>
+            )}
 
             <button
               disabled={isSubmitting || !fullName || !email}
