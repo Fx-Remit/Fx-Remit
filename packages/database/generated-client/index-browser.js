@@ -128,6 +128,7 @@ exports.Prisma.UserScalarFieldEnum = {
   displayName: 'displayName',
   email: 'email',
   avatarUrl: 'avatarUrl',
+  walletBalance: 'walletBalance',
   totalSentUsd: 'totalSentUsd',
   transactionCount: 'transactionCount',
   lastLoginAt: 'lastLoginAt',
@@ -138,6 +139,7 @@ exports.Prisma.UserScalarFieldEnum = {
 exports.Prisma.TransactionScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
+  type: 'type',
   orderId: 'orderId',
   txHash: 'txHash',
   chainId: 'chainId',
@@ -169,6 +171,11 @@ exports.Prisma.NullsOrder = {
   first: 'first',
   last: 'last'
 };
+exports.TransactionType = exports.$Enums.TransactionType = {
+  DEPOSIT: 'DEPOSIT',
+  REMITTANCE: 'REMITTANCE'
+};
+
 exports.Status = exports.$Enums.Status = {
   PENDING: 'PENDING',
   VERIFIED: 'VERIFIED',

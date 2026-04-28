@@ -10,11 +10,12 @@ datasource db {
 model User {
   id               String    @id @default(uuid())
   privyDid         String    @unique @map("privy_did")
-  walletAddress    String    @unique @map("wallet_address")
+  walletAddress    String?   @unique @map("wallet_address")
   fullName         String?   @map("full_name")
   displayName      String?   @map("display_name")
   email            String?   @unique
   avatarUrl        String?   @map("avatar_url")
+  walletBalance    Decimal   @default(0.0) @map("wallet_balance") @db.Decimal(20, 2)
   totalSentUsd     Decimal   @default(0.0) @map("total_sent_usd") @db.Decimal(20, 2)
   transactionCount Int       @default(0) @map("transaction_count")
   lastLoginAt      DateTime? @map("last_login_at")
@@ -27,10 +28,11 @@ model User {
 }
 
 model Transaction {
-  id      String @id @default(uuid())
-  userId  String @map("user_id")
-  orderId BigInt @map("order_id") // The Idempotency Key — unique per chain
-  txHash  String @unique @map("tx_hash")
+  id      String          @id @default(uuid())
+  userId  String          @map("user_id")
+  type    TransactionType @default(REMITTANCE)
+  orderId BigInt          @map("order_id") // The Idempotency Key — unique per chain
+  txHash  String          @unique @map("tx_hash")
 
   // Indexing Metadata
   chainId     Int    @map("chain_id")
@@ -55,6 +57,11 @@ model Transaction {
   // Cross-chain idempotency: orderId is only unique within a single chain's contract
   @@unique([orderId, chainId])
   @@map("transactions")
+}
+
+enum TransactionType {
+  DEPOSIT
+  REMITTANCE
 }
 
 enum Status {

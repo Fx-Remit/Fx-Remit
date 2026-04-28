@@ -199,7 +199,7 @@ export default function HomePage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 text-[15px] truncate">
-                    {tx.recipientName ? `Sent to ${tx.recipientName}` : 'Remittance Sent'}
+                    {tx.type === 'DEPOSIT' ? 'Money Added' : (tx.recipientName ? `Sent to ${tx.recipientName}` : 'Remittance Sent')}
                   </p>
                   <p className="text-gray-400 text-sm truncate">
                     {tx.txHash ? `${tx.txHash.slice(0, 6)}...${tx.txHash.slice(-4)}` : 'Processing...'}
