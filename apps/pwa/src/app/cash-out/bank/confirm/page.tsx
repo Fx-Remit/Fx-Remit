@@ -19,6 +19,7 @@ function CashOutConfirmContent() {
   const accountNumber = searchParams.get('accNum') || '0000000000';
   const accountName = searchParams.get('accName') || 'Account Owner';
   const bankName = searchParams.get('bank') || 'Bank Name';
+  const bankCode = searchParams.get('bankCode') || '';
   const type = searchParams.get('type') || 'bank';
 
   const isBank = type === 'bank';
@@ -146,6 +147,7 @@ function CashOutConfirmContent() {
         accNum={accountNumber}
         accName={accountName}
         bankName={bankName}
+        bankCode={bankCode}
       />
     </div>
   );

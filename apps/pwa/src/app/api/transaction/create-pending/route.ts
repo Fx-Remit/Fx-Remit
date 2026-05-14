@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from "@privy-io/server-auth";
 import { prisma } from '@fx-remit/database';
-import { TransactionService } from '@fx-remit/services';
+import { TransactionService, PayoutService } from '@fx-remit/services';
 
 export const dynamic = "force-dynamic";
 
@@ -104,11 +104,31 @@ export async function POST(req: Request) {
     const orderId = BigInt(Date.now());
     const externalId = `pnd_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
+    // Create the order on Paycrest
+    const paycrestResp = await PayoutService.createPaycrestOrder({
+      amount: amountUsd.toString(),
+      sourceToken: isNonEmptyString(sourceToken) ? sourceToken : "USDT",
+      destinationCurrency: "NGN", // Defaulting to NGN for now
+      recipient: {
+        institution: String(body.bankCode || recipientBank),
+        accountIdentifier: String(recipientAcc),
+        accountName: String(recipientName),
+      },
+      refundAddress: user.walletAddress || "",
+      externalId,
+    });
+
+    if (!paycrestResp.success || !paycrestResp.order) {
+      return NextResponse.json({ 
+        error: paycrestResp.error || "Failed to create Paycrest order" 
+      }, { status: 400 });
+    }
+
     const tx = await TransactionService.createPending({
       userId: user.id,
       orderId,
-      externalId,
-      sourceToken: isNonEmptyString(sourceToken) ? sourceToken : "USDC",
+      externalId: paycrestResp.order.id, // Use Paycrest's ID as our externalId
+      sourceToken: isNonEmptyString(sourceToken) ? sourceToken : "USDT",
       amountUsd: Number(amountUsd),
       payoutFiat: Number(payoutFiat),
       recipientName: (recipientName as string).trim(),
@@ -124,6 +144,10 @@ export async function POST(req: Request) {
         amountUsd: tx.amountUsd.toString(),
         payoutFiat: tx.payoutFiat.toString(),
       },
+      paycrest: {
+        receiveAddress: paycrestResp.order.providerAccount?.receiveAddress,
+        amountToTransfer: paycrestResp.order.providerAccount?.amountToTransfer,
+      }
     });
 
   } catch (error) {
