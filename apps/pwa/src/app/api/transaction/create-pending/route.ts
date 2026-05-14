@@ -10,14 +10,17 @@ const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET?.trim() ?? "";
 
 const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
-function isPositiveNumber(val: unknown): val is number {
-  const n = Number(val);
-  return !isNaN(n) && isFinite(n) && n > 0;
-}
+import { z } from 'zod';
 
-function isNonEmptyString(val: unknown): val is string {
-  return typeof val === "string" && val.trim().length > 0;
-}
+const createPendingSchema = z.object({
+  amountUsd: z.coerce.number().positive("amountUsd must be a positive number").max(10_000, "Transaction amount exceeds maximum of $10,000"),
+  payoutFiat: z.coerce.number().positive("payoutFiat must be a positive number"),
+  recipientName: z.string().trim().min(1, "recipientName is required"),
+  recipientBank: z.string().trim().min(1, "recipientBank is required"),
+  recipientAcc: z.string().trim().min(1, "recipientAcc is required"),
+  token: z.string().optional().default("USDT"),
+  bankCode: z.string().optional(),
+});
 
 export async function POST(req: Request) {
   try {
@@ -38,13 +41,25 @@ export async function POST(req: Request) {
       );
     }
 
-    let body: Record<string, unknown>;
+    let rawBody;
     try {
-      body = await req.json();
+      rawBody = await req.json();
     } catch {
       return NextResponse.json(
         { error: "Invalid request body" },
         { status: 400 },
+      );
+    }
+
+    const validationResult = createPendingSchema.safeParse(rawBody);
+
+    if (!validationResult.success) {
+      return NextResponse.json(
+        { 
+          error: "Validation failed", 
+          details: validationResult.error.issues.map(i => i.message) 
+        },
+        { status: 422 },
       );
     }
 
@@ -55,42 +70,8 @@ export async function POST(req: Request) {
       recipientAcc,
       payoutFiat,
       token: sourceToken,
-    } = body;
-
-    const validationErrors: string[] = [];
-
-    if (!isPositiveNumber(amountUsd)) {
-      validationErrors.push("amountUsd must be a positive number");
-    }
-    if (!isPositiveNumber(payoutFiat)) {
-      validationErrors.push("payoutFiat must be a positive number");
-    }
-    if (!isNonEmptyString(recipientName)) {
-      validationErrors.push("recipientName is required");
-    }
-    if (!isNonEmptyString(recipientBank)) {
-      validationErrors.push("recipientBank is required");
-    }
-    if (!isNonEmptyString(recipientAcc)) {
-      validationErrors.push("recipientAcc is required");
-    }
-
-    if (validationErrors.length > 0) {
-      return NextResponse.json(
-        { error: "Validation failed", details: validationErrors },
-        { status: 422 },
-      );
-    }
-
-    const MAX_TX_AMOUNT_USD = 10_000;
-    if (Number(amountUsd) > MAX_TX_AMOUNT_USD) {
-      return NextResponse.json(
-        {
-          error: `Transaction amount exceeds maximum of $${MAX_TX_AMOUNT_USD.toLocaleString()}`,
-        },
-        { status: 422 },
-      );
-    }
+      bankCode,
+    } = validationResult.data;
 
     const user = await prisma.user.findUnique({
       where: { privyDid: claims.userId },
@@ -107,12 +88,12 @@ export async function POST(req: Request) {
     // Create the order on Paycrest
     const paycrestResp = await PayoutService.createPaycrestOrder({
       amount: amountUsd.toString(),
-      sourceToken: isNonEmptyString(sourceToken) ? sourceToken : "USDT",
+      sourceToken: sourceToken,
       destinationCurrency: "NGN", // Defaulting to NGN for now
       recipient: {
-        institution: String(body.bankCode || recipientBank),
-        accountIdentifier: String(recipientAcc),
-        accountName: String(recipientName),
+        institution: bankCode || recipientBank,
+        accountIdentifier: recipientAcc,
+        accountName: recipientName,
       },
       refundAddress: user.walletAddress || "",
       externalId,
@@ -128,12 +109,12 @@ export async function POST(req: Request) {
       userId: user.id,
       orderId,
       externalId: paycrestResp.order.id, // Use Paycrest's ID as our externalId
-      sourceToken: isNonEmptyString(sourceToken) ? sourceToken : "USDT",
-      amountUsd: Number(amountUsd),
-      payoutFiat: Number(payoutFiat),
-      recipientName: (recipientName as string).trim(),
-      recipientBank: (recipientBank as string).trim(),
-      recipientAcc: (recipientAcc as string).trim(),
+      sourceToken,
+      amountUsd,
+      payoutFiat,
+      recipientName,
+      recipientBank,
+      recipientAcc,
     });
 
     return NextResponse.json({
