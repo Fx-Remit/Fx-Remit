@@ -7,6 +7,8 @@ import { useState } from 'react';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 
+import { useDebounce } from '@/hooks/use-debounce';
+
 const TOKENS = [
   { symbol: 'USDT', icon: '/usdt.svg' },
   { symbol: 'USDC', icon: '/usdc.svg' },
@@ -27,6 +29,8 @@ export default function BankCashOutPage() {
   const [amountInput, setAmountInput] = useState('');
   const [lastEdited, setLastEdited] = useState<'send' | 'receive'>('send');
   
+  const debouncedAmount = useDebounce(amountInput, 500);
+  
   const [token, setToken] = useState('USDT');
   const [currency, setCurrency] = useState('');
   
@@ -38,11 +42,14 @@ export default function BankCashOutPage() {
   const { profile: dbUser } = useUserStore();
   const availableBalance = '0';
 
-  // Fetch rate for 1 unit
+  // For tiered wholesale rates, we pass the send amount if available, otherwise fallback to 1 unit.
+  const queryAmount = lastEdited === 'send' && debouncedAmount ? debouncedAmount : '1';
+
+  // Fetch rate
   const { data: quote, isLoading: isLoadingRate } = useQuery({
-    queryKey: ['quote', token, currency],
+    queryKey: ['quote', token, currency, queryAmount],
     queryFn: async () => {
-      const res = await fetch(`/api/quote?source=${token}&destination=${currency}&amount=1`);
+      const res = await fetch(`/api/quote?source=${token}&destination=${currency}&amount=${queryAmount}`);
       const data = await res.json();
       if (!data.success) throw new Error('Failed to fetch quote');
       return data.quote;
