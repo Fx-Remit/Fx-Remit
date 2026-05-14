@@ -15,10 +15,21 @@ export interface VerifyAccountParams {
 }
 
 export interface PaycrestOrderResult {
-  order_id: string;
-  payment_link: string;
+  id: string;
+  payment_link?: string;
   status: string;
-  receive_address?: string; // For Onramp/Gateway flows
+  providerAccount?: {
+    receiveAddress?: string;
+    validUntil?: string;
+    amountToTransfer?: string;
+  };
+}
+
+export interface PaycrestInstitution {
+  id: string;
+  name: string;
+  code: string;
+  type: string;
 }
 
 export class PaycrestClient {
@@ -97,12 +108,24 @@ export class PaycrestClient {
   }
 
   /**
+   * Fetches supported institutions for a country.
+   */
+  public async getInstitutions(countryCode: string): Promise<PaycrestInstitution[]> {
+    try {
+      const response = await this.client.get(`/institutions/${countryCode}`);
+      return response.data.data || response.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  /**
    * Verifies a bank account or mobile wallet.
    */
   public async verifyAccount(params: any) {
     try {
       const response = await this.client.post("/verify-account", params);
-      return response.data;
+      return response.data.data || response.data;
     } catch (error) {
       this.handleError(error);
     }

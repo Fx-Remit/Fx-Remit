@@ -12,30 +12,39 @@ export class PayoutService {
    */
   static async createPaycrestOrder(params: {
     amount: string;
-    sourceAsset: string;
-    destinationAsset: string;
-    recipient: any;
+    sourceToken: string;
+    destinationCurrency: string;
+    recipient: {
+      institution: string;
+      accountIdentifier: string;
+      accountName: string;
+      memo?: string;
+    };
+    refundAddress: string;
     externalId?: string;
   }) {
-    console.log(`[PayoutService] Creating Paycrest Order: ${params.amount} ${params.sourceAsset} -> ${params.destinationAsset}`);
+    console.log(`[PayoutService] Creating Paycrest Order: ${params.amount} ${params.sourceToken} -> ${params.destinationCurrency}`);
 
     try {
       const order = await this.client.createOrder({
+        amount: params.amount,
         source: {
-          asset: params.sourceAsset,
-          amount: params.amount,
-          type: 5, // Crypto
+          type: "crypto",
+          currency: params.sourceToken,
+          network: "celo", // Defaulting to Celo for now as per project focus
+          refundAddress: params.refundAddress,
         },
         destination: {
-          asset: params.destinationAsset,
-          type: 3, // Local Bank
-          recipient: params.recipient.account_number,
-          meta: {
-            beneficiary_name: params.recipient.beneficiary_name,
-            bank_code: params.recipient.bank_code,
+          type: "fiat",
+          currency: params.destinationCurrency,
+          recipient: {
+            institution: params.recipient.institution,
+            accountIdentifier: params.recipient.accountIdentifier,
+            accountName: params.recipient.accountName,
+            memo: params.recipient.memo || "FX Remit Cash Out",
           },
         },
-        external_id: params.externalId,
+        reference: params.externalId,
       });
 
       // If we have an external ID, update the transaction record
@@ -43,7 +52,7 @@ export class PayoutService {
         await prisma.transaction.updateMany({
           where: { externalId: params.externalId },
           data: {
-            status: 'PROCESSING',
+            status: "PROCESSING",
             updatedAt: new Date(),
           },
         });
@@ -51,7 +60,7 @@ export class PayoutService {
 
       return { success: true, order };
     } catch (error: any) {
-      console.error('[PayoutService] Paycrest Order Error:', error.message);
+      console.error("[PayoutService] Paycrest Order Error:", error.message);
       return { 
         success: false, 
         error: error.message,
@@ -87,6 +96,22 @@ export class PayoutService {
     try {
       const rate = await this.client.getRate(source, amount, destination);
       return { success: true, rate };
+    } catch (error: any) {
+      return { 
+        success: false, 
+        error: error.message,
+        status: error.status || 500
+      };
+    }
+  }
+
+  /**
+   * Fetches supported institutions for a country.
+   */
+  static async getInstitutions(countryCode: string) {
+    try {
+      const institutions = await this.client.getInstitutions(countryCode);
+      return { success: true, data: institutions };
     } catch (error: any) {
       return { 
         success: false, 

@@ -1,8 +1,9 @@
-import { X, AlertCircle } from 'lucide-react';
-import React, { useState, useRef, useEffect } from 'react';
+import { X, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useQueryClient } from '@tanstack/react-query';
+import { parseUnits, encodeFunctionData } from 'viem';
 
 interface ConfirmTransactionSheetProps {
   isOpen: boolean;
@@ -14,7 +15,28 @@ interface ConfirmTransactionSheetProps {
   accNum: string;
   accName: string;
   bankName: string;
+  bankCode?: string;
 }
+
+const ERC20_ABI = [
+  {
+    name: 'transfer',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'recipient', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+// Token Addresses on Celo (Default)
+const TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
+  USDT: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e',
+  USDC: '0xceBA911A676E46944e8574d30c6a596A4299bE6B',
+  cUSD: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
+};
 
 export function ConfirmTransactionSheet({
   isOpen,
@@ -26,32 +48,30 @@ export function ConfirmTransactionSheet({
   accNum,
   accName,
   bankName,
+  bankCode,
 }: ConfirmTransactionSheetProps) {
-  const [status, setStatus] = useState<'idle' | 'processing' | 'success'>('idle');
+  const [status, setStatus] = useState<'idle' | 'creating' | 'sending' | 'success'>('idle');
   const { getAccessToken } = usePrivy();
+  const { wallets } = useWallets();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  const isMounted = useRef(true);
-  useEffect(() => {
-    return () => { isMounted.current = false; };
-  }, []);
-
   if (!isOpen) return null;
 
-  // Calculations (1.0% fee)
   const feePercent = 1.0;
   const netAmount = receiveAmount * (1 - feePercent / 100);
   const currencyName = currency === 'NGN' ? 'Naira' : currency;
-
-  // Dynamic Name Logic
   const firstName = accName.split(' ')[0];
 
   const handleSend = async () => {
-    setStatus('processing');
+    setStatus('creating');
     setError(null);
     try {
       const accessToken = await getAccessToken();
+      const wallet = wallets[0];
+      if (!wallet) throw new Error('No wallet connected');
+
+      // 1. Create Pending Transaction & Paycrest Order
       const response = await fetch('/api/transaction/create-pending', {
         method: 'POST',
         headers: {
@@ -63,6 +83,7 @@ export function ConfirmTransactionSheet({
           recipientName: accName,
           recipientBank: bankName,
           recipientAcc: accNum,
+          bankCode: bankCode,
           payoutFiat: receiveAmount,
           token: token,
         }),
@@ -70,18 +91,53 @@ export function ConfirmTransactionSheet({
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to create transaction');
+        throw new Error(data.error || 'Failed to initiate transaction');
       }
+
+      const orderData = await response.json();
+      const receiveAddress = orderData.paycrest?.receiveAddress;
+      
+      if (!receiveAddress) {
+        throw new Error('Paycrest did not provide a receive address');
+      }
+
+      // 2. Execute On-chain Transfer
+      setStatus('sending');
+
+      const provider = await wallet.getEthereumProvider();
+      const tokenAddress = TOKEN_ADDRESSES[token];
+      
+      if (!tokenAddress) {
+        throw new Error(`Token ${token} not supported for direct transfer yet.`);
+      }
+
+      // Standard ERC20 Transfer (18 decimals for most Celo tokens, check if USDT/USDC are 6 or 18)
+      // On Celo, USDT and USDC are often 6 decimals, while cUSD is 18.
+      const decimals = (token === 'USDT' || token === 'USDC') ? 6 : 18;
+      const amountRaw = parseUnits(sendAmount, decimals);
+
+      const txHash = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: wallet.address,
+          to: tokenAddress,
+          data: encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: 'transfer',
+            args: [receiveAddress as `0x${string}`, amountRaw],
+          }),
+        }],
+      });
+
+      console.log('[CONFIRM] On-chain Tx Hash:', txHash);
 
       queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
 
-      if (isMounted.current) setStatus('success');
-    } catch (err) {
+      setStatus('success');
+    } catch (err: any) {
       console.error('[CONFIRM] Transaction failed:', err);
-      if (isMounted.current) {
-        setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-        setStatus('idle');
-      }
+      setError(err.message || 'An unexpected error occurred');
+      setStatus('idle');
     }
   };
 
@@ -149,19 +205,19 @@ export function ConfirmTransactionSheet({
                     <div className="w-[20px] h-[20px] rounded-full overflow-hidden flex items-center justify-center">
                       <img src="/bank icon.svg" alt="Bank" className="w-[20px] h-[20px]" />
                     </div>
-                    <span className="text-[#3D3D3D] text-[14px] font-[500] leading-none">
+                    <span className="text-[#3D3D3D] text-[14px] font-[500] leading-none truncate max-w-[150px]">
                       {bankName}
                     </span>
                   </div>
                 </div>
                 <DetailRow
                   label={`Amount in ${currency}`}
-                  value={`${receiveAmount.toLocaleString()} ${currencyName} only`}
+                  value={`${receiveAmount.toLocaleString()} ${currencyName}`}
                 />
                 <DetailRow label="Processing fee" value="1.0%" />
                 <DetailRow
                   label="Recipient gets"
-                  value={`${netAmount.toLocaleString()} ${currencyName} only`}
+                  value={`${netAmount.toLocaleString()} ${currencyName}`}
                   isHighlight
                 />
               </div>
@@ -180,14 +236,14 @@ export function ConfirmTransactionSheet({
             </div>
           )}
 
-          {/* Action Buttons (Outside the detail card) */}
+          {/* Action Buttons */}
           <div className="w-[390px] max-w-full space-y-4 mt-auto">
             <button
               onClick={handleSend}
               disabled={status !== 'idle'}
               className="w-full h-[65px] bg-[#2261FE] text-white rounded-[7px] text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
             >
-              Send
+              {status === 'idle' ? 'Send' : 'Processing...'}
             </button>
             <button
               onClick={onClose}
@@ -201,11 +257,18 @@ export function ConfirmTransactionSheet({
       </div>
 
       {/* Processing State Overlay */}
-      {status === 'processing' && (
+      {(status === 'creating' || status === 'sending') && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="w-full max-w-[430px] flex flex-col items-center">
+          <div className="w-full max-w-[430px] flex flex-col items-center text-center">
             <div className="mb-12">
-              <h2 className="text-[24px] font-bold text-[#1C1C1C]">Sending...</h2>
+              <h2 className="text-[24px] font-bold text-[#1C1C1C]">
+                {status === 'creating' ? 'Preparing order...' : 'Confirm in wallet...'}
+              </h2>
+              <p className="text-[#888888] mt-2 font-medium">
+                {status === 'creating' 
+                  ? 'Connecting to Paycrest secure gateway' 
+                  : 'Please sign the transaction in your wallet'}
+              </p>
             </div>
             <div className="mt-10 mb-20">
               <div className="w-16 h-16 border-4 border-[#2261FE]/20 border-t-[#2261FE] rounded-full animate-spin" />
@@ -234,31 +297,16 @@ export function ConfirmTransactionSheet({
             <div className="flex-1 flex flex-col items-center justify-center text-center">
               <div className="w-[80px] h-[80px] bg-green-50 rounded-full flex items-center justify-center mb-8">
                 <div className="w-[40px] h-[40px] bg-green-500 rounded-full flex items-center justify-center text-white">
-                  <svg
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <CheckCircle2 size={24} />
                 </div>
               </div>
 
-              <h3
-                className="font-[700] leading-[120%] text-center px-4 mb-4"
-                style={{ color: '#464446', fontSize: '24px' }}
-              >
-                You have successfully sent money to {firstName}
+              <h3 className="font-[700] leading-[120%] text-center px-4 mb-4 text-[#464446] text-[24px]">
+                Money sent to {firstName}
               </h3>
 
               <p className="text-[#888888] text-[15px] font-medium max-w-[280px]">
-                The transaction is being processed. It should reflect in {firstName}'s account
-                shortly.
+                The transaction has been broadcast. It will reflect in the account once verified by the network.
               </p>
             </div>
 
@@ -289,9 +337,10 @@ function DetailRow({
   return (
     <div className="flex items-center justify-between" style={{ width: '350px', height: '17px' }}>
       <span className="text-[#888888] text-[14px] font-[500] leading-none">{label}</span>
-      <span className="text-[#3D3D3D] text-[14px] font-[500] leading-none truncate ml-4">
+      <span className={`text-[#3D3D3D] text-[14px] font-[500] leading-none truncate ml-4 ${isHighlight ? 'text-[#2261FE] font-bold' : ''}`}>
         {value}
       </span>
     </div>
   );
 }
+

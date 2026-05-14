@@ -4,6 +4,8 @@ import { ChevronLeft, ChevronDown, X, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useUserStore } from '@/store/user-store';
+import { useQuery } from '@tanstack/react-query';
 
 const TOKENS = [
   { symbol: 'USDT', icon: '/usdt.svg' },
@@ -21,16 +23,43 @@ const CURRENCIES = [
 
 export default function BankCashOutPage() {
   const router = useRouter();
-  const [sendAmount, setSendAmount] = useState('');
-  const [receiveAmount, setReceiveAmount] = useState('');
+  
+  const [amountInput, setAmountInput] = useState('');
+  const [lastEdited, setLastEdited] = useState<'send' | 'receive'>('send');
+  
   const [token, setToken] = useState('USDT');
   const [currency, setCurrency] = useState('');
+  
   const [isTokenSheetOpen, setIsTokenSheetOpen] = useState(false);
   const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
   const [isPaymentMethodSheetOpen, setIsPaymentMethodSheetOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<'bank' | 'mobile'>('bank');
 
-  const availableBalance = '874';
+  const { profile: dbUser } = useUserStore();
+  const availableBalance = '0';
+
+  // Fetch rate for 1 unit
+  const { data: quote, isLoading: isLoadingRate } = useQuery({
+    queryKey: ['quote', token, currency],
+    queryFn: async () => {
+      const res = await fetch(`/api/quote?source=${token}&destination=${currency}&amount=1`);
+      const data = await res.json();
+      if (!data.success) throw new Error('Failed to fetch quote');
+      return data.quote;
+    },
+    enabled: !!currency && !!token,
+  });
+
+  const rate = quote?.retail_rate || null;
+
+  // Derived bidirectional state
+  const sendAmount = lastEdited === 'send' 
+    ? amountInput 
+    : (rate && amountInput ? (Number(amountInput) / rate).toFixed(2) : '');
+
+  const receiveAmount = lastEdited === 'receive' 
+    ? amountInput 
+    : (rate && amountInput ? (Number(amountInput) * rate).toFixed(2) : '');
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] flex flex-col">
@@ -62,7 +91,10 @@ export default function BankCashOutPage() {
                   type="number"
                   placeholder="0"
                   value={sendAmount}
-                  onChange={(e) => setSendAmount(e.target.value)}
+                  onChange={(e) => {
+                    setAmountInput(e.target.value);
+                    setLastEdited('send');
+                  }}
                   className="w-0 flex-1 bg-transparent text-[32px] font-bold text-[#1C1C1C] placeholder:text-gray-200 focus:outline-none min-w-0"
                 />
                 <button
@@ -98,7 +130,10 @@ export default function BankCashOutPage() {
                   type="number"
                   placeholder="0"
                   value={receiveAmount}
-                  onChange={(e) => setReceiveAmount(e.target.value)}
+                  onChange={(e) => {
+                    setAmountInput(e.target.value);
+                    setLastEdited('receive');
+                  }}
                   className="w-0 flex-1 bg-transparent text-[32px] font-bold text-[#1C1C1C] placeholder:text-gray-200 focus:outline-none min-w-0"
                 />
                 <button
@@ -118,15 +153,16 @@ export default function BankCashOutPage() {
           </div>
         </div>
 
-        {/* Info Table */}
         <div className="space-y-4 px-2 w-full max-w-[389px]">
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[15px] font-medium">Fees</span>
-            <span className="text-[#1C1C1C] text-[15px] font-bold">0</span>
+            <span className="text-[#1C1C1C] text-[15px] font-bold">1.0%</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[15px] font-medium">Exchange rate</span>
-            <span className="text-[#1C1C1C] text-[15px] font-bold">0</span>
+            <span className="text-[#1C1C1C] text-[15px] font-bold">
+              {isLoadingRate ? 'Updating...' : rate ? `1 ${token} = ${rate.toLocaleString()} ${currency}` : '-'}
+            </span>
           </div>
         </div>
 
