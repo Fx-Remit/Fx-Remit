@@ -48,6 +48,14 @@ export class ReconciliationService {
             `[ReconciliationService] Attempting recovery for Order #${tx.orderId.toString()}`,
           );
 
+          // Safely determine refund address: Prioritize user wallet, fallback to corporate suspense wallet.
+          // NEVER fallback to zero-address (fund burn risk).
+          const refundAddress = tx.user?.walletAddress || process.env.SUSPENSE_WALLET_ADDRESS;
+
+          if (!refundAddress || refundAddress === "0x0000000000000000000000000000000000000000") {
+            throw new Error(`Critical: No valid refund address for Order #${tx.orderId.toString()}. Recovery aborted.`);
+          }
+
           const recoveryResult = await PayoutService.createPaycrestOrder({
             amount: tx.amountUsd.toString(),
             sourceToken: tx.sourceToken,
@@ -58,9 +66,7 @@ export class ReconciliationService {
               accountName: tx.recipientName,
               institution: tx.recipientBank,
             },
-            refundAddress:
-              tx.user?.walletAddress ||
-              "0x0000000000000000000000000000000000000000",
+            refundAddress,
           });
 
           if (recoveryResult.success) {
