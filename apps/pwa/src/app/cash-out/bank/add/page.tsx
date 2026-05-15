@@ -58,6 +58,13 @@ function AddAccountForm() {
     inst.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const [idempotencyKey] = useState(() => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return `idk_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+  });
+
   const handleContinue = () => {
     const params = new URLSearchParams({
       type,
@@ -69,6 +76,7 @@ function AddAccountForm() {
       accName: accountName,
       bank: bankName,
       bankCode: bankCode,
+      idempotencyKey,
     });
     router.push(`/cash-out/bank/confirm?${params.toString()}`);
   };

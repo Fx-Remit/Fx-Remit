@@ -21,6 +21,7 @@ function CashOutConfirmContent() {
   const bankName = searchParams.get('bank') || 'Bank Name';
   const bankCode = searchParams.get('bankCode') || '';
   const type = searchParams.get('type') || 'bank';
+  const idempotencyKey = searchParams.get('idempotencyKey') || '';
 
   const isBank = type === 'bank';
 
@@ -148,6 +149,7 @@ function CashOutConfirmContent() {
         accName={accountName}
         bankName={bankName}
         bankCode={bankCode}
+        idempotencyKey={idempotencyKey}
       />
     </div>
   );

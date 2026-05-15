@@ -20,6 +20,7 @@ const createPendingSchema = z.object({
   recipientAcc: z.string().trim().min(1, "recipientAcc is required"),
   token: z.string().optional().default("USDT"),
   bankCode: z.string().optional(),
+  externalId: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -71,6 +72,7 @@ export async function POST(req: Request) {
       payoutFiat,
       token: sourceToken,
       bankCode,
+      externalId: frontendId,
     } = validationResult.data;
 
     const user = await prisma.user.findUnique({
@@ -83,7 +85,7 @@ export async function POST(req: Request) {
     }
 
     const orderId = BigInt(Date.now());
-    const externalId = `pnd_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const externalId = frontendId || `pnd_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
     // Create the order on Paycrest
     const paycrestResp = await PayoutService.createPaycrestOrder({
