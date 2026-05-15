@@ -8,6 +8,7 @@ import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 
 import { useDebounce } from '@/hooks/use-debounce';
+import { Decimal } from 'decimal.js';
 
 const TOKENS = [
   { symbol: 'USDT', icon: '/usdt.svg' },
@@ -62,11 +63,11 @@ export default function BankCashOutPage() {
   // Derived bidirectional state
   const sendAmount = lastEdited === 'send' 
     ? amountInput 
-    : (rate && amountInput ? (Number(amountInput) / rate).toFixed(2) : '');
+    : (rate && amountInput && !isNaN(Number(amountInput)) ? new Decimal(amountInput).div(rate).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString() : '');
 
   const receiveAmount = lastEdited === 'receive' 
     ? amountInput 
-    : (rate && amountInput ? (Number(amountInput) * rate).toFixed(2) : '');
+    : (rate && amountInput && !isNaN(Number(amountInput)) ? new Decimal(amountInput).mul(rate).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString() : '');
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] flex flex-col">

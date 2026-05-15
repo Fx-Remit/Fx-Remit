@@ -15,10 +15,12 @@
     "@privy-io/node": "0.12.0",
     "@types/node": "^20.11.24",
     "axios": "^1.15.0",
+    "decimal.js": "^10.6.0",
     "jsencrypt": "^3.5.4",
     "viem": "2.47.10"
   },
   "devDependencies": {
+    "@types/decimal.js": "^7.4.3",
     "typescript": "^5.3.3"
   }
 }
