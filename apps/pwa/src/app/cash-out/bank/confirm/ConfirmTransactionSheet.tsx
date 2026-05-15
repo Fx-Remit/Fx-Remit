@@ -16,6 +16,7 @@ interface ConfirmTransactionSheetProps {
   accName: string;
   bankName: string;
   bankCode?: string;
+  idempotencyKey?: string;
 }
 
 const ERC20_ABI = [
@@ -49,6 +50,7 @@ export function ConfirmTransactionSheet({
   accName,
   bankName,
   bankCode,
+  idempotencyKey,
 }: ConfirmTransactionSheetProps) {
   const [status, setStatus] = useState<'idle' | 'creating' | 'sending' | 'success'>('idle');
   const { getAccessToken } = usePrivy();
@@ -86,6 +88,7 @@ export function ConfirmTransactionSheet({
           bankCode: bankCode,
           payoutFiat: receiveAmount,
           token: token,
+          externalId: idempotencyKey,
         }),
       });
 
