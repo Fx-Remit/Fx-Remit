@@ -1,18 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { TransactionService } from '@fx-remit/services';
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json();
+    const body = await req.text();
     const signature = req.headers.get('x-goldsky-signature');
+    const secret = process.env.GOLDSKY_WEBHOOK_SECRET;
 
-    // Verify webhook authenticity
-    if (!signature || signature !== process.env.GOLDSKY_WEBHOOK_SECRET) {
+    // Verify webhook authenticity using HMAC-SHA256
+    if (!secret || !signature) {
+      console.warn("[Indexer Webhook] Missing secret or signature");
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(body)
+      .digest('hex');
+
+    if (signature !== expectedSignature) {
+      console.error("[Indexer Webhook] Invalid signature");
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const payload = JSON.parse(body);
     const { op, data } = payload;
     if (op !== 'INSERT' && op !== 'UPDATE') {
       return NextResponse.json({ status: 'ignored' });
