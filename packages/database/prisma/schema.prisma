@@ -14,13 +14,13 @@ model User {
   fullName         String?       @map("full_name")
   email            String?       @unique
   avatarUrl        String?       @map("avatar_url")
-  totalSentUsd     Decimal       @default(0.0) @map("total_sent_usd") @db.Decimal(20, 2)
+  totalSentUsd     Decimal       @default(0.0) @map("total_sent_usd") @db.Decimal(36, 18)
   transactionCount Int           @default(0) @map("transaction_count")
   createdAt        DateTime      @default(now()) @map("created_at")
   updatedAt        DateTime      @updatedAt @map("updated_at")
   displayName      String?       @map("display_name")
   lastLoginAt      DateTime?     @map("last_login_at")
-  walletBalance    Decimal       @default(0.0) @map("wallet_balance") @db.Decimal(20, 2)
+  walletBalance    Decimal       @default(0.0) @map("wallet_balance") @db.Decimal(36, 18)
   transactions     Transaction[]
 
   @@map("users")
@@ -32,8 +32,8 @@ model Transaction {
   orderId       BigInt          @map("order_id")
   txHash        String          @unique @map("tx_hash")
   sourceToken   String          @map("source_token")
-  amountUsd     Decimal         @map("amount_usd") @db.Decimal(20, 2)
-  payoutFiat    Decimal         @map("payout_fiat") @db.Decimal(20, 2)
+  amountUsd     Decimal         @map("amount_usd") @db.Decimal(36, 18)
+  payoutFiat    Decimal         @map("payout_fiat") @db.Decimal(36, 18)
   status        Status          @default(PENDING)
   recipientName String?         @map("recipient_name")
   recipientBank String?         @map("recipient_bank")

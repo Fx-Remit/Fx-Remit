@@ -90,14 +90,21 @@ export class TransactionService {
 
     const amount = new Prisma.Decimal(data.amountUsd || 0);
 
-    const existing = await prisma.transaction.findUnique({
-      where: {
-        orderId_chainId: {
-          orderId: data.orderId,
-          chainId: data.chainId,
-        },
-      },
+    // Identify existing record: Prioritize txHash (synced from frontend) over orderId (which may mismatch)
+    let existing = await prisma.transaction.findUnique({
+      where: { txHash: data.txHash },
     });
+
+    if (!existing) {
+      existing = await prisma.transaction.findUnique({
+        where: {
+          orderId_chainId: {
+            orderId: data.orderId,
+            chainId: data.chainId,
+          },
+        },
+      });
+    }
 
     // Check for Block Finality (Confirmation Depth)
     const currentBlock = await RpcClient.getBlockNumber(data.chainId);
@@ -114,10 +121,9 @@ export class TransactionService {
     // Only transition to VERIFIED if enough confirmations are reached
     // Never downgrade from VERIFIED, COMPLETED, etc.
     const canVerify = existing?.status === "PENDING" || !existing;
-    const newStatus: Status =
-      canVerify && isFinalized
-        ? "VERIFIED"
-        : (existing?.status as Status) || "PENDING";
+    const newStatus: Status = (canVerify && isFinalized)
+      ? "VERIFIED"
+      : (existing?.status as Status || "PENDING");
 
     //  Perform atomic update: Transaction + User Stats
     return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {

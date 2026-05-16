@@ -73,7 +73,7 @@ export function ConfirmTransactionSheet({
       const wallet = wallets[0];
       if (!wallet) throw new Error('No wallet connected');
 
-      // 1. Create Pending Transaction & Paycrest Order
+      // Create Pending Transaction & Paycrest Order
       const response = await fetch('/api/transaction/create-pending', {
         method: 'POST',
         headers: {
@@ -104,7 +104,7 @@ export function ConfirmTransactionSheet({
         throw new Error('Paycrest did not provide a receive address');
       }
 
-      // 2. Execute On-chain Transfer
+      //  Execute On-chain Transfer
       setStatus('sending');
 
       const provider = await wallet.getEthereumProvider();
@@ -133,6 +133,19 @@ export function ConfirmTransactionSheet({
       });
 
       console.log('[CONFIRM] On-chain Tx Hash:', txHash);
+
+      // Sync Hash with Backend for Indexer Reconciliation
+      await fetch('/api/transaction/sync-hash', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          orderId: orderData.transaction.orderId,
+          txHash: txHash,
+        }),
+      });
 
       queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
 
