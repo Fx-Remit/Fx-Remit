@@ -1,4 +1,5 @@
 import { prisma, Status, Transaction, Prisma } from "@fx-remit/database";
+import { RpcClient } from "./rpc.client";
 
 export interface TransactionResponse {
   id: string;
@@ -98,17 +99,27 @@ export class TransactionService {
       },
     });
 
+    // Check for Block Finality (Confirmation Depth)
+    const currentBlock = await RpcClient.getBlockNumber(data.chainId);
+    const confirmations = currentBlock - data.blockNumber;
+    const threshold = BigInt(process.env.CONFIRMATION_THRESHOLD || "5");
+
+    const isFinalized = confirmations >= threshold;
+
     const isIncoming =
       data.recipient?.toLowerCase() === user.walletAddress?.toLowerCase();
     const type: "DEPOSIT" | "REMITTANCE" =
       isIncoming && !existing?.recipientAcc ? "DEPOSIT" : "REMITTANCE";
 
+    // Only transition to VERIFIED if enough confirmations are reached
+    // Never downgrade from VERIFIED, COMPLETED, etc.
+    const canVerify = existing?.status === "PENDING" || !existing;
     const newStatus: Status =
-      existing?.status === "PENDING" || !existing
+      canVerify && isFinalized
         ? "VERIFIED"
-        : (existing.status as Status);
+        : (existing?.status as Status) || "PENDING";
 
-    // 3. Perform atomic update: Transaction + User Stats
+    //  Perform atomic update: Transaction + User Stats
     return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const dbTx = await tx.transaction.upsert({
         where: {
@@ -140,7 +151,7 @@ export class TransactionService {
         },
       });
 
-      // 4. Update User Stats if the transaction just became VERIFIED
+      //  Update User Stats if the transaction just became VERIFIED
       if (existing?.status === "PENDING" || !existing) {
         await tx.user.update({
           where: { id: user.id },
