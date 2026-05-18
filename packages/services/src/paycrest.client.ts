@@ -97,10 +97,20 @@ export class PaycrestClient {
       const response = await this.client.get(
         `/rates/${network.toLowerCase()}/${sourceCurrency}/${amount}/${destinationCurrency}`,
       );
+      
+      const rawRate = response.data.data?.sell?.rate || 
+                      response.data.data?.rate || 
+                      response.data.rate || 
+                      response.data.data?.buy?.rate;
+                      
+      if (!rawRate) {
+        throw new Error("Invalid response format from Paycrest rates API");
+      }
+
       return {
         source_currency: sourceCurrency,
         destination_currency: destinationCurrency,
-        rate: response.data.rate || response.data.data?.rate,
+        rate: Number(rawRate),
         fixed_fee: response.data.fixed_fee || 0,
         variable_fee: response.data.variable_fee || 0,
       };

@@ -34,7 +34,7 @@ function AddAccountForm() {
     queryKey: ['institutions', currency],
     queryFn: async () => {
       const accessToken = await getAccessToken();
-      const res = await fetch(`/api/paycrest/institutions?country=${currency === 'NGN' ? 'NG' : 'KE'}`, {
+      const res = await fetch(`/api/paycrest/institutions?country=${currency}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
