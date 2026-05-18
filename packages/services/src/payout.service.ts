@@ -31,7 +31,7 @@ export class PayoutService {
         source: {
           type: "crypto",
           currency: params.sourceToken,
-          network: "celo", // Defaulting to Celo for now as per project focus
+          network: "base", // Changed to base because Paycrest only has active providers on base network
           refundAddress: params.refundAddress,
         },
         destination: {
@@ -75,11 +75,15 @@ export class PayoutService {
   static async verifyBeneficiary(accountNumber: string, bankCode: string, countryCode: string) {
     try {
       const verification = await this.client.verifyAccount({
-        account_number: accountNumber,
-        bank_code: bankCode,
-        country_code: countryCode,
+        Institution: bankCode,
+        AccountIdentifier: accountNumber,
       });
-      return { success: true, data: verification };
+      return { 
+        success: true, 
+        data: {
+          account_name: typeof verification === 'string' ? verification : (verification.account_name || verification)
+        }
+      };
     } catch (error: any) {
       return { 
         success: false, 
