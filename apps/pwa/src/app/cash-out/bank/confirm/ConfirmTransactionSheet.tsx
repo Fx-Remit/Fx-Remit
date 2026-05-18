@@ -17,6 +17,7 @@ interface ConfirmTransactionSheetProps {
   bankName: string;
   bankCode?: string;
   idempotencyKey?: string;
+  spreadBps?: number;
 }
 
 const ERC20_ABI = [
@@ -51,6 +52,7 @@ export function ConfirmTransactionSheet({
   bankName,
   bankCode,
   idempotencyKey,
+  spreadBps,
 }: ConfirmTransactionSheetProps) {
   const [status, setStatus] = useState<'idle' | 'creating' | 'sending' | 'success'>('idle');
   const { getAccessToken } = usePrivy();
@@ -60,8 +62,9 @@ export function ConfirmTransactionSheet({
 
   if (!isOpen) return null;
 
-  const feePercent = 1.0;
-  const netAmount = receiveAmount * (1 - feePercent / 100);
+  const feePercent = spreadBps ? spreadBps / 100 : 0.75;
+  const netAmount = receiveAmount;
+  const amountBeforeFee = receiveAmount / (1 - feePercent / 100);
   const currencyName = currency === 'NGN' ? 'Naira' : currency;
   const firstName = accName.split(' ')[0];
 
@@ -228,12 +231,12 @@ export function ConfirmTransactionSheet({
                 </div>
                 <DetailRow
                   label={`Amount in ${currency}`}
-                  value={`${receiveAmount.toLocaleString()} ${currencyName}`}
+                  value={`${amountBeforeFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencyName}`}
                 />
-                <DetailRow label="Processing fee" value="1.0%" />
+                <DetailRow label="Processing fee" value={`${feePercent.toFixed(2)}%`} />
                 <DetailRow
                   label="Recipient gets"
-                  value={`${netAmount.toLocaleString()} ${currencyName}`}
+                  value={`${netAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencyName}`}
                   isHighlight
                 />
               </div>

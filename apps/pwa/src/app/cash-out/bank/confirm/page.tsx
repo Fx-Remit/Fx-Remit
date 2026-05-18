@@ -4,6 +4,8 @@ import { ChevronLeft, ChevronDown } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { ConfirmTransactionSheet } from './ConfirmTransactionSheet';
+import { useUserStore } from '@/store/user-store';
+import { Decimal } from 'decimal.js';
 
 function CashOutConfirmContent() {
   const router = useRouter();
@@ -23,7 +25,18 @@ function CashOutConfirmContent() {
   const type = searchParams.get('type') || 'bank';
   const idempotencyKey = searchParams.get('idempotencyKey') || '';
 
+  const rate = searchParams.get('rate') || '0';
+  const wholesaleRate = searchParams.get('wholesaleRate') || '0';
+  const spread = searchParams.get('spread') || '75';
+
+  const { profile: dbUser } = useUserStore();
+  const availableBalance = dbUser && (dbUser as any).walletBalance
+    ? new Decimal((dbUser as any).walletBalance.toString()).toFixed(2)
+    : '0.00';
+
   const isBank = type === 'bank';
+  const feePercentText = `${(Number(spread) / 100).toFixed(2)}%`;
+  const formattedRate = Number(rate) > 0 ? `1 ${token} = ${Number(rate).toLocaleString()} ${currency}` : '-';
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] flex flex-col">
@@ -62,7 +75,7 @@ function CashOutConfirmContent() {
                   <ChevronDown size={16} />
                 </div>
               </div>
-              <p className="text-[#888888] text-[14px] font-medium">Available: $874</p>
+              <p className="text-[#888888] text-[14px] font-medium">Available: ${availableBalance}</p>
             </div>
 
             {/* Dashed Separator */}
@@ -92,12 +105,12 @@ function CashOutConfirmContent() {
         <div className="flex flex-col gap-3 mb-8 w-full max-w-[370px] mx-auto">
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[14px] font-medium">Fees</span>
-            <span className="text-[#1C1C1C] text-[14px] font-bold">1.0%</span>
+            <span className="text-[#1C1C1C] text-[14px] font-bold">{feePercentText}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[14px] font-medium">Exchange rate</span>
             <span className="text-[#1C1C1C] text-[14px] font-bold uppercase whitespace-nowrap text-right">
-              1 {token} = 1,460 {currency}
+              {formattedRate}
             </span>
           </div>
         </div>
@@ -150,6 +163,7 @@ function CashOutConfirmContent() {
         bankName={bankName}
         bankCode={bankCode}
         idempotencyKey={idempotencyKey}
+        spreadBps={Number(spread)}
       />
     </div>
   );

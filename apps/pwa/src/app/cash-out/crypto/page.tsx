@@ -1,9 +1,13 @@
 'use client';
 
-import { ChevronLeft, ChevronDown, X } from 'lucide-react';
+import { ChevronLeft, ChevronDown, X, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useState, Suspense } from 'react';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useUserStore } from '@/store/user-store';
+import { Decimal } from 'decimal.js';
+import { parseUnits, encodeFunctionData } from 'viem';
 
 const NETWORK_DATA: Record<string, { name: string; icon: string }> = {
   celo: { name: 'Celo Mainnet', icon: '/cel2.svg' },
@@ -11,23 +15,94 @@ const NETWORK_DATA: Record<string, { name: string; icon: string }> = {
   ethereum: { name: 'Ethereum Mainnet', icon: '/eth.svg' },
 };
 
+const ERC20_ABI = [
+  {
+    name: 'transfer',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'recipient', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
+// Token Addresses on Celo (Default)
+const TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
+  USDT: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e',
+  USDC: '0xceBA911A676E46944e8574d30c6a596A4299bE6B',
+  cUSD: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
+};
+
 function CryptoCashOutContent() {
   const searchParams = useSearchParams();
   const token = (searchParams.get('token') || 'USDT').toUpperCase();
 
   const [walletAddress, setWalletAddress] = useState('');
-  const [network, setNetwork] = useState(token === 'CELO' || token === 'CUSD' ? 'celo' : '');
+  const [network, setNetwork] = useState(token === 'CELO' || token === 'CUSD' ? 'celo' : 'base');
   const [amount, setAmount] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success'>('idle');
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSend = () => {
+  const { getAccessToken } = usePrivy();
+  const { wallets } = useWallets();
+  const { profile: dbUser } = useUserStore();
+
+  const handleSend = async () => {
     setIsConfirmOpen(false);
     setStatus('processing');
-    setTimeout(() => {
+    setError(null);
+
+    try {
+      const wallet = wallets[0];
+      if (!wallet) throw new Error('No wallet connected. Please sign in again.');
+
+      const provider = await wallet.getEthereumProvider();
+
+      let txHash;
+      if (token === 'CELO') {
+        const amountRaw = parseUnits(amount, 18);
+        txHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: wallet.address,
+            to: walletAddress as `0x${string}`,
+            value: '0x' + amountRaw.toString(16),
+          }],
+        });
+      } else {
+        const tokenAddress = TOKEN_ADDRESSES[token];
+        if (!tokenAddress) {
+          throw new Error(`Token ${token} not supported for direct transfer on this chain yet.`);
+        }
+
+        const decimals = (token === 'USDT' || token === 'USDC') ? 6 : 18;
+        const amountRaw = parseUnits(amount, decimals);
+
+        txHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: wallet.address,
+            to: tokenAddress,
+            data: encodeFunctionData({
+              abi: ERC20_ABI,
+              functionName: 'transfer',
+              args: [walletAddress as `0x${string}`, amountRaw],
+            }),
+          }],
+        });
+      }
+
+      console.log('[CRYPTO CASHOUT] Tx Hash:', txHash);
       setStatus('success');
-    }, 2500);
+    } catch (err: any) {
+      console.error('[CRYPTO CASHOUT] Failed:', err);
+      setError(err.message || 'Transaction failed');
+      setStatus('idle');
+    }
   };
 
   const isCeloNative = token === 'CELO' || token === 'CUSD';
@@ -40,7 +115,9 @@ function CryptoCashOutContent() {
 
   const selectedNetwork = networks.find((n) => n.id === network)?.name || 'Choose network';
 
-  const availableBalance = '874';
+  const availableBalance = dbUser && (dbUser as any).walletBalance
+    ? new Decimal((dbUser as any).walletBalance.toString()).toFixed(2)
+    : '0.00';
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -60,11 +137,19 @@ function CryptoCashOutContent() {
       <div className="flex-1 px-5 pt-8 pb-32">
         {/* Form Fields */}
         <div className="space-y-6">
-          {/* Cash out token info (optional: show which token is chosen) */}
+          {/* Cash out token info */}
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
             <img src={`/${token.toLowerCase()}.svg`} alt={token} className="w-8 h-8 rounded-full" />
             <span className="font-semibold text-[#1C1C1C]">Cashing out {token}</span>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-[12px] flex items-center gap-3">
+              <AlertCircle size={20} className="text-red-500 flex-shrink-0" />
+              <p className="text-red-600 text-[13px] font-medium leading-tight">{error}</p>
+            </div>
+          )}
 
           {/* Wallet address */}
           <div>
@@ -197,7 +282,8 @@ function CryptoCashOutContent() {
             color: '#F8F8FF',
             lineHeight: '100%',
           }}
-          className="w-full bg-[#2261FE] flex items-center justify-center active:scale-[0.98] transition-transform shadow-lg shadow-blue-200/50"
+          className="w-full bg-[#2261FE] flex items-center justify-center active:scale-[0.98] transition-transform shadow-lg shadow-blue-200/50 disabled:opacity-50"
+          disabled={!walletAddress || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > parseFloat(availableBalance)}
           onClick={() => setIsConfirmOpen(true)}
         >
           Confirm & Send
@@ -262,13 +348,13 @@ function CryptoCashOutContent() {
 
                 <div className="flex items-center justify-between">
                   <span className="text-[#888888] text-[14px] font-medium">Processing fee</span>
-                  <span className="text-[#1C1C1C] text-[14px] font-semibold">1.0%</span>
+                  <span className="text-[#1C1C1C] text-[14px] font-semibold">0.00%</span>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-gray-50">
                   <span className="text-[#888888] text-[14px] font-medium">Recipient gets</span>
                   <span className="text-[#1C1C1C] text-[15px] font-bold">
-                    ${amount ? (parseFloat(amount) * 0.99).toFixed(2) : '0.00'}
+                    ${amount ? parseFloat(amount).toFixed(2) : '0.00'}
                   </span>
                 </div>
               </div>
