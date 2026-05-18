@@ -19,7 +19,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const wholesaleResp = await PayoutService.fetchRate(network, source as string, destination as string, (amount as string) || '1');
+    // Always fetch rate using a stable reference amount to avoid Paycrest 404s
+    // for amounts outside provider liquidity range (e.g. 0.40, 0, 10000+).
+    // The per-unit rate is returned and the UI multiplies by the user's amount.
+    const RATE_REFERENCE_AMOUNT = '1';
+    const wholesaleResp = await PayoutService.fetchRate(network, source as string, destination as string, RATE_REFERENCE_AMOUNT);
 
     if (!wholesaleResp.success || !wholesaleResp.rate) {
       return NextResponse.json(
