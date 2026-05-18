@@ -12,13 +12,14 @@ export async function GET(req: NextRequest) {
   const source = searchParams.get('source');
   const destination = searchParams.get('destination');
   const amount = searchParams.get('amount');
+  const network = searchParams.get('network') || 'base';
 
   if (!source || !destination) {
     return NextResponse.json({ error: 'Source and destination currencies required' }, { status: 400 });
   }
 
   try {
-    const wholesaleResp = await PayoutService.fetchRate(source as string, destination as string, (amount as string) || '1');
+    const wholesaleResp = await PayoutService.fetchRate(network, source as string, destination as string, (amount as string) || '1');
 
     if (!wholesaleResp.success || !wholesaleResp.rate) {
       return NextResponse.json(
