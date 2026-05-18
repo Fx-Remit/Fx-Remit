@@ -175,10 +175,28 @@ export class TransactionService {
 
   /**
    * Update transaction status from Paycrest webhook events.
+   * Gated by a state machine to prevent out-of-order webhooks from overwriting terminal states.
    */
   static async updateFromPaycrest(externalId: string, status: Status) {
-    return await prisma.transaction.updateMany({
+    const tx = await prisma.transaction.findUnique({
       where: { externalId },
+    });
+
+    if (!tx) {
+      console.warn(`[TransactionService] No transaction found for Paycrest ID: ${externalId}`);
+      return null;
+    }
+
+    // Terminal states: COMPLETED and FAILED cannot be transitioned out of.
+    if (tx.status === "COMPLETED" || tx.status === "FAILED") {
+      console.log(
+        `[TransactionService] Transaction #${tx.orderId.toString()} is already in terminal state [${tx.status}]. Ignoring transition to [${status}].`
+      );
+      return tx;
+    }
+
+    return await prisma.transaction.update({
+      where: { id: tx.id },
       data: {
         status,
         updatedAt: new Date(),
