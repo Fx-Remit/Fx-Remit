@@ -33,7 +33,7 @@ export default function BankCashOutPage() {
   const debouncedAmount = useDebounce(amountInput, 500);
   
   const [token, setToken] = useState('USDT');
-  const [currency, setCurrency] = useState('');
+  const [currency, setCurrency] = useState('NGN');
   
   const [isTokenSheetOpen, setIsTokenSheetOpen] = useState(false);
   const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
@@ -41,7 +41,9 @@ export default function BankCashOutPage() {
   const [paymentType, setPaymentType] = useState<'bank' | 'mobile'>('bank');
 
   const { profile: dbUser } = useUserStore();
-  const availableBalance = '0';
+  const availableBalance = dbUser && (dbUser as any).walletBalance
+    ? new Decimal((dbUser as any).walletBalance.toString()).toFixed(2)
+    : '0.00';
 
   // For tiered wholesale rates, we pass the send amount if available, otherwise fallback to 1 unit.
   const queryAmount = lastEdited === 'send' && debouncedAmount ? debouncedAmount : '1';
@@ -164,7 +166,9 @@ export default function BankCashOutPage() {
         <div className="space-y-4 px-2 w-full max-w-[389px]">
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[15px] font-medium">Fees</span>
-            <span className="text-[#1C1C1C] text-[15px] font-bold">1.0%</span>
+            <span className="text-[#1C1C1C] text-[15px] font-bold">
+              {quote?.spread_bps ? `${(quote.spread_bps / 100).toFixed(2)}%` : '0.75%'}
+            </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[15px] font-medium">Exchange rate</span>
@@ -310,6 +314,9 @@ export default function BankCashOutPage() {
                 receive: receiveAmount || '0',
                 token: token,
                 currency: currency || 'Choose currency',
+                rate: rate?.toString() || '0',
+                wholesaleRate: quote?.wholesale_rate?.toString() || '0',
+                spread: quote?.spread_bps?.toString() || '75',
               });
               router.push(`/cash-out/bank/add?${params.toString()}`);
             }}
