@@ -2,7 +2,7 @@ import { prisma } from '@fx-remit/database';
 import { PaycrestClient } from './paycrest.client';
 
 export class PayoutService {
-  private static API_KEY = process.env.NEXT_PUBLIC_PAYCREST_API_KEY!;
+  private static API_KEY = process.env.PAYCREST_API_KEY || process.env.NEXT_PUBLIC_PAYCREST_API_KEY!;
 
   private static client = new PaycrestClient(this.API_KEY);
 
