@@ -92,9 +92,9 @@ export class PayoutService {
   /**
    * Fetches latest rates for the UI/quoting.
    */
-  static async fetchRate(source: string, destination: string, amount: string = '1') {
+  static async fetchRate(network: string, source: string, destination: string, amount: string = '1') {
     try {
-      const rate = await this.client.getRate(source, amount, destination);
+      const rate = await this.client.getRate(network, source, amount, destination);
       return { success: true, rate };
     } catch (error: any) {
       return { 

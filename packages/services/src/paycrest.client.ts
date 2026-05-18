@@ -40,6 +40,7 @@ export class PaycrestClient {
 
     this.client = axios.create({
       baseURL,
+      timeout: 10000, // 10-second timeout to prevent hangs
       headers: {
         "API-Key": apiKey,
         "Content-Type": "application/json",
@@ -84,16 +85,17 @@ export class PaycrestClient {
 
   /**
    * Fetches the current exchange rate for a currency pair (v2 format).
-   * Pattern: /rates/{token}/{amount}/{fiat}
+   * Pattern: /rates/{network}/{token}/{amount}/{fiat}
    */
   public async getRate(
+    network: string,
     sourceCurrency: string,
     amount: string,
     destinationCurrency: string,
   ): Promise<PaycrestRate> {
     try {
       const response = await this.client.get(
-        `/rates/${sourceCurrency}/${amount}/${destinationCurrency}`,
+        `/rates/${network.toLowerCase()}/${sourceCurrency}/${amount}/${destinationCurrency}`,
       );
       return {
         source_currency: sourceCurrency,
