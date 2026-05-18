@@ -39,12 +39,12 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 7.8.0
- * Query Engine version: 3c6e192761c0362d496ed980de936e2f3cebcd3a
+ * Prisma Client JS version: 7.6.0
+ * Query Engine version: 75cbdc1eb7150937890ad5465d861175c6624711
  */
 Prisma.prismaVersion = {
-  client: "7.8.0",
-  engine: "3c6e192761c0362d496ed980de936e2f3cebcd3a"
+  client: "7.6.0",
+  engine: "75cbdc1eb7150937890ad5465d861175c6624711"
 }
 
 Prisma.PrismaClientKnownRequestError = PrismaClientKnownRequestError;
@@ -167,8 +167,8 @@ exports.Prisma.ModelName = {
  */
 const config = {
   "previewFeatures": [],
-  "clientVersion": "7.8.0",
-  "engineVersion": "3c6e192761c0362d496ed980de936e2f3cebcd3a",
+  "clientVersion": "7.6.0",
+  "engineVersion": "75cbdc1eb7150937890ad5465d861175c6624711",
   "activeProvider": "postgresql",
   "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../generated-client\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n\nmodel User {\n  id               String        @id @default(uuid())\n  privyDid         String        @unique @map(\"privy_did\")\n  walletAddress    String?       @unique @map(\"wallet_address\")\n  fullName         String?       @map(\"full_name\")\n  email            String?       @unique\n  avatarUrl        String?       @map(\"avatar_url\")\n  totalSentUsd     Decimal       @default(0.0) @map(\"total_sent_usd\") @db.Decimal(36, 18)\n  transactionCount Int           @default(0) @map(\"transaction_count\")\n  createdAt        DateTime      @default(now()) @map(\"created_at\")\n  updatedAt        DateTime      @updatedAt @map(\"updated_at\")\n  displayName      String?       @map(\"display_name\")\n  lastLoginAt      DateTime?     @map(\"last_login_at\")\n  walletBalance    Decimal       @default(0.0) @map(\"wallet_balance\") @db.Decimal(36, 18)\n  transactions     Transaction[]\n\n  @@map(\"users\")\n}\n\nmodel Transaction {\n  id            String          @id @default(uuid())\n  userId        String          @map(\"user_id\")\n  orderId       BigInt          @map(\"order_id\")\n  txHash        String          @unique @map(\"tx_hash\")\n  sourceToken   String          @map(\"source_token\")\n  amountUsd     Decimal         @map(\"amount_usd\") @db.Decimal(36, 18)\n  payoutFiat    Decimal         @map(\"payout_fiat\") @db.Decimal(36, 18)\n  status        Status          @default(PENDING)\n  recipientName String?         @map(\"recipient_name\")\n  recipientBank String?         @map(\"recipient_bank\")\n  recipientAcc  String?         @map(\"recipient_acc\")\n  createdAt     DateTime        @default(now()) @map(\"created_at\")\n  blockNumber   BigInt          @map(\"block_number\")\n  chainId       Int             @map(\"chain_id\")\n  externalId    String?         @unique @map(\"external_id\")\n  logIndex      Int             @map(\"log_index\")\n  updatedAt     DateTime        @updatedAt @map(\"updated_at\")\n  type          TransactionType @default(REMITTANCE)\n  user          User            @relation(fields: [userId], references: [id])\n\n  @@unique([chainId, blockNumber, logIndex])\n  @@unique([orderId, chainId])\n  @@map(\"transactions\")\n}\n\nenum TransactionType {\n  DEPOSIT\n  REMITTANCE\n}\n\nenum Status {\n  PENDING\n  VERIFIED\n  COMPLETED\n  FAILED\n  PROCESSING\n  REFUNDING\n  REFUND_REQUIRED\n}\n"
 }

@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronDown, Search, X, CheckCircle2, Loader2 } from 'luci
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { usePrivy } from '@privy-io/react-auth';
 
 function AddAccountForm() {
   const router = useRouter();
@@ -13,6 +14,7 @@ function AddAccountForm() {
   const receive = searchParams.get('receive') || '0';
   const token = searchParams.get('token') || 'USDT';
   const currency = searchParams.get('currency') || 'NGN';
+  const { getAccessToken } = usePrivy();
 
   // Form states
   const [accountNumber, setAccountNumber] = useState('');
@@ -28,7 +30,12 @@ function AddAccountForm() {
   const { data: institutionsData } = useQuery({
     queryKey: ['institutions', currency],
     queryFn: async () => {
-      const res = await fetch(`/api/paycrest/institutions?country=${currency === 'NGN' ? 'NG' : 'KE'}`);
+      const accessToken = await getAccessToken();
+      const res = await fetch(`/api/paycrest/institutions?country=${currency === 'NGN' ? 'NG' : 'KE'}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
       const data = await res.json();
       return data.success ? data.institutions : [];
     },
@@ -40,8 +47,13 @@ function AddAccountForm() {
   const { data: verifyData, isFetching: isVerifying } = useQuery({
     queryKey: ['verify-account', accountNumber, bankCode, currency],
     queryFn: async () => {
+      const accessToken = await getAccessToken();
       const res = await fetch('/api/paycrest/verify-account', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({ accountNumber, bankCode, countryCode: currency === 'NGN' ? 'NG' : 'KE' })
       });
       const data = await res.json();
