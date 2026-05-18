@@ -9,9 +9,8 @@ export interface PaycrestRate {
 }
 
 export interface VerifyAccountParams {
-  account_number: string;
-  bank_code: string;
-  country_code: string;
+  Institution: string;
+  AccountIdentifier: string;
 }
 
 export interface PaycrestOrderResult {
@@ -134,9 +133,14 @@ export class PaycrestClient {
   /**
    * Verifies a bank account or mobile wallet.
    */
-  public async verifyAccount(params: any) {
+  public async verifyAccount(params: VerifyAccountParams) {
     try {
-      const response = await this.client.post("/verify-account", params);
+      // Paycrest v2 requires PascalCase field names
+      const response = await this.client.post("/verify-account", {
+        Institution: params.Institution,
+        AccountIdentifier: params.AccountIdentifier,
+      });
+      // Paycrest returns account_name as a plain string in data field
       return response.data.data || response.data;
     } catch (error) {
       this.handleError(error);
@@ -156,11 +160,32 @@ export class PaycrestClient {
   }
 
   /**
-   * Creates a payment order .
+   * Creates a payment order (Paycrest v2 - PascalCase required).
    */
   public async createOrder(orderData: any): Promise<PaycrestOrderResult> {
     try {
-      const response = await this.client.post("/sender/orders", orderData);
+      // Paycrest v2 requires all field names in PascalCase
+      const payload = {
+        Amount: orderData.amount,
+        Source: {
+          Type: orderData.source?.type,
+          Currency: orderData.source?.currency,
+          Network: orderData.source?.network,
+          RefundAddress: orderData.source?.refundAddress,
+        },
+        Destination: {
+          Type: orderData.destination?.type,
+          Currency: orderData.destination?.currency,
+          Recipient: {
+            Institution: orderData.destination?.recipient?.institution,
+            AccountIdentifier: orderData.destination?.recipient?.accountIdentifier,
+            AccountName: orderData.destination?.recipient?.accountName,
+            Memo: orderData.destination?.recipient?.memo,
+          },
+        },
+        Reference: orderData.reference,
+      };
+      const response = await this.client.post("/sender/orders", payload);
       return response.data.data || response.data;
     } catch (error) {
       this.handleError(error);
