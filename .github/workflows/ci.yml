@@ -61,7 +61,7 @@ jobs:
       - name: Type-Check
         run: pnpm turbo type-check
 
-  stellar-test:
+  services-test:
     needs: setup
     runs-on: ubuntu-latest
     steps:
@@ -77,11 +77,11 @@ jobs:
           node-version: 20
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
-      - name: Stellar unit tests
+      - name: Services unit tests (EVM + Stellar)
         run: pnpm --filter @fx-remit/services test
 
   build:
-    needs: [type-check, stellar-test]
+    needs: [type-check, services-test]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
