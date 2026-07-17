@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   NODE_ENV: test
   DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres" # Build-time mock
@@ -80,8 +83,54 @@ jobs:
       - name: Services unit tests (EVM + Stellar)
         run: pnpm --filter @fx-remit/services test
 
+  pwa-test:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Build services package
+        run: pnpm --filter @fx-remit/services build
+      - name: PWA API route unit tests
+        run: pnpm --filter @fx-remit/pwa test
+
+  contracts-test:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+      - name: Install forge-std
+        working-directory: packages/contracts
+        run: forge install foundry-rs/forge-std --no-git --shallow
+      - name: Forge test
+        working-directory: packages/contracts
+        run: forge test
+
   build:
-    needs: [type-check, services-test]
+    needs: [type-check, services-test, pwa-test, contracts-test]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
