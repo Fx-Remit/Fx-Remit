@@ -41,7 +41,7 @@ export class Sep38Client {
    * Falls back to best matching SEP-38 price row for the fiat asset code.
    */
   async getWholesaleQuote(params: Sep38QuoteParams): Promise<StellarWholesaleQuote> {
-    const { anchor, sellAmount, destinationFiat, authToken } = params;
+    const { anchor, destinationFiat, authToken } = params;
     const quoteServer = await this.getQuoteServer(anchor);
     const sellAsset = `stellar:${anchor.usdcAssetCode}:${anchor.usdcIssuer}`;
     const prices = await this.fetchPrices(quoteServer, sellAsset, authToken);
