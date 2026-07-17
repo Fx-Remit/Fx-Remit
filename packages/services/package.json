@@ -9,7 +9,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "type-check": "tsc --noEmit",
-    "test": "node --import tsx --test src/stellar/__tests__/**/*.test.ts",
+    "test": "node --import tsx --test src/stellar/__tests__/sep10.client.test.ts src/stellar/__tests__/sep24.client.test.ts src/stellar/__tests__/sep38.client.test.ts src/stellar/__tests__/anchor-toml.test.ts src/stellar/__tests__/anchors.config.test.ts",
     "stellar:sep10-test": "node --import tsx src/stellar/scripts/sep10-testnet.ts",
     "stellar:sep24-test": "node --import tsx src/stellar/scripts/sep24-testnet.ts"
   },
