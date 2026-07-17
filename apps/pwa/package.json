@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "test": "pnpm --filter @fx-remit/services exec node --import tsx --test ../../apps/pwa/src/app/api/quote/route.test.ts"
+    "test": "pnpm --filter @fx-remit/services exec node --import tsx --test ../../apps/pwa/src/app/api/quote/route.test.ts ../../apps/pwa/src/app/api/paycrest/webhook/route.test.ts ../../apps/pwa/src/app/api/indexer/webhook/route.test.ts ../../apps/pwa/src/app/api/privy/webhook/route.test.ts ../../apps/pwa/src/app/api/alchemy/webhook/route.test.ts ../../apps/pwa/src/app/api/cron/reconcile/route.test.ts"
   },
   "dependencies": {
     "@fx-remit/database": "workspace:*",
