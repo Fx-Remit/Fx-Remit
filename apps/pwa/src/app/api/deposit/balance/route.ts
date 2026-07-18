@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     }
 
     // Catch up ledger from chain before reporting spendable balance
+    const syncFailures: number[] = [];
     for (const chainId of DEPOSIT_CHAIN_IDS) {
       try {
         await DepositService.syncWalletDeposits({
@@ -45,6 +46,7 @@ export async function GET(req: Request) {
         });
       } catch (err) {
         console.warn(`[deposit/balance] sync ${chainId} failed`, err);
+        syncFailures.push(chainId);
       }
     }
 
@@ -53,8 +55,13 @@ export async function GET(req: Request) {
       select: { walletBalance: true },
     });
 
+    if (!refreshed) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
     const live = await DepositService.getLiveBalances(user.walletAddress);
-    const ledgerUsd = Number(refreshed?.walletBalance?.toString() || 0);
+    const ledgerUsd = Number(refreshed.walletBalance.toString());
+    const syncComplete = syncFailures.length === 0;
 
     return NextResponse.json({
       success: true,
@@ -64,6 +71,9 @@ export async function GET(req: Request) {
       /** Spendable balance used for cash-out / home display */
       displayUsd: ledgerUsd,
       perChain: live.perChain,
+      /** False when one or more chain syncs failed — ledger may be stale */
+      syncComplete,
+      syncFailures,
     });
   } catch (error) {
     console.error('[deposit/balance]', error);

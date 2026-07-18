@@ -83,4 +83,44 @@ describe('TransactionService.creditInboundDeposit', () => {
     assert.equal(result.created, false);
     assert.equal(result.transaction.id, 'raced');
   });
+
+  it('does not credit balance on P2002 when raced row is returned', async () => {
+    prisma.user.findFirst = mock.fn(async () => ({
+      id: 'u1',
+      walletAddress: '0xabc',
+    })) as any;
+    let finds = 0;
+    prisma.transaction.findUnique = mock.fn(async () => {
+      finds += 1;
+      if (finds <= 2) return null;
+      return { id: 'raced', txHash: '0xhash', logIndex: 1 };
+    }) as any;
+    let balanceIncrements = 0;
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      // Simulate losing the race: create would throw P2002 before increment.
+      // Interactive txn never commits prove catch path does not increment.
+      const err: any = new Error('Unique constraint');
+      err.code = 'P2002';
+      throw err;
+    }) as any;
+    const userUpdate = mock.fn(async () => {
+      balanceIncrements += 1;
+    });
+    // Ensure no stray user.update on prisma root either
+    (prisma as any).user.update = userUpdate;
+
+    const result = await TransactionService.creditInboundDeposit({
+      walletAddress: '0xabc',
+      txHash: '0xhash',
+      chainId: 8453,
+      blockNumber: 50n,
+      logIndex: 1,
+      sourceToken: 'USDC',
+      amountUsd: '5',
+    });
+
+    assert.equal(result.created, false);
+    assert.equal(balanceIncrements, 0);
+    assert.equal(userUpdate.mock.callCount(), 0);
+  });
 });

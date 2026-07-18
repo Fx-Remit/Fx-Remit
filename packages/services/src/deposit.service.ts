@@ -186,11 +186,20 @@ export class DepositService {
         continue;
       }
 
-      const logIndexRaw = item.log?.logIndex ?? item.log?.index ?? 0;
+      const logIndexRaw = item.log?.logIndex ?? item.log?.index;
+      if (logIndexRaw === undefined || logIndexRaw === null) {
+        // Cannot safely credit without a log index (unique key component)
+        skipped += 1;
+        continue;
+      }
       const logIndex =
         typeof logIndexRaw === 'string'
-          ? Number.parseInt(logIndexRaw, 16) || 0
-          : Number(logIndexRaw) || 0;
+          ? Number.parseInt(logIndexRaw, 16)
+          : Number(logIndexRaw);
+      if (!Number.isFinite(logIndex)) {
+        skipped += 1;
+        continue;
+      }
 
       const transfer: AlchemyTransfer = {
         hash: item.hash,
@@ -258,12 +267,22 @@ export class DepositService {
     if (amount < 0.01) return 'skipped';
 
     const blockNumber = BigInt(transfer.blockNum);
-    // Derive stable log index from Alchemy uniqueId when present (…:log:N)
-    let logIndex = params.logIndex ?? 0;
-    if (params.logIndex === undefined && transfer.uniqueId?.includes(':log:')) {
+    // Derive stable log index from Alchemy uniqueId when present (…:log:N).
+    // Never invent 0 — it collapses distinct logs onto one unique key.
+    let logIndex: number | undefined =
+      params.logIndex !== undefined && Number.isFinite(params.logIndex)
+        ? params.logIndex
+        : undefined;
+    if (logIndex === undefined && transfer.uniqueId?.includes(':log:')) {
       const part = transfer.uniqueId.split(':log:')[1];
       const parsed = Number.parseInt(part, 10);
       if (!Number.isNaN(parsed)) logIndex = parsed;
+    }
+    if (logIndex === undefined) {
+      console.warn(
+        `[DepositService] skip credit — missing logIndex for ${transfer.hash}`,
+      );
+      return 'skipped';
     }
 
     const result = await TransactionService.creditInboundDeposit({
