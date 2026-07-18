@@ -28,7 +28,15 @@ export type Transaction = $Result.DefaultSelection<Prisma.$TransactionPayload>
  * Enums
  */
 export namespace $Enums {
-  export const TransactionType: {
+  export const RemittanceRail: {
+  EVM: 'EVM',
+  STELLAR: 'STELLAR'
+};
+
+export type RemittanceRail = (typeof RemittanceRail)[keyof typeof RemittanceRail]
+
+
+export const TransactionType: {
   DEPOSIT: 'DEPOSIT',
   REMITTANCE: 'REMITTANCE'
 };
@@ -49,6 +57,10 @@ export const Status: {
 export type Status = (typeof Status)[keyof typeof Status]
 
 }
+
+export type RemittanceRail = $Enums.RemittanceRail
+
+export const RemittanceRail: typeof $Enums.RemittanceRail
 
 export type TransactionType = $Enums.TransactionType
 
@@ -1049,6 +1061,7 @@ export namespace Prisma {
     id: string | null
     privyDid: string | null
     walletAddress: string | null
+    stellarPublicKey: string | null
     fullName: string | null
     email: string | null
     avatarUrl: string | null
@@ -1065,6 +1078,7 @@ export namespace Prisma {
     id: string | null
     privyDid: string | null
     walletAddress: string | null
+    stellarPublicKey: string | null
     fullName: string | null
     email: string | null
     avatarUrl: string | null
@@ -1081,6 +1095,7 @@ export namespace Prisma {
     id: number
     privyDid: number
     walletAddress: number
+    stellarPublicKey: number
     fullName: number
     email: number
     avatarUrl: number
@@ -1111,6 +1126,7 @@ export namespace Prisma {
     id?: true
     privyDid?: true
     walletAddress?: true
+    stellarPublicKey?: true
     fullName?: true
     email?: true
     avatarUrl?: true
@@ -1127,6 +1143,7 @@ export namespace Prisma {
     id?: true
     privyDid?: true
     walletAddress?: true
+    stellarPublicKey?: true
     fullName?: true
     email?: true
     avatarUrl?: true
@@ -1143,6 +1160,7 @@ export namespace Prisma {
     id?: true
     privyDid?: true
     walletAddress?: true
+    stellarPublicKey?: true
     fullName?: true
     email?: true
     avatarUrl?: true
@@ -1246,6 +1264,7 @@ export namespace Prisma {
     id: string
     privyDid: string
     walletAddress: string | null
+    stellarPublicKey: string | null
     fullName: string | null
     email: string | null
     avatarUrl: string | null
@@ -1281,6 +1300,7 @@ export namespace Prisma {
     id?: boolean
     privyDid?: boolean
     walletAddress?: boolean
+    stellarPublicKey?: boolean
     fullName?: boolean
     email?: boolean
     avatarUrl?: boolean
@@ -1299,6 +1319,7 @@ export namespace Prisma {
     id?: boolean
     privyDid?: boolean
     walletAddress?: boolean
+    stellarPublicKey?: boolean
     fullName?: boolean
     email?: boolean
     avatarUrl?: boolean
@@ -1315,6 +1336,7 @@ export namespace Prisma {
     id?: boolean
     privyDid?: boolean
     walletAddress?: boolean
+    stellarPublicKey?: boolean
     fullName?: boolean
     email?: boolean
     avatarUrl?: boolean
@@ -1331,6 +1353,7 @@ export namespace Prisma {
     id?: boolean
     privyDid?: boolean
     walletAddress?: boolean
+    stellarPublicKey?: boolean
     fullName?: boolean
     email?: boolean
     avatarUrl?: boolean
@@ -1343,7 +1366,7 @@ export namespace Prisma {
     walletBalance?: boolean
   }
 
-  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "privyDid" | "walletAddress" | "fullName" | "email" | "avatarUrl" | "totalSentUsd" | "transactionCount" | "createdAt" | "updatedAt" | "displayName" | "lastLoginAt" | "walletBalance", ExtArgs["result"]["user"]>
+  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "privyDid" | "walletAddress" | "stellarPublicKey" | "fullName" | "email" | "avatarUrl" | "totalSentUsd" | "transactionCount" | "createdAt" | "updatedAt" | "displayName" | "lastLoginAt" | "walletBalance", ExtArgs["result"]["user"]>
   export type UserInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     transactions?: boolean | User$transactionsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
@@ -1360,6 +1383,7 @@ export namespace Prisma {
       id: string
       privyDid: string
       walletAddress: string | null
+      stellarPublicKey: string | null
       fullName: string | null
       email: string | null
       avatarUrl: string | null
@@ -1797,6 +1821,7 @@ export namespace Prisma {
     readonly id: FieldRef<"User", 'String'>
     readonly privyDid: FieldRef<"User", 'String'>
     readonly walletAddress: FieldRef<"User", 'String'>
+    readonly stellarPublicKey: FieldRef<"User", 'String'>
     readonly fullName: FieldRef<"User", 'String'>
     readonly email: FieldRef<"User", 'String'>
     readonly avatarUrl: FieldRef<"User", 'String'>
@@ -2277,6 +2302,10 @@ export namespace Prisma {
     userId: string | null
     orderId: bigint | null
     txHash: string | null
+    rail: $Enums.RemittanceRail | null
+    stellarPaymentHash: string | null
+    anchorTransactionId: string | null
+    corridor: string | null
     sourceToken: string | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
@@ -2298,6 +2327,10 @@ export namespace Prisma {
     userId: string | null
     orderId: bigint | null
     txHash: string | null
+    rail: $Enums.RemittanceRail | null
+    stellarPaymentHash: string | null
+    anchorTransactionId: string | null
+    corridor: string | null
     sourceToken: string | null
     amountUsd: Decimal | null
     payoutFiat: Decimal | null
@@ -2319,6 +2352,10 @@ export namespace Prisma {
     userId: number
     orderId: number
     txHash: number
+    rail: number
+    stellarPaymentHash: number
+    anchorTransactionId: number
+    corridor: number
     sourceToken: number
     amountUsd: number
     payoutFiat: number
@@ -2360,6 +2397,10 @@ export namespace Prisma {
     userId?: true
     orderId?: true
     txHash?: true
+    rail?: true
+    stellarPaymentHash?: true
+    anchorTransactionId?: true
+    corridor?: true
     sourceToken?: true
     amountUsd?: true
     payoutFiat?: true
@@ -2381,6 +2422,10 @@ export namespace Prisma {
     userId?: true
     orderId?: true
     txHash?: true
+    rail?: true
+    stellarPaymentHash?: true
+    anchorTransactionId?: true
+    corridor?: true
     sourceToken?: true
     amountUsd?: true
     payoutFiat?: true
@@ -2402,6 +2447,10 @@ export namespace Prisma {
     userId?: true
     orderId?: true
     txHash?: true
+    rail?: true
+    stellarPaymentHash?: true
+    anchorTransactionId?: true
+    corridor?: true
     sourceToken?: true
     amountUsd?: true
     payoutFiat?: true
@@ -2510,6 +2559,10 @@ export namespace Prisma {
     userId: string
     orderId: bigint
     txHash: string
+    rail: $Enums.RemittanceRail
+    stellarPaymentHash: string | null
+    anchorTransactionId: string | null
+    corridor: string | null
     sourceToken: string
     amountUsd: Decimal
     payoutFiat: Decimal
@@ -2550,6 +2603,10 @@ export namespace Prisma {
     userId?: boolean
     orderId?: boolean
     txHash?: boolean
+    rail?: boolean
+    stellarPaymentHash?: boolean
+    anchorTransactionId?: boolean
+    corridor?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
@@ -2572,6 +2629,10 @@ export namespace Prisma {
     userId?: boolean
     orderId?: boolean
     txHash?: boolean
+    rail?: boolean
+    stellarPaymentHash?: boolean
+    anchorTransactionId?: boolean
+    corridor?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
@@ -2594,6 +2655,10 @@ export namespace Prisma {
     userId?: boolean
     orderId?: boolean
     txHash?: boolean
+    rail?: boolean
+    stellarPaymentHash?: boolean
+    anchorTransactionId?: boolean
+    corridor?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
@@ -2616,6 +2681,10 @@ export namespace Prisma {
     userId?: boolean
     orderId?: boolean
     txHash?: boolean
+    rail?: boolean
+    stellarPaymentHash?: boolean
+    anchorTransactionId?: boolean
+    corridor?: boolean
     sourceToken?: boolean
     amountUsd?: boolean
     payoutFiat?: boolean
@@ -2632,7 +2701,7 @@ export namespace Prisma {
     type?: boolean
   }
 
-  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type", ExtArgs["result"]["transaction"]>
+  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "rail" | "stellarPaymentHash" | "anchorTransactionId" | "corridor" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type", ExtArgs["result"]["transaction"]>
   export type TransactionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     user?: boolean | UserDefaultArgs<ExtArgs>
   }
@@ -2653,6 +2722,10 @@ export namespace Prisma {
       userId: string
       orderId: bigint
       txHash: string
+      rail: $Enums.RemittanceRail
+      stellarPaymentHash: string | null
+      anchorTransactionId: string | null
+      corridor: string | null
       sourceToken: string
       amountUsd: Prisma.Decimal
       payoutFiat: Prisma.Decimal
@@ -3095,6 +3168,10 @@ export namespace Prisma {
     readonly userId: FieldRef<"Transaction", 'String'>
     readonly orderId: FieldRef<"Transaction", 'BigInt'>
     readonly txHash: FieldRef<"Transaction", 'String'>
+    readonly rail: FieldRef<"Transaction", 'RemittanceRail'>
+    readonly stellarPaymentHash: FieldRef<"Transaction", 'String'>
+    readonly anchorTransactionId: FieldRef<"Transaction", 'String'>
+    readonly corridor: FieldRef<"Transaction", 'String'>
     readonly sourceToken: FieldRef<"Transaction", 'String'>
     readonly amountUsd: FieldRef<"Transaction", 'Decimal'>
     readonly payoutFiat: FieldRef<"Transaction", 'Decimal'>
@@ -3546,6 +3623,7 @@ export namespace Prisma {
     id: 'id',
     privyDid: 'privyDid',
     walletAddress: 'walletAddress',
+    stellarPublicKey: 'stellarPublicKey',
     fullName: 'fullName',
     email: 'email',
     avatarUrl: 'avatarUrl',
@@ -3566,6 +3644,10 @@ export namespace Prisma {
     userId: 'userId',
     orderId: 'orderId',
     txHash: 'txHash',
+    rail: 'rail',
+    stellarPaymentHash: 'stellarPaymentHash',
+    anchorTransactionId: 'anchorTransactionId',
+    corridor: 'corridor',
     sourceToken: 'sourceToken',
     amountUsd: 'amountUsd',
     payoutFiat: 'payoutFiat',
@@ -3685,6 +3767,20 @@ export namespace Prisma {
 
 
   /**
+   * Reference to a field of type 'RemittanceRail'
+   */
+  export type EnumRemittanceRailFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'RemittanceRail'>
+    
+
+
+  /**
+   * Reference to a field of type 'RemittanceRail[]'
+   */
+  export type ListEnumRemittanceRailFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'RemittanceRail[]'>
+    
+
+
+  /**
    * Reference to a field of type 'Status'
    */
   export type EnumStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Status'>
@@ -3736,6 +3832,7 @@ export namespace Prisma {
     id?: StringFilter<"User"> | string
     privyDid?: StringFilter<"User"> | string
     walletAddress?: StringNullableFilter<"User"> | string | null
+    stellarPublicKey?: StringNullableFilter<"User"> | string | null
     fullName?: StringNullableFilter<"User"> | string | null
     email?: StringNullableFilter<"User"> | string | null
     avatarUrl?: StringNullableFilter<"User"> | string | null
@@ -3753,6 +3850,7 @@ export namespace Prisma {
     id?: SortOrder
     privyDid?: SortOrder
     walletAddress?: SortOrderInput | SortOrder
+    stellarPublicKey?: SortOrderInput | SortOrder
     fullName?: SortOrderInput | SortOrder
     email?: SortOrderInput | SortOrder
     avatarUrl?: SortOrderInput | SortOrder
@@ -3770,6 +3868,7 @@ export namespace Prisma {
     id?: string
     privyDid?: string
     walletAddress?: string
+    stellarPublicKey?: string
     email?: string
     AND?: UserWhereInput | UserWhereInput[]
     OR?: UserWhereInput[]
@@ -3784,12 +3883,13 @@ export namespace Prisma {
     lastLoginAt?: DateTimeNullableFilter<"User"> | Date | string | null
     walletBalance?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactions?: TransactionListRelationFilter
-  }, "id" | "privyDid" | "walletAddress" | "email">
+  }, "id" | "privyDid" | "walletAddress" | "stellarPublicKey" | "email">
 
   export type UserOrderByWithAggregationInput = {
     id?: SortOrder
     privyDid?: SortOrder
     walletAddress?: SortOrderInput | SortOrder
+    stellarPublicKey?: SortOrderInput | SortOrder
     fullName?: SortOrderInput | SortOrder
     email?: SortOrderInput | SortOrder
     avatarUrl?: SortOrderInput | SortOrder
@@ -3814,6 +3914,7 @@ export namespace Prisma {
     id?: StringWithAggregatesFilter<"User"> | string
     privyDid?: StringWithAggregatesFilter<"User"> | string
     walletAddress?: StringNullableWithAggregatesFilter<"User"> | string | null
+    stellarPublicKey?: StringNullableWithAggregatesFilter<"User"> | string | null
     fullName?: StringNullableWithAggregatesFilter<"User"> | string | null
     email?: StringNullableWithAggregatesFilter<"User"> | string | null
     avatarUrl?: StringNullableWithAggregatesFilter<"User"> | string | null
@@ -3834,6 +3935,10 @@ export namespace Prisma {
     userId?: StringFilter<"Transaction"> | string
     orderId?: BigIntFilter<"Transaction"> | bigint | number
     txHash?: StringFilter<"Transaction"> | string
+    rail?: EnumRemittanceRailFilter<"Transaction"> | $Enums.RemittanceRail
+    stellarPaymentHash?: StringNullableFilter<"Transaction"> | string | null
+    anchorTransactionId?: StringNullableFilter<"Transaction"> | string | null
+    corridor?: StringNullableFilter<"Transaction"> | string | null
     sourceToken?: StringFilter<"Transaction"> | string
     amountUsd?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
@@ -3856,6 +3961,10 @@ export namespace Prisma {
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    rail?: SortOrder
+    stellarPaymentHash?: SortOrderInput | SortOrder
+    anchorTransactionId?: SortOrderInput | SortOrder
+    corridor?: SortOrderInput | SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -3875,8 +3984,9 @@ export namespace Prisma {
 
   export type TransactionWhereUniqueInput = Prisma.AtLeast<{
     id?: string
-    txHash?: string
+    stellarPaymentHash?: string
     externalId?: string
+    txHash_logIndex?: TransactionTxHashLogIndexCompoundUniqueInput
     chainId_blockNumber_logIndex?: TransactionChainIdBlockNumberLogIndexCompoundUniqueInput
     orderId_chainId?: TransactionOrderIdChainIdCompoundUniqueInput
     AND?: TransactionWhereInput | TransactionWhereInput[]
@@ -3884,6 +3994,10 @@ export namespace Prisma {
     NOT?: TransactionWhereInput | TransactionWhereInput[]
     userId?: StringFilter<"Transaction"> | string
     orderId?: BigIntFilter<"Transaction"> | bigint | number
+    txHash?: StringFilter<"Transaction"> | string
+    rail?: EnumRemittanceRailFilter<"Transaction"> | $Enums.RemittanceRail
+    anchorTransactionId?: StringNullableFilter<"Transaction"> | string | null
+    corridor?: StringNullableFilter<"Transaction"> | string | null
     sourceToken?: StringFilter<"Transaction"> | string
     amountUsd?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
@@ -3898,13 +4012,17 @@ export namespace Prisma {
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
     type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
-  }, "id" | "txHash" | "externalId" | "chainId_blockNumber_logIndex" | "orderId_chainId">
+  }, "id" | "stellarPaymentHash" | "externalId" | "txHash_logIndex" | "chainId_blockNumber_logIndex" | "orderId_chainId">
 
   export type TransactionOrderByWithAggregationInput = {
     id?: SortOrder
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    rail?: SortOrder
+    stellarPaymentHash?: SortOrderInput | SortOrder
+    anchorTransactionId?: SortOrderInput | SortOrder
+    corridor?: SortOrderInput | SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -3934,6 +4052,10 @@ export namespace Prisma {
     userId?: StringWithAggregatesFilter<"Transaction"> | string
     orderId?: BigIntWithAggregatesFilter<"Transaction"> | bigint | number
     txHash?: StringWithAggregatesFilter<"Transaction"> | string
+    rail?: EnumRemittanceRailWithAggregatesFilter<"Transaction"> | $Enums.RemittanceRail
+    stellarPaymentHash?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    anchorTransactionId?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    corridor?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     sourceToken?: StringWithAggregatesFilter<"Transaction"> | string
     amountUsd?: DecimalWithAggregatesFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalWithAggregatesFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
@@ -3954,6 +4076,7 @@ export namespace Prisma {
     id?: string
     privyDid: string
     walletAddress?: string | null
+    stellarPublicKey?: string | null
     fullName?: string | null
     email?: string | null
     avatarUrl?: string | null
@@ -3971,6 +4094,7 @@ export namespace Prisma {
     id?: string
     privyDid: string
     walletAddress?: string | null
+    stellarPublicKey?: string | null
     fullName?: string | null
     email?: string | null
     avatarUrl?: string | null
@@ -3988,6 +4112,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
@@ -4005,6 +4130,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
@@ -4022,6 +4148,7 @@ export namespace Prisma {
     id?: string
     privyDid: string
     walletAddress?: string | null
+    stellarPublicKey?: string | null
     fullName?: string | null
     email?: string | null
     avatarUrl?: string | null
@@ -4038,6 +4165,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
@@ -4054,6 +4182,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
@@ -4070,6 +4199,10 @@ export namespace Prisma {
     id?: string
     orderId: bigint | number
     txHash: string
+    rail?: $Enums.RemittanceRail
+    stellarPaymentHash?: string | null
+    anchorTransactionId?: string | null
+    corridor?: string | null
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -4092,6 +4225,10 @@ export namespace Prisma {
     userId: string
     orderId: bigint | number
     txHash: string
+    rail?: $Enums.RemittanceRail
+    stellarPaymentHash?: string | null
+    anchorTransactionId?: string | null
+    corridor?: string | null
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -4112,6 +4249,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    rail?: EnumRemittanceRailFieldUpdateOperationsInput | $Enums.RemittanceRail
+    stellarPaymentHash?: NullableStringFieldUpdateOperationsInput | string | null
+    anchorTransactionId?: NullableStringFieldUpdateOperationsInput | string | null
+    corridor?: NullableStringFieldUpdateOperationsInput | string | null
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -4134,6 +4275,10 @@ export namespace Prisma {
     userId?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    rail?: EnumRemittanceRailFieldUpdateOperationsInput | $Enums.RemittanceRail
+    stellarPaymentHash?: NullableStringFieldUpdateOperationsInput | string | null
+    anchorTransactionId?: NullableStringFieldUpdateOperationsInput | string | null
+    corridor?: NullableStringFieldUpdateOperationsInput | string | null
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -4155,6 +4300,10 @@ export namespace Prisma {
     userId: string
     orderId: bigint | number
     txHash: string
+    rail?: $Enums.RemittanceRail
+    stellarPaymentHash?: string | null
+    anchorTransactionId?: string | null
+    corridor?: string | null
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -4175,6 +4324,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    rail?: EnumRemittanceRailFieldUpdateOperationsInput | $Enums.RemittanceRail
+    stellarPaymentHash?: NullableStringFieldUpdateOperationsInput | string | null
+    anchorTransactionId?: NullableStringFieldUpdateOperationsInput | string | null
+    corridor?: NullableStringFieldUpdateOperationsInput | string | null
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -4196,6 +4349,10 @@ export namespace Prisma {
     userId?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    rail?: EnumRemittanceRailFieldUpdateOperationsInput | $Enums.RemittanceRail
+    stellarPaymentHash?: NullableStringFieldUpdateOperationsInput | string | null
+    anchorTransactionId?: NullableStringFieldUpdateOperationsInput | string | null
+    corridor?: NullableStringFieldUpdateOperationsInput | string | null
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -4305,6 +4462,7 @@ export namespace Prisma {
     id?: SortOrder
     privyDid?: SortOrder
     walletAddress?: SortOrder
+    stellarPublicKey?: SortOrder
     fullName?: SortOrder
     email?: SortOrder
     avatarUrl?: SortOrder
@@ -4327,6 +4485,7 @@ export namespace Prisma {
     id?: SortOrder
     privyDid?: SortOrder
     walletAddress?: SortOrder
+    stellarPublicKey?: SortOrder
     fullName?: SortOrder
     email?: SortOrder
     avatarUrl?: SortOrder
@@ -4343,6 +4502,7 @@ export namespace Prisma {
     id?: SortOrder
     privyDid?: SortOrder
     walletAddress?: SortOrder
+    stellarPublicKey?: SortOrder
     fullName?: SortOrder
     email?: SortOrder
     avatarUrl?: SortOrder
@@ -4468,6 +4628,13 @@ export namespace Prisma {
     not?: NestedBigIntFilter<$PrismaModel> | bigint | number
   }
 
+  export type EnumRemittanceRailFilter<$PrismaModel = never> = {
+    equals?: $Enums.RemittanceRail | EnumRemittanceRailFieldRefInput<$PrismaModel>
+    in?: $Enums.RemittanceRail[] | ListEnumRemittanceRailFieldRefInput<$PrismaModel>
+    notIn?: $Enums.RemittanceRail[] | ListEnumRemittanceRailFieldRefInput<$PrismaModel>
+    not?: NestedEnumRemittanceRailFilter<$PrismaModel> | $Enums.RemittanceRail
+  }
+
   export type EnumStatusFilter<$PrismaModel = never> = {
     equals?: $Enums.Status | EnumStatusFieldRefInput<$PrismaModel>
     in?: $Enums.Status[] | ListEnumStatusFieldRefInput<$PrismaModel>
@@ -4487,6 +4654,11 @@ export namespace Prisma {
     isNot?: UserWhereInput
   }
 
+  export type TransactionTxHashLogIndexCompoundUniqueInput = {
+    txHash: string
+    logIndex: number
+  }
+
   export type TransactionChainIdBlockNumberLogIndexCompoundUniqueInput = {
     chainId: number
     blockNumber: bigint | number
@@ -4503,6 +4675,10 @@ export namespace Prisma {
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    rail?: SortOrder
+    stellarPaymentHash?: SortOrder
+    anchorTransactionId?: SortOrder
+    corridor?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -4533,6 +4709,10 @@ export namespace Prisma {
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    rail?: SortOrder
+    stellarPaymentHash?: SortOrder
+    anchorTransactionId?: SortOrder
+    corridor?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -4554,6 +4734,10 @@ export namespace Prisma {
     userId?: SortOrder
     orderId?: SortOrder
     txHash?: SortOrder
+    rail?: SortOrder
+    stellarPaymentHash?: SortOrder
+    anchorTransactionId?: SortOrder
+    corridor?: SortOrder
     sourceToken?: SortOrder
     amountUsd?: SortOrder
     payoutFiat?: SortOrder
@@ -4593,6 +4777,16 @@ export namespace Prisma {
     _sum?: NestedBigIntFilter<$PrismaModel>
     _min?: NestedBigIntFilter<$PrismaModel>
     _max?: NestedBigIntFilter<$PrismaModel>
+  }
+
+  export type EnumRemittanceRailWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.RemittanceRail | EnumRemittanceRailFieldRefInput<$PrismaModel>
+    in?: $Enums.RemittanceRail[] | ListEnumRemittanceRailFieldRefInput<$PrismaModel>
+    notIn?: $Enums.RemittanceRail[] | ListEnumRemittanceRailFieldRefInput<$PrismaModel>
+    not?: NestedEnumRemittanceRailWithAggregatesFilter<$PrismaModel> | $Enums.RemittanceRail
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumRemittanceRailFilter<$PrismaModel>
+    _max?: NestedEnumRemittanceRailFilter<$PrismaModel>
   }
 
   export type EnumStatusWithAggregatesFilter<$PrismaModel = never> = {
@@ -4701,6 +4895,10 @@ export namespace Prisma {
     decrement?: bigint | number
     multiply?: bigint | number
     divide?: bigint | number
+  }
+
+  export type EnumRemittanceRailFieldUpdateOperationsInput = {
+    set?: $Enums.RemittanceRail
   }
 
   export type EnumStatusFieldUpdateOperationsInput = {
@@ -4918,6 +5116,13 @@ export namespace Prisma {
     not?: NestedBigIntFilter<$PrismaModel> | bigint | number
   }
 
+  export type NestedEnumRemittanceRailFilter<$PrismaModel = never> = {
+    equals?: $Enums.RemittanceRail | EnumRemittanceRailFieldRefInput<$PrismaModel>
+    in?: $Enums.RemittanceRail[] | ListEnumRemittanceRailFieldRefInput<$PrismaModel>
+    notIn?: $Enums.RemittanceRail[] | ListEnumRemittanceRailFieldRefInput<$PrismaModel>
+    not?: NestedEnumRemittanceRailFilter<$PrismaModel> | $Enums.RemittanceRail
+  }
+
   export type NestedEnumStatusFilter<$PrismaModel = never> = {
     equals?: $Enums.Status | EnumStatusFieldRefInput<$PrismaModel>
     in?: $Enums.Status[] | ListEnumStatusFieldRefInput<$PrismaModel>
@@ -4948,6 +5153,16 @@ export namespace Prisma {
     _max?: NestedBigIntFilter<$PrismaModel>
   }
 
+  export type NestedEnumRemittanceRailWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.RemittanceRail | EnumRemittanceRailFieldRefInput<$PrismaModel>
+    in?: $Enums.RemittanceRail[] | ListEnumRemittanceRailFieldRefInput<$PrismaModel>
+    notIn?: $Enums.RemittanceRail[] | ListEnumRemittanceRailFieldRefInput<$PrismaModel>
+    not?: NestedEnumRemittanceRailWithAggregatesFilter<$PrismaModel> | $Enums.RemittanceRail
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumRemittanceRailFilter<$PrismaModel>
+    _max?: NestedEnumRemittanceRailFilter<$PrismaModel>
+  }
+
   export type NestedEnumStatusWithAggregatesFilter<$PrismaModel = never> = {
     equals?: $Enums.Status | EnumStatusFieldRefInput<$PrismaModel>
     in?: $Enums.Status[] | ListEnumStatusFieldRefInput<$PrismaModel>
@@ -4972,6 +5187,10 @@ export namespace Prisma {
     id?: string
     orderId: bigint | number
     txHash: string
+    rail?: $Enums.RemittanceRail
+    stellarPaymentHash?: string | null
+    anchorTransactionId?: string | null
+    corridor?: string | null
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -4992,6 +5211,10 @@ export namespace Prisma {
     id?: string
     orderId: bigint | number
     txHash: string
+    rail?: $Enums.RemittanceRail
+    stellarPaymentHash?: string | null
+    anchorTransactionId?: string | null
+    corridor?: string | null
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -5042,6 +5265,10 @@ export namespace Prisma {
     userId?: StringFilter<"Transaction"> | string
     orderId?: BigIntFilter<"Transaction"> | bigint | number
     txHash?: StringFilter<"Transaction"> | string
+    rail?: EnumRemittanceRailFilter<"Transaction"> | $Enums.RemittanceRail
+    stellarPaymentHash?: StringNullableFilter<"Transaction"> | string | null
+    anchorTransactionId?: StringNullableFilter<"Transaction"> | string | null
+    corridor?: StringNullableFilter<"Transaction"> | string | null
     sourceToken?: StringFilter<"Transaction"> | string
     amountUsd?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFilter<"Transaction"> | Decimal | DecimalJsLike | number | string
@@ -5062,6 +5289,7 @@ export namespace Prisma {
     id?: string
     privyDid: string
     walletAddress?: string | null
+    stellarPublicKey?: string | null
     fullName?: string | null
     email?: string | null
     avatarUrl?: string | null
@@ -5078,6 +5306,7 @@ export namespace Prisma {
     id?: string
     privyDid: string
     walletAddress?: string | null
+    stellarPublicKey?: string | null
     fullName?: string | null
     email?: string | null
     avatarUrl?: string | null
@@ -5110,6 +5339,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
@@ -5126,6 +5356,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     privyDid?: StringFieldUpdateOperationsInput | string
     walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
     fullName?: NullableStringFieldUpdateOperationsInput | string | null
     email?: NullableStringFieldUpdateOperationsInput | string | null
     avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
@@ -5142,6 +5373,10 @@ export namespace Prisma {
     id?: string
     orderId: bigint | number
     txHash: string
+    rail?: $Enums.RemittanceRail
+    stellarPaymentHash?: string | null
+    anchorTransactionId?: string | null
+    corridor?: string | null
     sourceToken: string
     amountUsd: Decimal | DecimalJsLike | number | string
     payoutFiat: Decimal | DecimalJsLike | number | string
@@ -5162,6 +5397,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    rail?: EnumRemittanceRailFieldUpdateOperationsInput | $Enums.RemittanceRail
+    stellarPaymentHash?: NullableStringFieldUpdateOperationsInput | string | null
+    anchorTransactionId?: NullableStringFieldUpdateOperationsInput | string | null
+    corridor?: NullableStringFieldUpdateOperationsInput | string | null
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -5182,6 +5421,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    rail?: EnumRemittanceRailFieldUpdateOperationsInput | $Enums.RemittanceRail
+    stellarPaymentHash?: NullableStringFieldUpdateOperationsInput | string | null
+    anchorTransactionId?: NullableStringFieldUpdateOperationsInput | string | null
+    corridor?: NullableStringFieldUpdateOperationsInput | string | null
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
@@ -5202,6 +5445,10 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     orderId?: BigIntFieldUpdateOperationsInput | bigint | number
     txHash?: StringFieldUpdateOperationsInput | string
+    rail?: EnumRemittanceRailFieldUpdateOperationsInput | $Enums.RemittanceRail
+    stellarPaymentHash?: NullableStringFieldUpdateOperationsInput | string | null
+    anchorTransactionId?: NullableStringFieldUpdateOperationsInput | string | null
+    corridor?: NullableStringFieldUpdateOperationsInput | string | null
     sourceToken?: StringFieldUpdateOperationsInput | string
     amountUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     payoutFiat?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string

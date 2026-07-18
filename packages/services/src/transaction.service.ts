@@ -91,7 +91,7 @@ export class TransactionService {
     const amount = new Prisma.Decimal(data.amountUsd || 0);
 
     // Identify existing record: Prioritize txHash (synced from frontend) over orderId (which may mismatch)
-    let existing = await prisma.transaction.findUnique({
+    let existing = await prisma.transaction.findFirst({
       where: { txHash: data.txHash },
     });
 
@@ -152,18 +152,32 @@ export class TransactionService {
           sourceToken: data.fromToken || "CELO",
           amountUsd: amount,
           payoutFiat: 0,
-          status: "VERIFIED",
+          status: newStatus,
           type,
         },
       });
 
-      //  Update User Stats if the transaction just became VERIFIED
-      if (existing?.status === "PENDING" || !existing) {
+      // Ledger: deposits credit on first VERIFIED.
+      // Remittances: debit on createPending; only debit here if indexer created the row (no prior pending).
+      const shouldCreditDeposit =
+        type === "DEPOSIT" &&
+        newStatus === "VERIFIED" &&
+        (existing?.status === "PENDING" || !existing);
+      const shouldDebitRemittance =
+        type === "REMITTANCE" &&
+        newStatus === "VERIFIED" &&
+        !existing;
+
+      if (shouldCreditDeposit || shouldDebitRemittance) {
         await tx.user.update({
           where: { id: user.id },
           data: {
-            walletBalance: { increment: type === "DEPOSIT" ? amount : 0 },
-            totalSentUsd: { increment: type === "REMITTANCE" ? amount : 0 },
+            ...(shouldCreditDeposit
+              ? { walletBalance: { increment: amount } }
+              : { walletBalance: { decrement: amount } }),
+            totalSentUsd: {
+              increment: shouldDebitRemittance ? amount : 0,
+            },
             transactionCount: { increment: 1 },
           },
         });
@@ -176,6 +190,7 @@ export class TransactionService {
   /**
    * Update transaction status from Paycrest webhook events.
    * Gated by a state machine to prevent out-of-order webhooks from overwriting terminal states.
+   * FAILED remittances restore spendable ledger reserved in createPending.
    */
   static async updateFromPaycrest(externalId: string, status: Status) {
     const tx = await prisma.transaction.findUnique({
@@ -195,6 +210,27 @@ export class TransactionService {
       return tx;
     }
 
+    if (status === "FAILED" && tx.type === "REMITTANCE") {
+      return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
+        const updated = await client.transaction.update({
+          where: { id: tx.id },
+          data: {
+            status,
+            updatedAt: new Date(),
+          },
+        });
+        await client.user.update({
+          where: { id: tx.userId },
+          data: {
+            walletBalance: { increment: tx.amountUsd },
+            totalSentUsd: { decrement: tx.amountUsd },
+            // Keep transactionCount the attempt still happened
+          },
+        });
+        return updated;
+      });
+    }
+
     return await prisma.transaction.update({
       where: { id: tx.id },
       data: {
@@ -208,6 +244,7 @@ export class TransactionService {
    * Create a pending transaction record with recipient metadata.
    * This should be called by the PWA before the on-chain transaction is initiated
    * to ensure we have the recipient details (which are not stored on-chain).
+   * Reserves spendable balance immediately (debit ledger).
    */
   static async createPending(data: {
     userId: string;
@@ -220,29 +257,45 @@ export class TransactionService {
     recipientBank: string;
     recipientAcc: string;
   }) {
-    return await prisma.transaction.create({
-      data: {
-        userId: data.userId,
-        orderId: data.orderId,
-        externalId: data.externalId,
-        sourceToken: data.sourceToken,
-        amountUsd: new Prisma.Decimal(data.amountUsd),
-        payoutFiat: new Prisma.Decimal(data.payoutFiat),
-        recipientName: data.recipientName,
-        recipientBank: data.recipientBank,
-        recipientAcc: data.recipientAcc,
-        status: "PENDING",
-        type: "REMITTANCE",
-        txHash: `pending-${data.externalId}`, // Temporary placeholder until indexer picks it up
-        chainId: 0,
-        blockNumber: 0n,
-        logIndex: 0,
-      },
+    const amount = new Prisma.Decimal(data.amountUsd);
+    return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const dbTx = await tx.transaction.create({
+        data: {
+          userId: data.userId,
+          orderId: data.orderId,
+          externalId: data.externalId,
+          sourceToken: data.sourceToken,
+          amountUsd: amount,
+          payoutFiat: new Prisma.Decimal(data.payoutFiat),
+          recipientName: data.recipientName,
+          recipientBank: data.recipientBank,
+          recipientAcc: data.recipientAcc,
+          status: "PENDING",
+          type: "REMITTANCE",
+          txHash: `pending-${data.externalId}`, // Temporary placeholder until indexer picks it up
+          chainId: 0,
+          blockNumber: 0n,
+          logIndex: 0,
+        },
+      });
+
+      await tx.user.update({
+        where: { id: data.userId },
+        data: {
+          walletBalance: { decrement: amount },
+          totalSentUsd: { increment: amount },
+          transactionCount: { increment: 1 },
+        },
+      });
+
+      return dbTx;
     });
   }
 
   /**
    * Credit an inbound wallet deposit (ERC-20 Transfer to user).
+   * Idempotent on (chainId, blockNumber, logIndex) and (txHash, logIndex).
+   * Safe under concurrent webhook + poll (handles unique races).
    */
   static async creditInboundDeposit(data: {
     walletAddress: string;
@@ -263,48 +316,90 @@ export class TransactionService {
       throw new Error(`No user found for wallet ${data.walletAddress}`);
     }
 
-    const existing = await prisma.transaction.findUnique({
-      where: { txHash: data.txHash },
-    });
-
-    if (existing) {
-      return { created: false as const, transaction: existing, user };
-    }
-
-    const amount = new Prisma.Decimal(data.amountUsd);
-    // Synthetic orderId for deposits (no Paycrest order): chainId-scoped block + log
-    const orderId =
-      data.blockNumber * 1000n + BigInt(data.logIndex);
-
-    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const dbTx = await tx.transaction.create({
-        data: {
-          userId: user.id,
-          orderId,
-          txHash: data.txHash,
+    const byComposite = await prisma.transaction.findUnique({
+      where: {
+        chainId_blockNumber_logIndex: {
           chainId: data.chainId,
           blockNumber: data.blockNumber,
           logIndex: data.logIndex,
-          sourceToken: data.sourceToken,
-          amountUsd: amount,
-          payoutFiat: 0,
-          status: data.status ?? "COMPLETED",
-          type: "DEPOSIT",
-          recipientName: "Wallet deposit",
         },
-      });
-
-      await tx.user.update({
-        where: { id: user.id },
-        data: {
-          walletBalance: { increment: amount },
-          transactionCount: { increment: 1 },
-        },
-      });
-
-      return dbTx;
+      },
     });
+    if (byComposite) {
+      return { created: false as const, transaction: byComposite, user };
+    }
 
-    return { created: true as const, transaction: result, user };
+    const byHashLog = await prisma.transaction.findUnique({
+      where: {
+        txHash_logIndex: {
+          txHash: data.txHash,
+          logIndex: data.logIndex,
+        },
+      },
+    });
+    if (byHashLog) {
+      return { created: false as const, transaction: byHashLog, user };
+    }
+
+    const amount = new Prisma.Decimal(data.amountUsd);
+    const orderId = data.blockNumber * 1000n + BigInt(data.logIndex);
+
+    try {
+      const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const dbTx = await tx.transaction.create({
+          data: {
+            userId: user.id,
+            orderId,
+            txHash: data.txHash,
+            chainId: data.chainId,
+            blockNumber: data.blockNumber,
+            logIndex: data.logIndex,
+            sourceToken: data.sourceToken,
+            amountUsd: amount,
+            payoutFiat: 0,
+            status: data.status ?? "COMPLETED",
+            type: "DEPOSIT",
+            recipientName: "Wallet deposit",
+          },
+        });
+
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            walletBalance: { increment: amount },
+            transactionCount: { increment: 1 },
+          },
+        });
+
+        return dbTx;
+      });
+
+      return { created: true as const, transaction: result, user };
+    } catch (err: any) {
+      if (err?.code === "P2002") {
+        const raced =
+          (await prisma.transaction.findUnique({
+            where: {
+              txHash_logIndex: {
+                txHash: data.txHash,
+                logIndex: data.logIndex,
+              },
+            },
+          })) ||
+          (await prisma.transaction.findUnique({
+            where: {
+              chainId_blockNumber_logIndex: {
+                chainId: data.chainId,
+                blockNumber: data.blockNumber,
+                logIndex: data.logIndex,
+              },
+            },
+          }));
+        if (raced) {
+          return { created: false as const, transaction: raced, user };
+        }
+      }
+      throw err;
+    }
   }
 }

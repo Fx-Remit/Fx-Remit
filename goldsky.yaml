@@ -1,11 +1,42 @@
-# DEPRECATED — do not deploy.
-# This pipeline filtered the Paycrest gateway (not FXRemitV3Router) and was Celo-only.
-# Use goldsky.json (Base + Celo RemittanceInitiated on the FX Remit routers) instead.
-# Deposit indexing is Alchemy Address Activity / DepositService, not Goldsky.
+# Goldsky Mirror — RemittanceInitiated on FXRemit routers (Base + Celo).
+# Deploy via Flow YAML view or: goldsky pipeline apply goldsky.yaml
 #
-# Kept for historical reference only.
+# Prerequisites:
+# - Secret GOLDSKY_WEBHOOK_SECRET_KEY exists in Goldsky (httpauth)
+# - Same secret value set on Vercel as GOLDSKY_WEBHOOK_SECRET or GOLDSKY_WEBHOOK_SECRET_KEY
+# - Pause/delete the old fx-remit-celo-mirror (Paycrest-era) pipeline
+
+name: fx-remit-mainnet-mirror
+resource_size: s
 apiVersion: 3
-name: fx-remit-celo-mirror-DEPRECATED
-sources: {}
+sources:
+  source_1:
+    dataset_name: celo.raw_logs
+    filter: >-
+      address = '0x767b35703c98f63e71ab61d68a406931addb3feb' AND topics LIKE
+      '0x3ce49530ae50ce8cfc06a8db0129abe8ee382a8ae29462de68b525c74af8f80f%'
+    start_at: latest
+    type: dataset
+    version: 1.0.0
+  source_2:
+    dataset_name: base.raw_logs
+    filter: >-
+      address = '0x785a7a71642b68a87debeedbf2151c51501fe408' AND topics LIKE
+      '0x3ce49530ae50ce8cfc06a8db0129abe8ee382a8ae29462de68b525c74af8f80f%'
+    start_at: latest
+    type: dataset
+    version: 1.0.0
 transforms: {}
-sinks: {}
+sinks:
+  sink_1:
+    from: source_1
+    one_row_per_request: true
+    secret_name: GOLDSKY_WEBHOOK_SECRET_KEY
+    type: webhook
+    url: https://fx-remit-pwa.vercel.app/api/indexer/webhook
+  sink_2:
+    from: source_2
+    one_row_per_request: true
+    secret_name: GOLDSKY_WEBHOOK_SECRET_KEY
+    type: webhook
+    url: https://fx-remit-pwa.vercel.app/api/indexer/webhook

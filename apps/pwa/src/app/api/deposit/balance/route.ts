@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
-import { DepositService } from '@fx-remit/services';
+import { DepositService, DEPOSIT_CHAIN_IDS } from '@fx-remit/services';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,8 +10,8 @@ const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET?.trim() ?? '';
 const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
 /**
- * Live on-chain allowlisted balances + DB ledger balance.
- * Home UI prefers live for display; cash-out should keep using ledger.
+ * Sync missed deposits, then return spendable ledger + live chain totals.
+ * Home displays spendable (ledger); live is informational.
  */
 export async function GET(req: Request) {
   try {
@@ -36,15 +36,33 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'User wallet not found' }, { status: 404 });
     }
 
+    // Catch up ledger from chain before reporting spendable balance
+    for (const chainId of DEPOSIT_CHAIN_IDS) {
+      try {
+        await DepositService.syncWalletDeposits({
+          walletAddress: user.walletAddress,
+          chainId,
+        });
+      } catch (err) {
+        console.warn(`[deposit/balance] sync ${chainId} failed`, err);
+      }
+    }
+
+    const refreshed = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { walletBalance: true },
+    });
+
     const live = await DepositService.getLiveBalances(user.walletAddress);
-    const ledgerUsd = Number(user.walletBalance?.toString() || 0);
+    const ledgerUsd = Number(refreshed?.walletBalance?.toString() || 0);
 
     return NextResponse.json({
       success: true,
       walletAddress: user.walletAddress,
       liveUsd: live.totalUsd,
       ledgerUsd,
-      displayUsd: live.totalUsd,
+      /** Spendable balance used for cash-out / home display */
+      displayUsd: ledgerUsd,
       perChain: live.perChain,
     });
   } catch (error) {

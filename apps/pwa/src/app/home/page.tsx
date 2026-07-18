@@ -59,11 +59,12 @@ export default function HomePage() {
   const displayName = dbUser?.displayName || dbUser?.fullName || privyUser?.id?.slice(0, 10);
   const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${privyUser?.id}&backgroundColor=b6e3f4`;
 
-  // Prefer live on-chain stables; fall back to DB ledger if Alchemy is unavailable
-  const liveUsd = typeof balanceData?.liveUsd === 'number' ? balanceData.liveUsd : null;
-  const ledgerUsd = Number((dbUser as any)?.walletBalance?.toString() || 0);
-  const balanceNumber = liveUsd !== null ? liveUsd : ledgerUsd;
-  const balance = balanceNumber.toFixed(2);
+  // Spendable = DB ledger (cash-out source of truth). Balance API syncs deposits into ledger first.
+  const ledgerUsd =
+    typeof balanceData?.ledgerUsd === 'number'
+      ? balanceData.ledgerUsd
+      : Number((dbUser as any)?.walletBalance?.toString() || 0);
+  const balance = ledgerUsd.toFixed(2);
 
   const [selectedTx, setSelectedTx] = useState<any>(null);
 
