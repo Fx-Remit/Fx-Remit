@@ -1,45 +1,13 @@
 import { TransactionService } from './transaction.service';
+import { prisma } from '@fx-remit/database';
+import {
+  DEPOSIT_TOKENS,
+  DEPOSIT_CHAIN_IDS,
+  type DepositToken,
+} from './deposit.tokens';
 
-export type DepositToken = {
-  address: `0x${string}`;
-  symbol: string;
-  decimals: number;
-};
-
-/** Allowlisted deposit assets — never credit unknown ERC-20s. */
-export const DEPOSIT_TOKENS: Record<number, DepositToken[]> = {
-  // Base
-  8453: [
-    {
-      address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-      symbol: 'USDC',
-      decimals: 6,
-    },
-    {
-      address: '0xfde4C96c8593536E31F787dA9eA5d40bB7C2F4FF',
-      symbol: 'USDT',
-      decimals: 6,
-    },
-  ],
-  // Celo
-  42220: [
-    {
-      address: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
-      symbol: 'USDC',
-      decimals: 6,
-    },
-    {
-      address: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
-      symbol: 'cUSD',
-      decimals: 18,
-    },
-    {
-      address: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e',
-      symbol: 'USDT',
-      decimals: 6,
-    },
-  ],
-};
+export type { DepositToken };
+export { DEPOSIT_TOKENS, DEPOSIT_CHAIN_IDS };
 
 const ALCHEMY_NETWORK: Record<number, string> = {
   8453: 'base-mainnet',
@@ -302,6 +270,93 @@ export class DepositService {
     });
 
     return result.created ? 'credited' : 'skipped';
+  }
+
+  /**
+   * Live allowlisted stable balances across Base + Celo (1:1 USD).
+   * Used for home display; DB wallet_balance remains the spendable ledger.
+   */
+  static async getLiveBalances(walletAddress: string) {
+    const perChain: Array<{
+      chainId: number;
+      tokens: Array<{ symbol: string; balanceUsd: number }>;
+      totalUsd: number;
+    }> = [];
+
+    let totalUsd = 0;
+
+    for (const chainId of DEPOSIT_CHAIN_IDS) {
+      const allowlist = this.getAllowlist(chainId);
+      const rpcUrl = this.alchemyRpcUrl(chainId);
+      const tokens: Array<{ symbol: string; balanceUsd: number }> = [];
+      let chainTotal = 0;
+
+      for (const token of allowlist) {
+        try {
+          const result = await this.rpc<{
+            tokenBalances: Array<{ contractAddress: string; tokenBalance: string | null }>;
+          }>(rpcUrl, 'alchemy_getTokenBalances', [
+            walletAddress,
+            [token.address],
+          ]);
+
+          const raw = result?.tokenBalances?.[0]?.tokenBalance;
+          if (!raw || raw === '0x') continue;
+          const amount = Number(BigInt(raw)) / 10 ** token.decimals;
+          if (!Number.isFinite(amount) || amount < 0.000001) continue;
+          tokens.push({ symbol: token.symbol, balanceUsd: amount });
+          chainTotal += amount;
+        } catch (err) {
+          console.warn(`[DepositService] balance read failed ${chainId} ${token.symbol}`, err);
+        }
+      }
+
+      perChain.push({ chainId, tokens, totalUsd: chainTotal });
+      totalUsd += chainTotal;
+    }
+
+    return {
+      walletAddress,
+      totalUsd,
+      perChain,
+    };
+  }
+
+  /**
+   * Cron: re-scan recent inbound transfers for all users with wallets.
+   */
+  static async reconcileAllWallets(params?: { limit?: number }) {
+    const users = await prisma.user.findMany({
+      where: { walletAddress: { not: null } },
+      select: { id: true, walletAddress: true },
+      take: params?.limit ?? 200,
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    let credited = 0;
+    let scanned = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      if (!user.walletAddress) continue;
+      for (const chainId of DEPOSIT_CHAIN_IDS) {
+        try {
+          const result = await this.syncWalletDeposits({
+            walletAddress: user.walletAddress,
+            chainId,
+            lookbackBlocks: chainId === 8453 ? 12_000 : 6_000, // ~6h / ~3h
+          });
+          credited += result.credited;
+          scanned += 1;
+        } catch (err) {
+          errors.push(
+            `${user.id}:${chainId}:${err instanceof Error ? err.message : 'error'}`,
+          );
+        }
+      }
+    }
+
+    return { users: users.length, scanned, credited, errors: errors.slice(0, 20) };
   }
 
   private static async rpc<T>(url: string, method: string, params: unknown[]): Promise<T> {

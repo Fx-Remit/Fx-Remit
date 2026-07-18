@@ -1,7 +1,7 @@
 {
   "name": "fx-remit-mainnet-mirror",
   "version": "1.0.0",
-  "description": "Real-time indexing for FX Remit router events on Base and Celo.",
+  "description": "RemittanceIndexer only — RemittanceInitiated on Base + Celo FXRemit routers. Deposits use Alchemy Address Activity / DepositService.",
   "pipelines": [
     {
       "id": "base-remittance-mirror",

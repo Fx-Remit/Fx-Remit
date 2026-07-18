@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from "@privy-io/server-auth";
 import { prisma } from '@fx-remit/database';
+import { AlchemyNotifyService } from '@fx-remit/services';
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,11 @@ export async function POST(req: Request) {
 
     let dbUser;
     try {
+      const existing = await prisma.user.findUnique({
+        where: { privyDid: claims.userId },
+        select: { walletAddress: true },
+      });
+
       dbUser = await prisma.user.upsert({
         where: { privyDid: claims.userId },
         update: {
@@ -54,6 +60,16 @@ export async function POST(req: Request) {
         },
       });
       console.log('[DB] User upserted:', dbUser.id);
+
+      // Alchemy Address Activity: register wallet for deposit webhooks
+      try {
+        await AlchemyNotifyService.syncWalletChange({
+          previousAddress: existing?.walletAddress,
+          nextAddress: walletAddress || null,
+        });
+      } catch (notifyErr) {
+        console.error('[ONBOARD] Alchemy Notify registration failed:', notifyErr);
+      }
     } catch (dbErr) {
       console.error('[DB] Upsert failed:', dbErr);
       return NextResponse.json({ error: 'Database error' }, { status: 500 });

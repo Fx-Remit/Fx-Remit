@@ -1,21 +1,11 @@
+# DEPRECATED — do not deploy.
+# This pipeline filtered the Paycrest gateway (not FXRemitV3Router) and was Celo-only.
+# Use goldsky.json (Base + Celo RemittanceInitiated on the FX Remit routers) instead.
+# Deposit indexing is Alchemy Address Activity / DepositService, not Goldsky.
+#
+# Kept for historical reference only.
 apiVersion: 3
-name: fx-remit-celo-mirror
-sources:
-  celo_source:
-    type: dataset
-    dataset_name: celo.raw_logs
-    version: 1.0.0
-    start_at: earliest
-    # Filtering directly at the source for maximum performance.
-    # address: FXRemitRouter on Celo
-    # topics[0]: hash of RemittanceInitiated(address,address,uint256,uint256,uint256,bytes32)
-    filter: >-
-      address = '0xf418217e3f81092ef44b81c5c8336e6a6fdb0e4b' 
-      AND topics LIKE '0x3ce4953716e25f8b9658db54131568e62243f1cf2083cc5f0fe520e54d1a5806%'
+name: fx-remit-celo-mirror-DEPRECATED
+sources: {}
 transforms: {}
-sinks:
-  celo_webhook:
-    type: webhook
-    url: "https://fx-remit.xyz/api/indexer/webhook"
-    secret_name: GOLDSKY_WEBHOOK_SECRET_KEY
-    from: celo_source
+sinks: {}
