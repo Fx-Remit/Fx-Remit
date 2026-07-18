@@ -1,13 +1,31 @@
 import { prisma, Prisma } from '@fx-remit/database';
 import { decodeEventLog } from 'viem';
 import routerAbi from './abi/FXRemitRouter.json';
+import { DepositService } from './deposit.service';
 
 export class AlchemyService {
   /**
-   * High-fidelity processing of Alchemy Webhook payloads.
-   * Links on-chain 'RemittanceInitiated' events to local user identities.
+   * Alchemy webhook entrypoint.
+   * - ADDRESS_ACTIVITY → inbound wallet deposits (ERC-20 allowlist)
+   * - GRAPHQL / mined tx logs → RemittanceInitiated (cash-out path)
    */
   static async handleWebhook(payload: any) {
+    const type = String(payload?.type || '').toUpperCase();
+
+    if (type === 'ADDRESS_ACTIVITY' || payload?.event?.activity) {
+      const activity = payload?.event?.activity ?? [];
+      const result = await DepositService.handleAlchemyActivity({
+        network: payload?.event?.network,
+        activity,
+      });
+      return {
+        success: true,
+        message: 'Deposit activity processed',
+        synced: result.credited,
+        skipped: result.skipped,
+      };
+    }
+
     const { event } = payload;
 
     if (!event || !event.data || !event.data.block) {
@@ -27,31 +45,27 @@ export class AlchemyService {
 
         if (decoded.eventName === 'RemittanceInitiated') {
           const args = decoded.args as any;
-          const { orderId, sender, amountToRemit, targetCurrency, amountIn, fromToken } = args;
+          const { orderId, sender, amountToRemit, amountIn, fromToken } = args;
 
           console.log(`[AlchemyService] Mapping Order #${orderId.toString()} | Sender: ${sender}`);
 
-          // Identity Bridging: Link on-chain sender to Stockholm DB user
           const user = await prisma.user.findUnique({
             where: { walletAddress: sender },
           });
 
-          // Atomic DB Upsert
-          // Atomic DB Upsert: Higher precision math avoiding floating point issues
           const normalizedAmountUsd = new Prisma.Decimal(amountIn.toString()).div(1_000_000);
           const normalizedPayoutFiat = new Prisma.Decimal(amountToRemit.toString()).div(1_000_000);
 
-          // Extract indexing metadata
           const blockNumber = BigInt(event.data.block.number);
           const logIndex = Number(log.index);
-          const chainId = Number(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID || 8453); // Base default
+          const chainId = Number(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID || 8453);
 
           const result = await prisma.transaction.upsert({
-            where: { 
+            where: {
               orderId_chainId: {
                 orderId: orderId,
                 chainId: chainId,
-              }
+              },
             },
             update: {
               status: 'VERIFIED',
@@ -77,10 +91,9 @@ export class AlchemyService {
 
           syncResults.push(result);
 
-          // TRIGGER: Return the event data for next-step processing (e.g. Paycrest)
-          return { success: true, event: decoded, transaction: result };
+          return { success: true, event: decoded, transaction: result, synced: 1 };
         }
-      } catch (e) {
+      } catch {
         continue;
       }
     }
