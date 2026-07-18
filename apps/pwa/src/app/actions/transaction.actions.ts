@@ -9,9 +9,10 @@ export async function getLatestDeposit(userId: string) {
     const transaction = await prisma.transaction.findFirst({
       where: {
         userId,
-        // We look for transactions created in the last 10 minutes to avoid old successes
+        type: "DEPOSIT",
+        status: { in: ["COMPLETED", "VERIFIED"] },
         createdAt: {
-          gt: new Date(Date.now() - 10 * 60 * 1000),
+          gt: new Date(Date.now() - 30 * 60 * 1000),
         },
       },
       orderBy: {

@@ -14,13 +14,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 const NETWORK_NAMES: Record<string, string> = {
   celo: 'Celo network',
   base: 'Base network',
-  ethereum: 'Ethereum network',
 };
 
 const CHAIN_IDS: Record<string, number> = {
   celo: 42220,
   base: 8453,
-  ethereum: 1,
 };
 
 function AmountPageContent() {
@@ -30,27 +28,50 @@ function AmountPageContent() {
 
   const tokenSymbol = token.toUpperCase();
   const networkName = NETWORK_NAMES[network] || 'Celo network';
+  const chainId = CHAIN_IDS[network] || 42220;
 
-  const { user, ready } = usePrivy();
+  const { user, ready, getAccessToken } = usePrivy();
   const { profile: dbUser } = useUserStore();
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: latestDeposit } = useQuery({
-    queryKey: ['latest-deposit', dbUser?.id],
-    queryFn: () => (dbUser?.id ? getLatestDeposit(dbUser.id) : null),
-    enabled: !!dbUser?.id,
+    queryKey: ['latest-deposit', dbUser?.id, chainId],
+    enabled: !!dbUser?.id && !!dbUser?.walletAddress,
+    queryFn: async () => {
+      if (!dbUser?.id) return null;
+
+      try {
+        const accessToken = await getAccessToken();
+        if (accessToken) {
+          await fetch('/api/deposit/sync', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ chainId }),
+          });
+        }
+      } catch (err) {
+        console.error('[add-cash] deposit sync failed', err);
+      }
+
+      return getLatestDeposit(dbUser.id);
+    },
     refetchInterval: (query) => {
-      if (query.state.data?.status === 'COMPLETED') {
-        queryClient.invalidateQueries({ queryKey: ['user-profile', dbUser?.id] });
+      const status = query.state.data?.status;
+      if (status === 'COMPLETED' || status === 'VERIFIED') {
+        queryClient.invalidateQueries({ queryKey: ['user-profile', user?.id] });
         return false;
       }
       return 5000;
     },
   });
 
-  const isSuccess = latestDeposit?.status === 'COMPLETED';
+  const isSuccess =
+    latestDeposit?.status === 'COMPLETED' || latestDeposit?.status === 'VERIFIED';
 
   const walletAddress = useMemo(() => {
     if (dbUser?.walletAddress) return dbUser.walletAddress;
@@ -63,7 +84,6 @@ function AmountPageContent() {
     return 'Loading...';
   }, [user, ready, dbUser]);
 
-  // Generate the QR value
   const qrValue = useMemo(() => {
     if (walletAddress === 'Loading...') return '';
     return walletAddress;
@@ -81,8 +101,6 @@ function AmountPageContent() {
 
     const shareMessage = `My FX Remit Deposit Address (${networkName}): ${walletAddress}`;
 
-    // TODO: Implement custom ShareActionSheet prompt for WhatsApp/SMS options
-    // This is currently limited by localhost/non-HTTPS security restrictions
     if (navigator.share) {
       try {
         await navigator.share({
@@ -99,7 +117,6 @@ function AmountPageContent() {
 
   return (
     <div className="min-h-screen bg-[#f8fafd] flex flex-col">
-      {/* Header */}
       <div className="bg-white px-5 pt-12 pb-4 flex items-center relative border-b border-gray-100/50">
         <Link
           href="/add-cash"
@@ -113,7 +130,6 @@ function AmountPageContent() {
       </div>
 
       <div className="flex-1 px-5 pt-8 pb-32">
-        {/* QR Code Section */}
         <div className="flex justify-center mb-6 text-center">
           <div className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100/50 min-h-[230px] flex items-center justify-center">
             {isSuccess && latestDeposit ? (
@@ -137,7 +153,6 @@ function AmountPageContent() {
           </div>
         </div>
 
-        {/* Safety Warning Banner */}
         {!isSuccess && (
           <div className="mb-6 bg-amber-50 border border-amber-200 rounded-[16px] p-4">
             <p className="text-amber-800 text-[13px] font-semibold leading-relaxed">
@@ -147,9 +162,7 @@ function AmountPageContent() {
           </div>
         )}
 
-        {/* Details Card */}
         <div className="bg-white rounded-[24px] shadow-sm border border-gray-100/50 p-6 space-y-6">
-          {/* Address Section */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
               <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">
@@ -173,19 +186,16 @@ function AmountPageContent() {
             </button>
           </div>
 
-          {/* Network Section */}
           <div>
             <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">Network</p>
             <p className="text-[#1C1C1C] text-[16px] font-semibold">{networkName}</p>
           </div>
 
-          {/* Rate Section */}
           <div>
             <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">Rate</p>
             <p className="text-[#1C1C1C] text-[16px] font-semibold">1 USD = 1 {tokenSymbol}</p>
           </div>
 
-          {/* Limits Section */}
           <div className="flex justify-between gap-4 pt-1">
             <div>
               <p className="text-gray-400 text-[12px] font-medium mb-1 tracking-wide">
@@ -203,7 +213,6 @@ function AmountPageContent() {
         </div>
       </div>
 
-      {/* Footer Actions */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] p-5 flex justify-center items-center gap-[10px] z-50">
         <button
           onClick={handleShare}

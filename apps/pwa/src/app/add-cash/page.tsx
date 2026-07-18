@@ -46,11 +46,6 @@ const NETWORKS = [
     name: 'Base',
     icon: '/base.svg',
   },
-  {
-    id: 'ethereum',
-    name: 'Ethereum',
-    icon: '/eth.svg',
-  },
 ];
 
 export default function AddCashPage() {

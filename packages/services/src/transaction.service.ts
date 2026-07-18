@@ -240,4 +240,71 @@ export class TransactionService {
       },
     });
   }
+
+  /**
+   * Credit an inbound wallet deposit (ERC-20 Transfer to user).
+   */
+  static async creditInboundDeposit(data: {
+    walletAddress: string;
+    txHash: string;
+    chainId: number;
+    blockNumber: bigint;
+    logIndex: number;
+    sourceToken: string;
+    amountUsd: number | string;
+    status?: Status;
+  }) {
+    const wallet = data.walletAddress.toLowerCase();
+    const user = await prisma.user.findFirst({
+      where: { walletAddress: { equals: wallet, mode: "insensitive" } },
+    });
+
+    if (!user) {
+      throw new Error(`No user found for wallet ${data.walletAddress}`);
+    }
+
+    const existing = await prisma.transaction.findUnique({
+      where: { txHash: data.txHash },
+    });
+
+    if (existing) {
+      return { created: false as const, transaction: existing, user };
+    }
+
+    const amount = new Prisma.Decimal(data.amountUsd);
+    // Synthetic orderId for deposits (no Paycrest order): chainId-scoped block + log
+    const orderId =
+      data.blockNumber * 1000n + BigInt(data.logIndex);
+
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const dbTx = await tx.transaction.create({
+        data: {
+          userId: user.id,
+          orderId,
+          txHash: data.txHash,
+          chainId: data.chainId,
+          blockNumber: data.blockNumber,
+          logIndex: data.logIndex,
+          sourceToken: data.sourceToken,
+          amountUsd: amount,
+          payoutFiat: 0,
+          status: data.status ?? "COMPLETED",
+          type: "DEPOSIT",
+          recipientName: "Wallet deposit",
+        },
+      });
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          walletBalance: { increment: amount },
+          transactionCount: { increment: 1 },
+        },
+      });
+
+      return dbTx;
+    });
+
+    return { created: true as const, transaction: result, user };
+  }
 }

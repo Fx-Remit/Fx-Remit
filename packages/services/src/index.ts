@@ -1,4 +1,5 @@
 export * from './alchemy.service';
+export * from './deposit.service';
 export * from './identity.service';
 export * from './payout.service';
 export * from './pricing.service';
