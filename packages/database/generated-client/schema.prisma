@@ -7,10 +7,16 @@ datasource db {
   provider = "postgresql"
 }
 
+enum RemittanceRail {
+  EVM
+  STELLAR
+}
+
 model User {
   id               String        @id @default(uuid())
   privyDid         String        @unique @map("privy_did")
   walletAddress    String?       @unique @map("wallet_address")
+  stellarPublicKey String?       @unique @map("stellar_public_key")
   fullName         String?       @map("full_name")
   email            String?       @unique
   avatarUrl        String?       @map("avatar_url")
@@ -27,26 +33,31 @@ model User {
 }
 
 model Transaction {
-  id            String          @id @default(uuid())
-  userId        String          @map("user_id")
-  orderId       BigInt          @map("order_id")
-  txHash        String          @unique @map("tx_hash")
-  sourceToken   String          @map("source_token")
-  amountUsd     Decimal         @map("amount_usd") @db.Decimal(36, 18)
-  payoutFiat    Decimal         @map("payout_fiat") @db.Decimal(36, 18)
-  status        Status          @default(PENDING)
-  recipientName String?         @map("recipient_name")
-  recipientBank String?         @map("recipient_bank")
-  recipientAcc  String?         @map("recipient_acc")
-  createdAt     DateTime        @default(now()) @map("created_at")
-  blockNumber   BigInt          @map("block_number")
-  chainId       Int             @map("chain_id")
-  externalId    String?         @unique @map("external_id")
-  logIndex      Int             @map("log_index")
-  updatedAt     DateTime        @updatedAt @map("updated_at")
-  type          TransactionType @default(REMITTANCE)
-  user          User            @relation(fields: [userId], references: [id])
+  id                  String          @id @default(uuid())
+  userId              String          @map("user_id")
+  orderId             BigInt          @map("order_id")
+  txHash              String          @map("tx_hash")
+  rail                RemittanceRail  @default(EVM) @map("rail")
+  stellarPaymentHash  String?         @unique @map("stellar_payment_hash")
+  anchorTransactionId String?         @map("anchor_transaction_id")
+  corridor            String?         @map("corridor")
+  sourceToken         String          @map("source_token")
+  amountUsd           Decimal         @map("amount_usd") @db.Decimal(36, 18)
+  payoutFiat          Decimal         @map("payout_fiat") @db.Decimal(36, 18)
+  status              Status          @default(PENDING)
+  recipientName       String?         @map("recipient_name")
+  recipientBank       String?         @map("recipient_bank")
+  recipientAcc        String?         @map("recipient_acc")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  blockNumber         BigInt          @map("block_number")
+  chainId             Int             @map("chain_id")
+  externalId          String?         @unique @map("external_id")
+  logIndex            Int             @map("log_index")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  type                TransactionType @default(REMITTANCE)
+  user                User            @relation(fields: [userId], references: [id])
 
+  @@unique([txHash, logIndex])
   @@unique([chainId, blockNumber, logIndex])
   @@unique([orderId, chainId])
   @@map("transactions")

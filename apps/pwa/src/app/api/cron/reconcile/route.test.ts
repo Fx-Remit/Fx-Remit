@@ -14,6 +14,7 @@ describe('GET /api/cron/reconcile — happy paths', () => {
     mock.method(ReconciliationService, 'reconcileAll', async () => ({
       remittances: { recovered: 1, flagged: 0, failed: 0 },
       deposits: { users: 1, scanned: 2, credited: 0, errors: [] },
+      notifyRegistered: 1,
     }));
 
     const res = await GET(

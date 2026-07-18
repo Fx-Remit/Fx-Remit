@@ -118,11 +118,31 @@ export class ReconciliationService {
   }
 
   /**
-   * Full cron pass: remittance recovery + deposit catch-up.
+   * Full cron pass: remittance recovery + deposit catch-up + Notify wallet backfill.
    */
   static async reconcileAll() {
     const remittances = await this.reconcileStuckTransactions();
     const deposits = await this.reconcileDeposits();
-    return { remittances, deposits };
+
+    let notifyRegistered = 0;
+    try {
+      const { AlchemyNotifyService } = await import('./alchemy-notify.service');
+      if (AlchemyNotifyService.isConfigured()) {
+        const users = await prisma.user.findMany({
+          where: { walletAddress: { not: null } },
+          select: { walletAddress: true },
+          take: 500,
+        });
+        for (const u of users) {
+          if (!u.walletAddress) continue;
+          await AlchemyNotifyService.registerAddress(u.walletAddress);
+          notifyRegistered += 1;
+        }
+      }
+    } catch (err) {
+      console.error('[ReconciliationService] Notify backfill failed', err);
+    }
+
+    return { remittances, deposits, notifyRegistered };
   }
 }

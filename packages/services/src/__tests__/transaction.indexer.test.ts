@@ -11,12 +11,14 @@ import { TransactionService } from '../transaction.service.js';
 const originals = {
   userFindMany: prisma.user.findMany,
   txFindUnique: prisma.transaction.findUnique,
+  txFindFirst: prisma.transaction.findFirst,
   dollarTransaction: prisma.$transaction,
 };
 
 afterEach(() => {
   prisma.user.findMany = originals.userFindMany;
   prisma.transaction.findUnique = originals.txFindUnique;
+  prisma.transaction.findFirst = originals.txFindFirst;
   prisma.$transaction = originals.dollarTransaction;
   mock.restoreAll();
 });
@@ -37,8 +39,11 @@ function mockUsers(users: Array<{ id: string; walletAddress: string | null }>) {
 }
 
 function mockLookups(existingByHash: any, existingByOrder: any = null) {
-  prisma.transaction.findUnique = mock.fn(async (args: any) => {
+  prisma.transaction.findFirst = mock.fn(async (args: any) => {
     if (args.where?.txHash) return existingByHash;
+    return null;
+  }) as any;
+  prisma.transaction.findUnique = mock.fn(async (args: any) => {
     if (args.where?.orderId_chainId) return existingByOrder;
     return null;
   }) as any;
@@ -88,7 +93,7 @@ describe('TransactionService.updateFromIndexer — happy paths', () => {
     assert.equal(capture.userUpdateArgs.where.id, 'user-1');
     assert.equal(capture.userUpdateArgs.data.transactionCount.increment, 1);
     assert.equal(capture.userUpdateArgs.data.totalSentUsd.increment.toString(), '50');
-    assert.equal(capture.userUpdateArgs.data.walletBalance.increment.toString(), '0');
+    assert.equal(capture.userUpdateArgs.data.walletBalance.decrement.toString(), '50');
   });
 
   it('classifies deposit when recipient is the user and no recipientAcc yet', async () => {
@@ -126,23 +131,29 @@ describe('TransactionService.updateFromIndexer — happy paths', () => {
 
     assert.equal(capture.upsertArgs.update.status, 'VERIFIED');
     assert.equal(capture.upsertArgs.update.type, 'REMITTANCE');
-    assert.ok(capture.userUpdateArgs);
+    // Ledger already reserved in createPending no second debit on verify
+    assert.equal(capture.userUpdateArgs, undefined);
   });
 
   it('prefers lookup by txHash before orderId_chainId', async () => {
     mockUsers([{ id: 'user-1', walletAddress: '0xSender' }]);
-    const findUnique = mock.fn(async (args: any) => {
+    const findFirst = mock.fn(async (args: any) => {
       if (args.where?.txHash === INDEXER.txHash) {
         return { id: 'by-hash', status: 'PENDING', recipientAcc: '1' };
       }
+      return null;
+    });
+    const findUnique = mock.fn(async () => {
       throw new Error('should not fall through to orderId lookup');
     });
+    prisma.transaction.findFirst = findFirst as any;
     prisma.transaction.findUnique = findUnique as any;
     mock.method(RpcClient, 'getBlockNumber', async () => 1010n);
     mockAtomic({});
 
     await TransactionService.updateFromIndexer(INDEXER);
-    assert.equal(findUnique.mock.callCount(), 1);
+    assert.equal(findFirst.mock.callCount(), 1);
+    assert.equal(findUnique.mock.callCount(), 0);
   });
 });
 

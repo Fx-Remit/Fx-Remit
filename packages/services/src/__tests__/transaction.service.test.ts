@@ -11,6 +11,7 @@ const originals = {
   update: prisma.transaction.update,
   create: prisma.transaction.create,
   findMany: prisma.transaction.findMany,
+  dollarTransaction: prisma.$transaction,
 };
 
 afterEach(() => {
@@ -18,6 +19,7 @@ afterEach(() => {
   prisma.transaction.update = originals.update;
   prisma.transaction.create = originals.create;
   prisma.transaction.findMany = originals.findMany;
+  prisma.$transaction = originals.dollarTransaction;
   mock.restoreAll();
 });
 
@@ -84,6 +86,31 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
     assert.equal(args.where.id, 'tx-1');
     assert.equal(args.data.status, 'COMPLETED');
   });
+
+  it('refunds ledger when remittance transitions to FAILED', async () => {
+    const existing = sampleTx({ status: 'PENDING', amountUsd: 25 as any });
+    const capture: { userUpdateArgs?: any } = {};
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const client = {
+        transaction: {
+          update: mock.fn(async () => sampleTx({ status: 'FAILED' })),
+        },
+        user: {
+          update: mock.fn(async (args: any) => {
+            capture.userUpdateArgs = args;
+            return { id: args.where.id };
+          }),
+        },
+      };
+      return cb(client);
+    }) as any;
+
+    const result = await TransactionService.updateFromPaycrest('ext-1', 'FAILED');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(capture.userUpdateArgs.where.id, 'user-1');
+    assert.equal(capture.userUpdateArgs.data.walletBalance.increment, 25);
+  });
 });
 
 describe('TransactionService.updateFromPaycrest — unhappy paths', () => {
@@ -129,21 +156,35 @@ describe('TransactionService.updateFromPaycrest — unhappy paths', () => {
 });
 
 describe('TransactionService.createPending — happy paths', () => {
-  it('creates a PENDING remittance with placeholder txHash', async () => {
+  it('creates a PENDING remittance and reserves ledger balance', async () => {
     const created = sampleTx({
       status: 'PENDING',
       txHash: 'pending-ext-9',
       chainId: 0,
       blockNumber: 0n,
     });
-    const createMock = mock.fn(async (args: any) => {
-      assert.equal(args.data.status, 'PENDING');
-      assert.equal(args.data.type, 'REMITTANCE');
-      assert.equal(args.data.txHash, 'pending-ext-9');
-      assert.equal(args.data.chainId, 0);
-      return created;
-    });
-    prisma.transaction.create = createMock as any;
+    const capture: { createArgs?: any; userUpdateArgs?: any } = {};
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const tx = {
+        transaction: {
+          create: mock.fn(async (args: any) => {
+            capture.createArgs = args;
+            assert.equal(args.data.status, 'PENDING');
+            assert.equal(args.data.type, 'REMITTANCE');
+            assert.equal(args.data.txHash, 'pending-ext-9');
+            assert.equal(args.data.chainId, 0);
+            return created;
+          }),
+        },
+        user: {
+          update: mock.fn(async (args: any) => {
+            capture.userUpdateArgs = args;
+            return { id: args.where.id };
+          }),
+        },
+      };
+      return cb(tx);
+    }) as any;
 
     const result = await TransactionService.createPending({
       userId: 'user-1',
@@ -158,7 +199,10 @@ describe('TransactionService.createPending — happy paths', () => {
     });
 
     assert.equal(result.status, 'PENDING');
-    assert.equal(createMock.mock.callCount(), 1);
+    assert.equal(capture.userUpdateArgs.where.id, 'user-1');
+    assert.equal(capture.userUpdateArgs.data.walletBalance.decrement.toString(), '25');
+    assert.equal(capture.userUpdateArgs.data.totalSentUsd.increment.toString(), '25');
+    assert.equal(capture.userUpdateArgs.data.transactionCount.increment, 1);
   });
 });
 

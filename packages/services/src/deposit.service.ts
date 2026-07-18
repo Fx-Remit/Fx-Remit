@@ -3,11 +3,18 @@ import { prisma } from '@fx-remit/database';
 import {
   DEPOSIT_TOKENS,
   DEPOSIT_CHAIN_IDS,
+  DEPOSIT_RECONCILE_LOOKBACK_BLOCKS,
+  DEPOSIT_SYNC_LOOKBACK_BLOCKS,
   type DepositToken,
 } from './deposit.tokens';
 
 export type { DepositToken };
-export { DEPOSIT_TOKENS, DEPOSIT_CHAIN_IDS };
+export {
+  DEPOSIT_TOKENS,
+  DEPOSIT_CHAIN_IDS,
+  DEPOSIT_RECONCILE_LOOKBACK_BLOCKS,
+  DEPOSIT_SYNC_LOOKBACK_BLOCKS,
+};
 
 const ALCHEMY_NETWORK: Record<number, string> = {
   8453: 'base-mainnet',
@@ -62,7 +69,7 @@ export class DepositService {
   static async syncWalletDeposits(params: {
     walletAddress: string;
     chainId: number;
-    /** Look back this many blocks (default ~2h on Base / ~1h on Celo). */
+    /** Look back this many blocks (default DEPOSIT_SYNC_LOOKBACK_BLOCKS ≈ 24h). */
     lookbackBlocks?: number;
   }) {
     const { walletAddress, chainId } = params;
@@ -73,7 +80,8 @@ export class DepositService {
 
     const lookback =
       params.lookbackBlocks ??
-      (chainId === 8453 ? 3_600 : 1_800); // ~2h Base / ~1h Celo at ~2s
+      DEPOSIT_SYNC_LOOKBACK_BLOCKS[chainId] ??
+      45_000;
 
     const rpcUrl = this.alchemyRpcUrl(chainId);
 
@@ -344,7 +352,8 @@ export class DepositService {
           const result = await this.syncWalletDeposits({
             walletAddress: user.walletAddress,
             chainId,
-            lookbackBlocks: chainId === 8453 ? 12_000 : 6_000, // ~6h / ~3h
+            lookbackBlocks:
+              DEPOSIT_RECONCILE_LOOKBACK_BLOCKS[chainId] ?? 90_000,
           });
           credited += result.credited;
           scanned += 1;

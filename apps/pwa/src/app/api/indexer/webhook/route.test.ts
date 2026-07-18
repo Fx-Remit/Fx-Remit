@@ -102,4 +102,20 @@ describe('POST /api/indexer/webhook — unhappy paths', () => {
     const res = await POST(signedRequest({ op: 'INSERT', data: INDEX_DATA }));
     assert.equal(res.status, 500);
   });
+
+  it('accepts static Authorization Bearer secret (Goldsky httpauth)', async () => {
+    mock.method(TransactionService, 'updateFromIndexer', async () => ({ id: 'tx-1' }));
+    const body = JSON.stringify({ op: 'INSERT', data: INDEX_DATA });
+    const res = await POST(
+      new NextRequest('http://localhost/api/indexer/webhook', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${process.env.GOLDSKY_WEBHOOK_SECRET}`,
+        },
+        body,
+      }),
+    );
+    assert.equal(res.status, 200);
+  });
 });

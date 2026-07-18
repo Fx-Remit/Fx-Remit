@@ -36,7 +36,7 @@ model Transaction {
   id                  String          @id @default(uuid())
   userId              String          @map("user_id")
   orderId             BigInt          @map("order_id")
-  txHash              String          @unique @map("tx_hash")
+  txHash              String          @map("tx_hash")
   rail                RemittanceRail  @default(EVM) @map("rail")
   stellarPaymentHash  String?         @unique @map("stellar_payment_hash")
   anchorTransactionId String?         @map("anchor_transaction_id")
@@ -57,6 +57,7 @@ model Transaction {
   type          TransactionType @default(REMITTANCE)
   user          User            @relation(fields: [userId], references: [id])
 
+  @@unique([txHash, logIndex])
   @@unique([chainId, blockNumber, logIndex])
   @@unique([orderId, chainId])
   @@map("transactions")
