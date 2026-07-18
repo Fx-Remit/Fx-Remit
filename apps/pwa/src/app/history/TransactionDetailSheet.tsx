@@ -17,9 +17,11 @@ interface TransactionDetailSheetProps {
     receivedAmount: string;
     receivedToken: string;
     orderId?: string;
+    chainId?: number;
     network?: string;
     provider?: string;
     rate?: string;
+    txHash?: string;
   } | null;
 }
 
@@ -33,7 +35,6 @@ export function TransactionDetailSheet({
   // Mock data for missing fields if not provided
   const orderId =
     transaction.orderId || 'FX-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-  const network = transaction.network || 'Celo Network';
   const provider = transaction.provider || 'YellowCard';
   const rate = transaction.rate || '1 USDT = 1,460 NGN';
 
@@ -203,7 +204,18 @@ export function TransactionDetailSheet({
                   isBold
                 />
               )}
-              <DetailRow label="Network" value={transaction.network || 'Celo Network'} showIcon />
+              <DetailRow
+                label="Network"
+                value={transaction.network || 'Unknown Network'}
+                showIcon
+                iconSrc={
+                  Number(transaction.chainId) === 8453
+                    ? '/base.svg'
+                    : Number(transaction.chainId) === 42220
+                      ? '/celo.svg'
+                      : undefined
+                }
+              />
               {transaction.type !== 'DEPOSIT' && (
                 <DetailRow label="Off-ramp Provider" value={transaction.provider || 'YellowCard'} />
               )}
@@ -229,18 +241,22 @@ function DetailRow({
   onCopy,
   isBold,
   showIcon,
+  iconSrc,
 }: {
   label: string;
   value: string;
   onCopy?: () => void;
   isBold?: boolean;
   showIcon?: boolean;
+  iconSrc?: string;
 }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-[#888888] text-[15px] font-medium">{label}</span>
       <div className="flex items-center gap-2 max-w-[60%]">
-        {showIcon && <img src="/celo.svg" alt="" className="w-5 h-5 rounded-full" />}
+        {showIcon && iconSrc && (
+          <img src={iconSrc} alt="" className="w-5 h-5 rounded-full" />
+        )}
         <span
           className={`${isBold ? 'text-[#1C1C1C] font-bold' : 'text-[#3D3D3D] font-semibold'} text-[15px] truncate`}
         >

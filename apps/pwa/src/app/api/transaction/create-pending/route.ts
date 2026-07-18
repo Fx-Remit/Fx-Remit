@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from "@privy-io/server-auth";
 import { prisma } from '@fx-remit/database';
-import { TransactionService, PayoutService } from '@fx-remit/services';
+import {
+  TransactionService,
+  PayoutService,
+  InsufficientBalanceError,
+} from '@fx-remit/services';
 
 export const dynamic = "force-dynamic";
 
@@ -85,9 +89,38 @@ export async function POST(req: Request) {
     }
 
     const orderId = BigInt(Date.now());
-    const externalId = frontendId || `pnd_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const appExternalId = frontendId || `pnd_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-    // Create the order on Paycrest
+    //  Reserve funds + create the pending row FIRST (atomic, guarded).
+    //    Doing this before Paycrest avoids orphan provider orders on insufficient balance.
+    let tx;
+    try {
+      tx = await TransactionService.createPending({
+        userId: user.id,
+        orderId,
+        externalId: appExternalId,
+        sourceToken,
+        amountUsd,
+        payoutFiat,
+        recipientName,
+        recipientBank,
+        recipientAcc,
+      });
+    } catch (err) {
+      if (err instanceof InsufficientBalanceError) {
+        return NextResponse.json(
+          {
+            error: "Insufficient balance",
+            details: err.message,
+            code: err.code,
+          },
+          { status: 402 },
+        );
+      }
+      throw err;
+    }
+
+    //  Create the Paycrest order. On failure, refund the reserved ledger.
     const paycrestResp = await PayoutService.createPaycrestOrder({
       amount: amountUsd.toString(),
       sourceToken: sourceToken,
@@ -98,34 +131,31 @@ export async function POST(req: Request) {
         accountName: recipientName,
       },
       refundAddress: user.walletAddress || "",
-      externalId,
+      externalId: appExternalId,
     });
 
     if (!paycrestResp.success || !paycrestResp.order) {
-      return NextResponse.json({ 
-        error: paycrestResp.error || "Failed to create Paycrest order" 
+      await TransactionService.cancelAbandonedPending(appExternalId).catch((e) =>
+        console.error("[CREATE_PENDING] refund after Paycrest failure failed:", e),
+      );
+      return NextResponse.json({
+        error: paycrestResp.error || "Failed to create Paycrest order"
       }, { status: 400 });
     }
 
-    const tx = await TransactionService.createPending({
-      userId: user.id,
-      orderId,
-      externalId: paycrestResp.order.id, // Use Paycrest's ID as our externalId
-      sourceToken,
-      amountUsd,
-      payoutFiat,
-      recipientName,
-      recipientBank,
-      recipientAcc,
-    });
+    // Link the Paycrest order id so settlement/refund webhooks reconcile.
+    const linked = await TransactionService.attachPaycrestOrder(
+      tx.id,
+      paycrestResp.order.id,
+    );
 
     return NextResponse.json({
       success: true,
       transaction: {
-        ...tx,
-        orderId: tx.orderId.toString(),
-        amountUsd: tx.amountUsd.toString(),
-        payoutFiat: tx.payoutFiat.toString(),
+        ...linked,
+        orderId: linked.orderId.toString(),
+        amountUsd: linked.amountUsd.toString(),
+        payoutFiat: linked.payoutFiat.toString(),
       },
       paycrest: {
         receiveAddress: paycrestResp.order.providerAccount?.receiveAddress,

@@ -1,6 +1,22 @@
 import { prisma, Status, Transaction, Prisma } from "@fx-remit/database";
 import { RpcClient } from "./rpc.client";
 
+/** Thrown when createPending cannot reserve spendable ledger. */
+export class InsufficientBalanceError extends Error {
+  readonly code = "INSUFFICIENT_BALANCE" as const;
+  constructor(
+    readonly userId: string,
+    readonly requiredUsd: string,
+  ) {
+    super(`Insufficient wallet balance to reserve ${requiredUsd} USD`);
+    this.name = "InsufficientBalanceError";
+  }
+}
+
+const LEDGER_RESTORED_STATUSES: Status[] = ["FAILED", "REFUNDING"];
+// Once a remittance reaches any of these it is settled/reversed — never transition out.
+const TERMINAL_STATUSES: Status[] = ["COMPLETED", "FAILED", "REFUNDING"];
+
 export interface TransactionResponse {
   id: string;
   userId: string;
@@ -90,10 +106,27 @@ export class TransactionService {
 
     const amount = new Prisma.Decimal(data.amountUsd || 0);
 
-    // Identify existing record: Prioritize txHash (synced from frontend) over orderId (which may mismatch)
-    let existing = await prisma.transaction.findFirst({
-      where: { txHash: data.txHash },
+    // Prefer exact (txHash, logIndex) — multiple ERC-20 / event logs can share a txHash.
+    let existing = await prisma.transaction.findUnique({
+      where: {
+        txHash_logIndex: {
+          txHash: data.txHash,
+          logIndex: data.logIndex,
+        },
+      },
     });
+
+    // Frontend may stamp the real txHash onto the pending row while logIndex is still 0.
+    if (!existing) {
+      existing = await prisma.transaction.findFirst({
+        where: {
+          txHash: data.txHash,
+          logIndex: 0,
+          type: "REMITTANCE",
+          status: { in: ["PENDING", "PROCESSING", "VERIFIED"] },
+        },
+      });
+    }
 
     if (!existing) {
       existing = await prisma.transaction.findUnique({
@@ -190,7 +223,7 @@ export class TransactionService {
   /**
    * Update transaction status from Paycrest webhook events.
    * Gated by a state machine to prevent out-of-order webhooks from overwriting terminal states.
-   * FAILED remittances restore spendable ledger reserved in createPending.
+   * FAILED / REFUNDING remittances restore spendable ledger reserved in createPending (once).
    */
   static async updateFromPaycrest(externalId: string, status: Status) {
     const tx = await prisma.transaction.findUnique({
@@ -203,14 +236,19 @@ export class TransactionService {
     }
 
     // Terminal states: COMPLETED and FAILED cannot be transitioned out of.
-    if (tx.status === "COMPLETED" || tx.status === "FAILED") {
+    if (TERMINAL_STATUSES.includes(tx.status)) {
       console.log(
         `[TransactionService] Transaction #${tx.orderId.toString()} is already in terminal state [${tx.status}]. Ignoring transition to [${status}].`
       );
       return tx;
     }
 
-    if (status === "FAILED" && tx.type === "REMITTANCE") {
+    const shouldRestoreLedger =
+      tx.type === "REMITTANCE" &&
+      LEDGER_RESTORED_STATUSES.includes(status) &&
+      !LEDGER_RESTORED_STATUSES.includes(tx.status);
+
+    if (shouldRestoreLedger) {
       return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
         const updated = await client.transaction.update({
           where: { id: tx.id },
@@ -224,7 +262,7 @@ export class TransactionService {
           data: {
             walletBalance: { increment: tx.amountUsd },
             totalSentUsd: { decrement: tx.amountUsd },
-            // Keep transactionCount the attempt still happened
+            // Keep transactionCount — the attempt still happened
           },
         });
         return updated;
@@ -241,10 +279,55 @@ export class TransactionService {
   }
 
   /**
+   * Mark an abandoned remittance FAILED and restore ledger when no on-chain hash was attached.
+   * Use when the user rejects the wallet send or post-createPending steps fail before Paycrest settles.
+   */
+  static async cancelAbandonedPending(externalId: string) {
+    const tx = await prisma.transaction.findUnique({
+      where: { externalId },
+    });
+
+    if (!tx) {
+      return null;
+    }
+
+    if (tx.type !== "REMITTANCE") {
+      return tx;
+    }
+
+    if (TERMINAL_STATUSES.includes(tx.status) || LEDGER_RESTORED_STATUSES.includes(tx.status)) {
+      return tx;
+    }
+
+    // Only auto-cancel rows that never left the pending-* placeholder hash
+    if (!tx.txHash.startsWith("pending-")) {
+      throw new Error(
+        `Cannot cancel remittance ${externalId}: on-chain txHash already attached`,
+      );
+    }
+
+    return this.updateFromPaycrest(externalId, "FAILED");
+  }
+
+  /**
+   * Link a Paycrest order id to a pending row (used as the reconciliation key for webhooks).
+   */
+  static async attachPaycrestOrder(id: string, paycrestOrderId: string) {
+    return await prisma.transaction.update({
+      where: { id },
+      data: {
+        externalId: paycrestOrderId,
+        txHash: `pending-${paycrestOrderId}`,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  /**
    * Create a pending transaction record with recipient metadata.
    * This should be called by the PWA before the on-chain transaction is initiated
    * to ensure we have the recipient details (which are not stored on-chain).
-   * Reserves spendable balance immediately (debit ledger).
+   * Reserves spendable balance immediately (debit ledger) only if funds are available.
    */
   static async createPending(data: {
     userId: string;
@@ -259,7 +342,24 @@ export class TransactionService {
   }) {
     const amount = new Prisma.Decimal(data.amountUsd);
     return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const dbTx = await tx.transaction.create({
+      // Atomic reserve: only succeed when walletBalance >= amount
+      const reserved = await tx.user.updateMany({
+        where: {
+          id: data.userId,
+          walletBalance: { gte: amount },
+        },
+        data: {
+          walletBalance: { decrement: amount },
+          totalSentUsd: { increment: amount },
+          transactionCount: { increment: 1 },
+        },
+      });
+
+      if (reserved.count !== 1) {
+        throw new InsufficientBalanceError(data.userId, amount.toString());
+      }
+
+      return await tx.transaction.create({
         data: {
           userId: data.userId,
           orderId: data.orderId,
@@ -278,17 +378,6 @@ export class TransactionService {
           logIndex: 0,
         },
       });
-
-      await tx.user.update({
-        where: { id: data.userId },
-        data: {
-          walletBalance: { decrement: amount },
-          totalSentUsd: { increment: amount },
-          transactionCount: { increment: 1 },
-        },
-      });
-
-      return dbTx;
     });
   }
 

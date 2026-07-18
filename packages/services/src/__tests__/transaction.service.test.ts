@@ -4,7 +4,10 @@ process.env.DATABASE_URL ??=
 import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '@fx-remit/database';
-import { TransactionService } from '../transaction.service.js';
+import {
+  TransactionService,
+  InsufficientBalanceError,
+} from '../transaction.service.js';
 
 const originals = {
   findUnique: prisma.transaction.findUnique,
@@ -79,7 +82,7 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
     const result = await TransactionService.updateFromPaycrest('ext-1', 'COMPLETED');
 
     assert.equal(result?.status, 'COMPLETED');
-    const args = updateMock.mock.calls[0].arguments[0] as {
+    const args = (updateMock.mock.calls as any[])[0]?.arguments[0] as {
       where: { id: string };
       data: { status: string };
     };
@@ -110,6 +113,66 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
     assert.equal(result?.status, 'FAILED');
     assert.equal(capture.userUpdateArgs.where.id, 'user-1');
     assert.equal(capture.userUpdateArgs.data.walletBalance.increment, 25);
+  });
+
+  it('refunds ledger once when remittance transitions to REFUNDING', async () => {
+    const existing = sampleTx({ status: 'PENDING', amountUsd: 25 as any });
+    const capture: { userUpdateArgs?: any } = {};
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const client = {
+        transaction: {
+          update: mock.fn(async () => sampleTx({ status: 'REFUNDING' })),
+        },
+        user: {
+          update: mock.fn(async (args: any) => {
+            capture.userUpdateArgs = args;
+            return { id: args.where.id };
+          }),
+        },
+      };
+      return cb(client);
+    }) as any;
+
+    const result = await TransactionService.updateFromPaycrest('ext-1', 'REFUNDING');
+    assert.equal(result?.status, 'REFUNDING');
+    assert.equal(capture.userUpdateArgs.data.walletBalance.increment, 25);
+  });
+
+  it('treats REFUNDING as terminal — later FAILED does not re-touch ledger', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({ status: 'REFUNDING', amountUsd: 25 as any }),
+    ) as any;
+    const dollar = mock.fn(async () => {
+      throw new Error('should not open ledger restore tx');
+    });
+    prisma.$transaction = dollar as any;
+    const updateMock = mock.fn(async () => sampleTx({ status: 'FAILED' }));
+    prisma.transaction.update = updateMock as any;
+
+    const result = await TransactionService.updateFromPaycrest('ext-1', 'FAILED');
+    assert.equal(result?.status, 'REFUNDING');
+    assert.equal(dollar.mock.callCount(), 0);
+    assert.equal(updateMock.mock.callCount(), 0);
+  });
+
+  it('treats REFUNDING as terminal — later COMPLETED does not reverse the refund', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({ status: 'REFUNDING', amountUsd: 25 as any }),
+    ) as any;
+    const dollar = mock.fn(async () => {
+      throw new Error('should not open ledger restore tx');
+    });
+    prisma.$transaction = dollar as any;
+    const updateMock = mock.fn(async () => {
+      throw new Error('should not update terminal row');
+    });
+    prisma.transaction.update = updateMock as any;
+
+    const result = await TransactionService.updateFromPaycrest('ext-1', 'COMPLETED');
+    assert.equal(result?.status, 'REFUNDING');
+    assert.equal(dollar.mock.callCount(), 0);
+    assert.equal(updateMock.mock.callCount(), 0);
   });
 });
 
@@ -156,16 +219,24 @@ describe('TransactionService.updateFromPaycrest — unhappy paths', () => {
 });
 
 describe('TransactionService.createPending — happy paths', () => {
-  it('creates a PENDING remittance and reserves ledger balance', async () => {
+  it('creates a PENDING remittance and reserves ledger when funds available', async () => {
     const created = sampleTx({
       status: 'PENDING',
       txHash: 'pending-ext-9',
       chainId: 0,
       blockNumber: 0n,
     });
-    const capture: { createArgs?: any; userUpdateArgs?: any } = {};
+    const capture: { createArgs?: any; updateManyArgs?: any } = {};
     prisma.$transaction = mock.fn(async (cb: any) => {
       const tx = {
+        user: {
+          updateMany: mock.fn(async (args: any) => {
+            capture.updateManyArgs = args;
+            assert.equal(args.where.id, 'user-1');
+            assert.ok(args.where.walletBalance.gte);
+            return { count: 1 };
+          }),
+        },
         transaction: {
           create: mock.fn(async (args: any) => {
             capture.createArgs = args;
@@ -174,12 +245,6 @@ describe('TransactionService.createPending — happy paths', () => {
             assert.equal(args.data.txHash, 'pending-ext-9');
             assert.equal(args.data.chainId, 0);
             return created;
-          }),
-        },
-        user: {
-          update: mock.fn(async (args: any) => {
-            capture.userUpdateArgs = args;
-            return { id: args.where.id };
           }),
         },
       };
@@ -199,10 +264,79 @@ describe('TransactionService.createPending — happy paths', () => {
     });
 
     assert.equal(result.status, 'PENDING');
-    assert.equal(capture.userUpdateArgs.where.id, 'user-1');
-    assert.equal(capture.userUpdateArgs.data.walletBalance.decrement.toString(), '25');
-    assert.equal(capture.userUpdateArgs.data.totalSentUsd.increment.toString(), '25');
-    assert.equal(capture.userUpdateArgs.data.transactionCount.increment, 1);
+    assert.equal(
+      capture.updateManyArgs.data.walletBalance.decrement.toString(),
+      '25',
+    );
+  });
+});
+
+describe('TransactionService.createPending — unhappy paths', () => {
+  it('throws InsufficientBalanceError when reserve update matches no rows', async () => {
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const tx = {
+        user: {
+          updateMany: mock.fn(async () => ({ count: 0 })),
+        },
+        transaction: {
+          create: mock.fn(async () => {
+            throw new Error('should not create');
+          }),
+        },
+      };
+      return cb(tx);
+    }) as any;
+
+    await assert.rejects(
+      () =>
+        TransactionService.createPending({
+          userId: 'user-1',
+          orderId: 9n,
+          externalId: 'ext-9',
+          sourceToken: 'USDC',
+          amountUsd: 25,
+          payoutFiat: 40000,
+          recipientName: 'Jane Doe',
+          recipientBank: '058',
+          recipientAcc: '0123456789',
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof InsufficientBalanceError);
+        assert.equal(err.code, 'INSUFFICIENT_BALANCE');
+        return true;
+      },
+    );
+  });
+});
+
+describe('TransactionService.cancelAbandonedPending', () => {
+  it('fails and refunds when txHash is still pending-*', async () => {
+    const existing = sampleTx({
+      status: 'PENDING',
+      txHash: 'pending-ext-1',
+      amountUsd: 10 as any,
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    const restore = mock.method(
+      TransactionService,
+      'updateFromPaycrest',
+      async () => sampleTx({ status: 'FAILED' }),
+    );
+
+    const result = await TransactionService.cancelAbandonedPending('ext-1');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(restore.mock.calls[0].arguments[1], 'FAILED');
+  });
+
+  it('refuses cancel when on-chain txHash already attached', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({ status: 'PENDING', txHash: '0xreal' }),
+    ) as any;
+
+    await assert.rejects(
+      () => TransactionService.cancelAbandonedPending('ext-1'),
+      /on-chain txHash already attached/,
+    );
   });
 });
 
