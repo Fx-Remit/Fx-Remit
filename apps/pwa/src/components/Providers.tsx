@@ -3,7 +3,7 @@
 import { PrivyProvider } from '@privy-io/react-auth';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider, createConfig, http, fallback } from 'wagmi';
-import { base, celo, arbitrum } from 'wagmi/chains';
+import { base, celo } from 'wagmi/chains';
 import { UserHydrator } from './UserHydrator';
 import { AppShield } from './security/AppShield';
 import { useSecurityStore } from '@/store/security-store';
@@ -22,7 +22,7 @@ const queryClient = new QueryClient({
 const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
 
 export const wagmiConfig = createConfig({
-  chains: [base, celo, arbitrum],
+  chains: [base, celo],
   transports: {
     [base.id]: fallback([
       http(`https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`),
@@ -30,10 +30,6 @@ export const wagmiConfig = createConfig({
     ]),
     [celo.id]: fallback([
       http(`https://celo-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`),
-      http(),
-    ]),
-    [arbitrum.id]: fallback([
-      http(`https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`),
       http(),
     ]),
   },

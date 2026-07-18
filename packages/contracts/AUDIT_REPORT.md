@@ -18,7 +18,7 @@ The audit followed the **Senior Security Researcher** toolkit, including:
 
 - **`audit-context-building`**: Ultra-granular code analysis of the entire codebase.
 - **`entry-point-analyzer`**: Mapping of all state-changing functions and access controls.
-- **`building-secure-contracts`**: Multi-chain vulnerability detection (Base, Arbitrum, Celo).
+- **`building-secure-contracts`**: Multi-chain vulnerability detection (Base, Celo).
 - **`permit2-signature-audit`**: Verification of EIP-712 domain and replay safety.
 
 ---

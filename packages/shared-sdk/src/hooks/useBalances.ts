@@ -10,8 +10,10 @@ const getAlchemyNetwork = (chainId: number): Network => {
   switch (chainId) {
     case 8453: return Network.BASE_MAINNET;
     case 42220: return Network.CELO_MAINNET;
-    case 42161: return Network.ARB_MAINNET;
-    default: return Network.BASE_MAINNET;
+    default:
+      throw new Error(
+        `Unsupported chainId ${chainId}. FX Remit EVM supports Base (8453) and Celo (42220) only.`,
+      );
   }
 };
 
