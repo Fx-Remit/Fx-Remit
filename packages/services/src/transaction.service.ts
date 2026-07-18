@@ -225,10 +225,31 @@ export class TransactionService {
    * Gated by a state machine to prevent out-of-order webhooks from overwriting terminal states.
    * FAILED / REFUNDING remittances restore spendable ledger reserved in createPending (once).
    */
-  static async updateFromPaycrest(externalId: string, status: Status) {
-    const tx = await prisma.transaction.findUnique({
-      where: { externalId },
+  /**
+   * Resolve a remittance by Paycrest order id, our reference (externalId), or pending-{orderId} hash.
+   */
+  static async findByPaycrestKey(key: string) {
+    if (!key) return null;
+
+    const byExternal = await prisma.transaction.findUnique({
+      where: { externalId: key },
     });
+    if (byExternal) return byExternal;
+
+    return await prisma.transaction.findFirst({
+      where: {
+        type: "REMITTANCE",
+        OR: [
+          { txHash: `pending-${key}` },
+          { txHash: `abandoned-${key}` },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  static async updateFromPaycrest(externalId: string, status: Status) {
+    const tx = await this.findByPaycrestKey(externalId);
 
     if (!tx) {
       console.warn(`[TransactionService] No transaction found for Paycrest ID: ${externalId}`);
@@ -283,9 +304,7 @@ export class TransactionService {
    * Use when the user rejects the wallet send or post-createPending steps fail before Paycrest settles.
    */
   static async cancelAbandonedPending(externalId: string) {
-    const tx = await prisma.transaction.findUnique({
-      where: { externalId },
-    });
+    const tx = await this.findByPaycrestKey(externalId);
 
     if (!tx) {
       return null;
@@ -306,21 +325,40 @@ export class TransactionService {
       );
     }
 
-    return this.updateFromPaycrest(externalId, "FAILED");
+    const failed = await this.updateFromPaycrest(tx.externalId ?? externalId, "FAILED");
+    if (!failed) return null;
+
+    // Free placeholder unique keys so retries / new pendings don't collide
+    return await prisma.transaction.update({
+      where: { id: failed.id },
+      data: {
+        txHash: `abandoned-${failed.id}`,
+        blockNumber: failed.orderId,
+        updatedAt: new Date(),
+      },
+    });
   }
 
   /**
-   * Link a Paycrest order id to a pending row (used as the reconciliation key for webhooks).
+   * Link a Paycrest order id onto the pending placeholder hash.
+   * Keeps `externalId` as the frontend idempotency / Paycrest reference so retries still match.
+   * Webhooks resolve via reference, order id, or `pending-{orderId}` (see findByPaycrestKey).
    */
   static async attachPaycrestOrder(id: string, paycrestOrderId: string) {
     return await prisma.transaction.update({
       where: { id },
       data: {
-        externalId: paycrestOrderId,
         txHash: `pending-${paycrestOrderId}`,
         updatedAt: new Date(),
       },
     });
+  }
+
+  /** Extract Paycrest order id from a pending-* / abandoned-* placeholder hash. */
+  static paycrestOrderIdFromTxHash(txHash: string): string | null {
+    if (txHash.startsWith("pending-")) return txHash.slice("pending-".length);
+    if (txHash.startsWith("abandoned-")) return txHash.slice("abandoned-".length);
+    return null;
   }
 
   /**
@@ -328,6 +366,10 @@ export class TransactionService {
    * This should be called by the PWA before the on-chain transaction is initiated
    * to ensure we have the recipient details (which are not stored on-chain).
    * Reserves spendable balance immediately (debit ledger) only if funds are available.
+   *
+   * Idempotent on `externalId` (frontend idempotency key):
+   * - PENDING/PROCESSING → return existing (no double debit)
+   * - FAILED abandoned (pending-* hash) → re-reserve and reopen
    */
   static async createPending(data: {
     userId: string;
@@ -341,6 +383,88 @@ export class TransactionService {
     recipientAcc: string;
   }) {
     const amount = new Prisma.Decimal(data.amountUsd);
+    const payoutFiat = new Prisma.Decimal(data.payoutFiat);
+
+    let existing = await prisma.transaction.findUnique({
+      where: { externalId: data.externalId },
+    });
+
+    // Older rows remapped externalId → Paycrest order id; still resume the open reserve
+    if (!existing) {
+      existing = await prisma.transaction.findFirst({
+        where: {
+          userId: data.userId,
+          type: "REMITTANCE",
+          status: { in: ["PENDING", "PROCESSING"] },
+          txHash: { startsWith: "pending-" },
+          amountUsd: amount,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
+    if (existing) {
+      if (existing.userId !== data.userId) {
+        throw new Error(`externalId ${data.externalId} belongs to another user`);
+      }
+      if (existing.type !== "REMITTANCE") {
+        throw new Error(`externalId ${data.externalId} is not a remittance`);
+      }
+
+      // In-flight retry — funds already reserved
+      if (existing.status === "PENDING" || existing.status === "PROCESSING") {
+        return existing;
+      }
+
+      // Abandoned after Paycrest failure — re-reserve and reopen same row
+      if (
+        existing.status === "FAILED" &&
+        (existing.txHash.startsWith("pending-") ||
+          existing.txHash.startsWith("abandoned-"))
+      ) {
+        return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const reserved = await tx.user.updateMany({
+            where: {
+              id: data.userId,
+              walletBalance: { gte: amount },
+            },
+            data: {
+              walletBalance: { decrement: amount },
+              totalSentUsd: { increment: amount },
+              // transactionCount already counted on first attempt
+            },
+          });
+          if (reserved.count !== 1) {
+            throw new InsufficientBalanceError(data.userId, amount.toString());
+          }
+
+          return await tx.transaction.update({
+            where: { id: existing.id },
+            data: {
+              status: "PENDING",
+              orderId: data.orderId,
+              sourceToken: data.sourceToken,
+              amountUsd: amount,
+              payoutFiat,
+              recipientName: data.recipientName,
+              recipientBank: data.recipientBank,
+              recipientAcc: data.recipientAcc,
+              txHash: `pending-${data.externalId}`,
+              chainId: 0,
+              // Avoid @@unique([chainId, blockNumber, logIndex]) collisions on (0,0,0)
+              blockNumber: data.orderId,
+              logIndex: 0,
+              updatedAt: new Date(),
+            },
+          });
+        });
+      }
+
+      throw new Error(
+        `Transaction ${data.externalId} already exists with status ${existing.status}`,
+      );
+    }
+
     return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Atomic reserve: only succeed when walletBalance >= amount
       const reserved = await tx.user.updateMany({
@@ -366,15 +490,16 @@ export class TransactionService {
           externalId: data.externalId,
           sourceToken: data.sourceToken,
           amountUsd: amount,
-          payoutFiat: new Prisma.Decimal(data.payoutFiat),
+          payoutFiat,
           recipientName: data.recipientName,
           recipientBank: data.recipientBank,
           recipientAcc: data.recipientAcc,
           status: "PENDING",
           type: "REMITTANCE",
-          txHash: `pending-${data.externalId}`, // Temporary placeholder until indexer picks it up
+          txHash: `pending-${data.externalId}`,
           chainId: 0,
-          blockNumber: 0n,
+          // Use orderId so multiple pending rows don't share (0,0,0)
+          blockNumber: data.orderId,
           logIndex: 0,
         },
       });

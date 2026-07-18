@@ -71,7 +71,7 @@ describe('PaycrestClient — happy paths', () => {
     assert.equal(http.get.mock.calls[0].arguments[0], '/institutions/NG');
   });
 
-  it('verifyAccount posts PascalCase fields', async () => {
+  it('verifyAccount posts camelCase fields', async () => {
     const http = mockAxiosClient();
     http.post.mock.mockImplementation(async () => ({
       data: { data: 'Jane Doe' },
@@ -79,18 +79,18 @@ describe('PaycrestClient — happy paths', () => {
 
     const client = new PaycrestClient('test-key');
     const name = await client.verifyAccount({
-      Institution: '058',
-      AccountIdentifier: '0123456789',
+      institution: '058',
+      accountIdentifier: '0123456789',
     });
 
     assert.equal(name, 'Jane Doe');
     const [path, body] = http.post.mock.calls[0].arguments as [string, Record<string, string>];
     assert.equal(path, '/verify-account');
-    assert.equal(body.Institution, '058');
-    assert.equal(body.AccountIdentifier, '0123456789');
+    assert.equal(body.institution, '058');
+    assert.equal(body.accountIdentifier, '0123456789');
   });
 
-  it('createOrder maps camelCase input to PascalCase payload', async () => {
+  it('createOrder posts camelCase v2 payload', async () => {
     const http = mockAxiosClient();
     http.post.mock.mockImplementation(async () => ({
       data: {
@@ -112,7 +112,7 @@ describe('PaycrestClient — happy paths', () => {
         refundAddress: '0xrefund',
       },
       destination: {
-        type: 'bank',
+        type: 'fiat',
         currency: 'NGN',
         recipient: {
           institution: '058',
@@ -130,19 +130,19 @@ describe('PaycrestClient — happy paths', () => {
     const [path, payload] = http.post.mock.calls[0].arguments as [
       string,
       {
-        Amount: string;
-        Source: { Currency: string; Network: string };
-        Destination: { Currency: string; Recipient: { Institution: string } };
-        Reference: string;
+        amount: string;
+        source: { currency: string; network: string };
+        destination: { currency: string; recipient: { institution: string } };
+        reference: string;
       },
     ];
     assert.equal(path, '/sender/orders');
-    assert.equal(payload.Amount, '100');
-    assert.equal(payload.Source.Currency, 'USDC');
-    assert.equal(payload.Source.Network, 'base');
-    assert.equal(payload.Destination.Currency, 'NGN');
-    assert.equal(payload.Destination.Recipient.Institution, '058');
-    assert.equal(payload.Reference, 'ref-1');
+    assert.equal(payload.amount, '100');
+    assert.equal(payload.source.currency, 'USDC');
+    assert.equal(payload.source.network, 'base');
+    assert.equal(payload.destination.currency, 'NGN');
+    assert.equal(payload.destination.recipient.institution, '058');
+    assert.equal(payload.reference, 'ref-1');
   });
 
   it('getOrder fetches by id', async () => {
@@ -211,8 +211,8 @@ describe('PaycrestClient — unhappy paths', () => {
     await assert.rejects(
       () =>
         client.verifyAccount({
-          Institution: '058',
-          AccountIdentifier: '000',
+          institution: '058',
+          accountIdentifier: '000',
         }),
       (err: any) => {
         assert.match(err.message, /Rate limit exceeded/);

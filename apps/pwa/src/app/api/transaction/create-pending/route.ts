@@ -27,6 +27,45 @@ const createPendingSchema = z.object({
   externalId: z.string().optional(),
 });
 
+function serializeTransaction(tx: {
+  orderId: bigint;
+  blockNumber: bigint;
+  amountUsd: { toString(): string };
+  payoutFiat: { toString(): string };
+}) {
+  return {
+    ...tx,
+    orderId: tx.orderId.toString(),
+    blockNumber: tx.blockNumber.toString(),
+    amountUsd: tx.amountUsd.toString(),
+    payoutFiat: tx.payoutFiat.toString(),
+  };
+}
+
+function paycrestPayload(
+  order: {
+    id?: string;
+    providerAccount?: { receiveAddress?: string; amountToTransfer?: string | number };
+  },
+  settlement: {
+    network: string;
+    chainId: number;
+    token: string;
+    tokenAddress: string;
+    decimals: number;
+  },
+) {
+  return {
+    receiveAddress: order.providerAccount?.receiveAddress,
+    amountToTransfer: order.providerAccount?.amountToTransfer,
+    network: settlement.network,
+    chainId: settlement.chainId,
+    token: settlement.token,
+    tokenAddress: settlement.tokenAddress,
+    decimals: settlement.decimals,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -39,7 +78,9 @@ export async function POST(req: Request) {
     let claims;
     try {
       claims = await privy.verifyAuthToken(token);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[CREATE_PENDING] Privy verifyAuthToken failed:", message);
       return NextResponse.json(
         { error: "Invalid authentication token" },
         { status: 401 },
@@ -91,8 +132,8 @@ export async function POST(req: Request) {
     const orderId = BigInt(Date.now());
     const appExternalId = frontendId || `pnd_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-    //  Reserve funds + create the pending row FIRST (atomic, guarded).
-    //    Doing this before Paycrest avoids orphan provider orders on insufficient balance.
+    // Reserve funds + create the pending row FIRST (atomic, guarded).
+    // Doing this before Paycrest avoids orphan provider orders on insufficient balance.
     let tx;
     try {
       tx = await TransactionService.createPending({
@@ -120,7 +161,35 @@ export async function POST(req: Request) {
       throw err;
     }
 
-    //  Create the Paycrest order. On failure, refund the reserved ledger.
+    // Resume in-flight PROCESSING (funds reserved + Paycrest order already created).
+    // Happens when the client never received the prior create-pending response.
+    if (tx.status === "PROCESSING") {
+      const paycrestOrderId =
+        TransactionService.paycrestOrderIdFromTxHash(tx.txHash) || tx.externalId;
+      if (!paycrestOrderId) {
+        return NextResponse.json(
+          { error: "In-flight remittance is missing Paycrest order id" },
+          { status: 409 },
+        );
+      }
+
+      const resumed = await PayoutService.getSettlementOrder(paycrestOrderId);
+      if (!resumed.success || !resumed.order || !resumed.settlement) {
+        return NextResponse.json(
+          { error: resumed.error || "Failed to resume Paycrest order" },
+          { status: 400 },
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        resumed: true,
+        transaction: serializeTransaction(tx),
+        paycrest: paycrestPayload(resumed.order, resumed.settlement),
+      });
+    }
+
+    // Create the Paycrest order. On failure, refund the reserved ledger.
     const paycrestResp = await PayoutService.createPaycrestOrder({
       amount: amountUsd.toString(),
       sourceToken: sourceToken,
@@ -131,11 +200,13 @@ export async function POST(req: Request) {
         accountName: recipientName,
       },
       refundAddress: user.walletAddress || "",
-      externalId: appExternalId,
+      externalId: tx.externalId || appExternalId,
     });
 
-    if (!paycrestResp.success || !paycrestResp.order) {
-      await TransactionService.cancelAbandonedPending(appExternalId).catch((e) =>
+    if (!paycrestResp.success || !paycrestResp.order || !paycrestResp.settlement) {
+      await TransactionService.cancelAbandonedPending(
+        tx.externalId || appExternalId,
+      ).catch((e) =>
         console.error("[CREATE_PENDING] refund after Paycrest failure failed:", e),
       );
       return NextResponse.json({
@@ -143,24 +214,18 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Link the Paycrest order id so settlement/refund webhooks reconcile.
+    // Link the Paycrest order id onto pending-* hash (keep externalId as reference).
     const linked = await TransactionService.attachPaycrestOrder(
       tx.id,
       paycrestResp.order.id,
     );
 
+    const { settlement } = paycrestResp;
+
     return NextResponse.json({
       success: true,
-      transaction: {
-        ...linked,
-        orderId: linked.orderId.toString(),
-        amountUsd: linked.amountUsd.toString(),
-        payoutFiat: linked.payoutFiat.toString(),
-      },
-      paycrest: {
-        receiveAddress: paycrestResp.order.providerAccount?.receiveAddress,
-        amountToTransfer: paycrestResp.order.providerAccount?.amountToTransfer,
-      }
+      transaction: serializeTransaction(linked),
+      paycrest: paycrestPayload(paycrestResp.order, settlement),
     });
 
   } catch (error) {

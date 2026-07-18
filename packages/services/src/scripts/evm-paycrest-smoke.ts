@@ -155,8 +155,8 @@ async function smokeCorridor(
   if (bankCode && account) {
     try {
       const name = await client.verifyAccount({
-        Institution: bankCode,
-        AccountIdentifier: account,
+        institution: bankCode,
+        accountIdentifier: account,
       });
       logStep('pass', 'verify-account', String(name));
     } catch (e: any) {

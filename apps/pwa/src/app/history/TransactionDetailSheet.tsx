@@ -32,16 +32,30 @@ export function TransactionDetailSheet({
 }: TransactionDetailSheetProps) {
   if (!isOpen || !transaction) return null;
 
-  // Mock data for missing fields if not provided
-  const orderId =
-    transaction.orderId || 'FX-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-  const provider = transaction.provider || 'YellowCard';
-  const rate = transaction.rate || '1 USDT = 1,460 NGN';
-
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    // Add a toast notification here in the future
   };
+
+  const recipientGets =
+    transaction.receivedToken === 'NGN'
+      ? `₦${Number(transaction.receivedAmount).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`
+      : `${transaction.receivedToken} ${transaction.receivedAmount}`;
+
+  const exchangeRate =
+    transaction.rate ||
+    (() => {
+      const sent = Number(transaction.sentAmount);
+      const received = Number(transaction.receivedAmount);
+      if (!(sent > 0 && received > 0)) return null;
+      const effective = received / sent;
+      return `1 ${transaction.sentToken} = ${effective.toLocaleString(undefined, {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+      })} ${transaction.receivedToken}`;
+    })();
 
   return (
     <>
@@ -189,10 +203,12 @@ export function TransactionDetailSheet({
               />
               {transaction.type !== 'DEPOSIT' && (
                 <>
-                  <DetailRow label="Exchange rate" value={transaction.rate || '1 USDT = 1,460 NGN'} />
+                  {exchangeRate && (
+                    <DetailRow label="Exchange rate" value={exchangeRate} />
+                  )}
                   <DetailRow
                     label="Recipient gets"
-                    value={`${transaction.receivedToken}${transaction.receivedAmount} only`}
+                    value={recipientGets}
                     isBold
                   />
                 </>
@@ -217,7 +233,7 @@ export function TransactionDetailSheet({
                 }
               />
               {transaction.type !== 'DEPOSIT' && (
-                <DetailRow label="Off-ramp Provider" value={transaction.provider || 'YellowCard'} />
+                <DetailRow label="Off-ramp Provider" value={transaction.provider || 'Paycrest'} />
               )}
             </div>
 

@@ -42,24 +42,59 @@ export async function POST(req: NextRequest) {
 
     /**
      * Map Paycrest Events to FX Remit Transaction Statuses
-     * Event Types: payment_order.created, payment_order.settled, payment_order.failed, payment_order.refunding
+     * Offramp: `validated` = fiat delivered (safe to mark COMPLETED).
+     * `settled` = on-chain settlement finished (also COMPLETED).
+     * Resolve by reference (our externalId) first, then Paycrest order id.
      */
+    const paycrestKeys = [data?.reference, data?.id].filter(
+      (k: unknown, i: number, arr: unknown[]) =>
+        typeof k === "string" && k.length > 0 && arr.indexOf(k) === i,
+    ) as string[];
+
+    const applyStatus = async (status: Status | 'COMPLETED' | 'FAILED') => {
+      for (const key of paycrestKeys) {
+        const updated = await TransactionService.updateFromPaycrest(key, status as Status);
+        if (updated) {
+          console.log(
+            `[Paycrest Webhook] ${event} → ${status} for key=${key} tx=${updated.id}`,
+          );
+          return updated;
+        }
+      }
+      console.warn(
+        `[Paycrest Webhook] No remittance matched keys=${JSON.stringify(paycrestKeys)} for ${event}`,
+      );
+      return null;
+    };
+
     switch (event) {
+      // Fiat confirmed for offramp do not wait for later `settled`
+      case 'payment_order.validated':
       case 'payment_order.settled':
-        await TransactionService.updateFromPaycrest(data.id, 'COMPLETED');
+        await applyStatus('COMPLETED');
         break;
 
       case 'payment_order.failed':
-        await TransactionService.updateFromPaycrest(data.id, 'FAILED');
+      case 'payment_order.expired':
+        await applyStatus('FAILED');
         break;
 
       case 'payment_order.refunding':
       case 'payment_order.refunded':
-        await TransactionService.updateFromPaycrest(data.id, Status.REFUNDING);
+        await applyStatus(Status.REFUNDING);
         break;
 
       default:
-        console.warn(`Unrecognized Paycrest event: ${event}`);
+        // Fallback: some payloads only bump data.status without a mapped event name
+        if (data?.status === 'validated' || data?.status === 'settled') {
+          await applyStatus('COMPLETED');
+        } else if (data?.status === 'failed' || data?.status === 'expired') {
+          await applyStatus('FAILED');
+        } else if (data?.status === 'refunding' || data?.status === 'refunded') {
+          await applyStatus(Status.REFUNDING);
+        } else {
+          console.warn(`Unrecognized Paycrest event: ${event}`);
+        }
     }
 
     return NextResponse.json({ received: true });

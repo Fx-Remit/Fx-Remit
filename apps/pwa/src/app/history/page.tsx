@@ -28,22 +28,46 @@ export default function HistoryPage() {
 
   const transactions = historyData?.transactions || [];
 
-  const mapToDetail = (tx: any) => ({
-    id: tx.id,
-    type: tx.type || 'REMITTANCE',
-    pair: `${tx.sourceToken || 'USDT'}/NGN`,
-    date: new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
-    status: (tx.status?.toLowerCase() === 'verified' || tx.status?.toLowerCase() === 'completed') ? 'completed' : tx.status?.toLowerCase() === 'failed' ? 'failed' : 'pending',
-    sentAmount: Number(tx.amountUsd).toFixed(2),
-    sentToken: tx.sourceToken || 'USDT',
-    receivedAmount: Number(tx.payoutFiat || 0).toFixed(2),
-    receivedToken: 'NGN',
-    orderId: tx.orderId,
-    chainId: tx.chainId,
-    network: networkLabelFromChainId(tx.chainId),
-    provider: tx.type === 'DEPOSIT' ? 'Wallet deposit' : 'Paycrest',
-    txHash: tx.txHash,
-  });
+  const mapToDetail = (tx: any) => {
+    const sentToken = tx.sourceToken || 'USDT';
+    const sentAmount = Number(tx.amountUsd);
+    const receivedAmount = Number(tx.payoutFiat || 0);
+    const effectiveRate =
+      sentAmount > 0 && receivedAmount > 0 ? receivedAmount / sentAmount : null;
+
+    return {
+      id: tx.id,
+      type: tx.type || 'REMITTANCE',
+      pair: `${sentToken}/NGN`,
+      date: new Date(tx.createdAt).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }),
+      status:
+        tx.status?.toLowerCase() === 'verified' || tx.status?.toLowerCase() === 'completed'
+          ? 'completed'
+          : tx.status?.toLowerCase() === 'failed'
+            ? 'failed'
+            : 'pending',
+      sentAmount: sentAmount.toFixed(2),
+      sentToken,
+      receivedAmount: receivedAmount.toFixed(2),
+      receivedToken: 'NGN',
+      rate:
+        effectiveRate != null
+          ? `1 ${sentToken} = ${effectiveRate.toLocaleString(undefined, {
+              maximumFractionDigits: 2,
+              minimumFractionDigits: 2,
+            })} NGN`
+          : undefined,
+      orderId: tx.orderId,
+      chainId: tx.chainId,
+      network: networkLabelFromChainId(tx.chainId),
+      provider: tx.type === 'DEPOSIT' ? 'Wallet deposit' : 'Paycrest',
+      txHash: tx.txHash,
+    };
+  };
 
   return (
     <div className="min-h-screen bg-[#F8FAFD] flex flex-col">
