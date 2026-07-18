@@ -44,6 +44,26 @@ describe('POST /api/paycrest/webhook — happy paths', () => {
     assert.equal(update.mock.calls[0].arguments[1], 'COMPLETED');
   });
 
+  it('maps payment_order.validated to COMPLETED (offramp fiat delivered)', async () => {
+    const update = mock.method(TransactionService, 'updateFromPaycrest', async () => ({
+      id: 'tx-1',
+      status: 'COMPLETED',
+    }));
+
+    await POST(
+      signedRequest({
+        event: 'payment_order.validated',
+        data: {
+          id: '224c03b5-380f-4dc0-ad4f-398f5c612834',
+          reference: '6f42de65-f361-42c2-9fad-624960bc1ac1',
+        },
+      }),
+    );
+
+    assert.equal(update.mock.calls[0].arguments[0], '6f42de65-f361-42c2-9fad-624960bc1ac1');
+    assert.equal(update.mock.calls[0].arguments[1], 'COMPLETED');
+  });
+
   it('maps payment_order.failed to FAILED', async () => {
     const update = mock.method(TransactionService, 'updateFromPaycrest', async () => null);
     await POST(

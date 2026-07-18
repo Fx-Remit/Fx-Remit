@@ -40,6 +40,8 @@ describe('PayoutService — happy paths', () => {
 
     assert.equal(result.success, true);
     assert.equal((result as any).order.id, 'ord_1');
+    assert.equal((result as any).settlement.token, 'USDC');
+    assert.equal((result as any).settlement.network, 'base');
     assert.equal(updateMany.mock.callCount(), 1);
     const args = updateMany.mock.calls[0].arguments[0] as {
       where: { externalId: string };

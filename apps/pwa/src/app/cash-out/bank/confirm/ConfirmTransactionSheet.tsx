@@ -33,12 +33,44 @@ const ERC20_ABI = [
   },
 ] as const;
 
-// Token Addresses on Celo (Default)
-const TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
-  USDT: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e',
-  USDC: '0xceBA911A676E46944e8574d30c6a596A4299bE6B',
-  cUSD: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
+// Paycrest settlement is on Base — addresses from Paycrest GET /tokens
+const BASE_TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
+  USDT: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
+  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
 };
+
+const BASE_CHAIN_ID = 8453;
+const BASE_CHAIN_ID_HEX = '0x2105'; // 8453
+
+type Eip1193Provider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+};
+
+/** Privy embedded wallets need wallet.switchChain; EIP-1193 alone often stays on Ethereum. */
+async function ensureBaseChain(
+  wallet: { switchChain: (chainId: number | string) => Promise<void> },
+  provider: Eip1193Provider,
+) {
+  await wallet.switchChain(BASE_CHAIN_ID);
+
+  const chainIdHex = String(
+    await provider.request({ method: 'eth_chainId' }),
+  ).toLowerCase();
+  if (chainIdHex !== BASE_CHAIN_ID_HEX) {
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: BASE_CHAIN_ID_HEX }],
+    });
+    const again = String(
+      await provider.request({ method: 'eth_chainId' }),
+    ).toLowerCase();
+    if (again !== BASE_CHAIN_ID_HEX) {
+      throw new Error(
+        `Wallet is on chain ${again}, but Paycrest settlement requires Base (${BASE_CHAIN_ID_HEX}). Reject and try again.`,
+      );
+    }
+  }
+}
 
 export function ConfirmTransactionSheet({
   isOpen,
@@ -73,6 +105,9 @@ export function ConfirmTransactionSheet({
     setError(null);
     try {
       const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error('Session expired — refresh the page and try again');
+      }
       const wallet = wallets[0];
       if (!wallet) throw new Error('No wallet connected');
 
@@ -107,26 +142,33 @@ export function ConfirmTransactionSheet({
         throw new Error('Paycrest did not provide a receive address');
       }
 
-      //  Execute On-chain Transfer
+      // Settlement token/network come from Paycrest (Base USDC), not a hard-coded UI assumption
+      const settlementToken: string = orderData.paycrest?.token || 'USDC';
+      const settlementTokenAddress: `0x${string}` | undefined =
+        orderData.paycrest?.tokenAddress || BASE_TOKEN_ADDRESSES[settlementToken];
+      const decimals: number =
+        typeof orderData.paycrest?.decimals === 'number'
+          ? orderData.paycrest.decimals
+          : 6;
+
+      if (!settlementTokenAddress) {
+        throw new Error(`Token ${settlementToken} not supported for direct transfer yet.`);
+      }
+
+      //  Execute On-chain Transfer on Base (not Ethereum mainnet)
       setStatus('sending');
 
       const provider = await wallet.getEthereumProvider();
-      const tokenAddress = TOKEN_ADDRESSES[token];
-      
-      if (!tokenAddress) {
-        throw new Error(`Token ${token} not supported for direct transfer yet.`);
-      }
+      await ensureBaseChain(wallet, provider);
 
-      // Standard ERC20 Transfer (18 decimals for most Celo tokens, check if USDT/USDC are 6 or 18)
-      // On Celo, USDT and USDC are often 6 decimals, while cUSD is 18.
-      const decimals = (token === 'USDT' || token === 'USDC') ? 6 : 18;
       const amountRaw = parseUnits(sendAmount, decimals);
 
       const txHash = await provider.request({
         method: 'eth_sendTransaction',
         params: [{
           from: wallet.address,
-          to: tokenAddress,
+          to: settlementTokenAddress,
+          chainId: BASE_CHAIN_ID_HEX,
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: 'transfer',

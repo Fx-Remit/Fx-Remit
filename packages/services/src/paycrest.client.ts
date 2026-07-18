@@ -9,8 +9,8 @@ export interface PaycrestRate {
 }
 
 export interface VerifyAccountParams {
-  Institution: string;
-  AccountIdentifier: string;
+  institution: string;
+  accountIdentifier: string;
 }
 
 export interface PaycrestOrderResult {
@@ -72,6 +72,21 @@ export class PaycrestClient {
       ) {
         const firstError = data.data[0];
         message = `${firstError.field}: ${firstError.message}`;
+      } else if (
+        data.data &&
+        typeof data.data === "object" &&
+        !Array.isArray(data.data) &&
+        (data.data as any).field
+      ) {
+        const fieldErr = data.data as { field: string; message: string };
+        message = `${fieldErr.field}: ${fieldErr.message}`;
+      } else if (data.errors && typeof data.errors === "object") {
+        const entries = Object.entries(data.errors as Record<string, string>);
+        if (entries.length > 0) {
+          message = entries
+            .map(([field, msg]) => `${field}: ${msg}`)
+            .join("; ");
+        }
       }
 
       const err = new Error(message);
@@ -135,10 +150,10 @@ export class PaycrestClient {
    */
   public async verifyAccount(params: VerifyAccountParams) {
     try {
-      // Paycrest v2 requires PascalCase field names
+      // Paycrest v2 uses camelCase field names
       const response = await this.client.post("/verify-account", {
-        Institution: params.Institution,
-        AccountIdentifier: params.AccountIdentifier,
+        institution: params.institution,
+        accountIdentifier: params.accountIdentifier,
       });
       // Paycrest returns account_name as a plain string in data field
       return response.data.data || response.data;
@@ -160,30 +175,29 @@ export class PaycrestClient {
   }
 
   /**
-   * Creates a payment order (Paycrest v2 - PascalCase required).
+   * Creates a payment order (Paycrest v2 — camelCase per OpenAPI).
    */
   public async createOrder(orderData: any): Promise<PaycrestOrderResult> {
     try {
-      // Paycrest v2 requires all field names in PascalCase
       const payload = {
-        Amount: orderData.amount,
-        Source: {
-          Type: orderData.source?.type,
-          Currency: orderData.source?.currency,
-          Network: orderData.source?.network,
-          RefundAddress: orderData.source?.refundAddress,
+        amount: orderData.amount,
+        source: {
+          type: orderData.source?.type,
+          currency: orderData.source?.currency,
+          network: orderData.source?.network,
+          refundAddress: orderData.source?.refundAddress,
         },
-        Destination: {
-          Type: orderData.destination?.type,
-          Currency: orderData.destination?.currency,
-          Recipient: {
-            Institution: orderData.destination?.recipient?.institution,
-            AccountIdentifier: orderData.destination?.recipient?.accountIdentifier,
-            AccountName: orderData.destination?.recipient?.accountName,
-            Memo: orderData.destination?.recipient?.memo,
+        destination: {
+          type: orderData.destination?.type,
+          currency: orderData.destination?.currency,
+          recipient: {
+            institution: orderData.destination?.recipient?.institution,
+            accountIdentifier: orderData.destination?.recipient?.accountIdentifier,
+            accountName: orderData.destination?.recipient?.accountName,
+            memo: orderData.destination?.recipient?.memo,
           },
         },
-        Reference: orderData.reference,
+        reference: orderData.reference,
       };
       const response = await this.client.post("/sender/orders", payload);
       return response.data.data || response.data;

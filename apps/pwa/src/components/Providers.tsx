@@ -68,6 +68,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || ''}
       config={{
+
+        defaultChain: base,
+        supportedChains: [base, celo],
         appearance: {
           theme: 'light',
           accentColor: '#2261FE',
