@@ -45,7 +45,7 @@ The central orchestrator. It manages:
 
 A plugin-based system to support different liquidity sources per chain:
 
-- **`UniswapV3Adapter.sol`**: Deployed on **Base** and **Polygon**. Handles V3 liquidity pools.
+- **`UniswapV3Adapter.sol`**: Deployed on **Base**. Handles V3 liquidity pools.
 - **`MentoAdapter.sol`**: Deployed on **Celo**. Handles native cUSD/cEUR stable swaps via the Mento Broker.
 
 ### `IPaycrestGateway.sol` (Gateway)
@@ -138,13 +138,13 @@ Create a `.env` file based on `.env.example`:
 PRIVATE_KEY=your_key
 # RPCs
 BASE_RPC_URL=https://mainnet.base.org
-ARB_RPC_URL=https://arb1.arbitrum.io/rpc
 CELO_RPC_URL=https://forno.celo.org
 # API Keys
 BASESCAN_API_KEY=your_key
-ARBISCAN_API_KEY=your_key
 CELOSCAN_API_KEY=your_key
 ```
+
+Supported EVM product chains: **Base** and **Celo** only.
 
 ### 2. Deploy to Celo (Mainnet)
 
@@ -155,16 +155,7 @@ forge script script/DeployFXRemit.s.sol:DeployFXRemit \
   --broadcast --verify --etherscan-api-key $CELOSCAN_API_KEY
 ```
 
-### 3. Deploy to Arbitrum One
-
-```bash
-source .env
-forge script script/DeployFXRemit.s.sol:DeployFXRemit \
-  --rpc-url $ARB_RPC_URL --private-key $PRIVATE_KEY \
-  --broadcast --verify --etherscan-api-key $ARBISCAN_API_KEY --legacy
-```
-
-### 4. Deploy to Base Mainnet
+### 3. Deploy to Base Mainnet
 
 ```bash
 source .env
@@ -182,10 +173,11 @@ forge script script/DeployFXRemit.s.sol:DeployFXRemit \
 - **Router**: `0x767B35703C98f63e71aB61d68a406931ADdb3FeB`
 - **MentoAdapter**: `0x077fCc25199a5d8016102a2f706dC63BA0d6700e`
 
-### Arbitrum One / Base (Pending)
+### Base Mainnet (Live)
 
-_To be added after deployment._
-
+- **Router**: `0x785a7A71642b68A87deBeEdBF2151C51501Fe408`
+- **UniswapV3Adapter**: `0xd718019889CD2B39AD9FF2241BB17A709E980F9F`
+- Basescan: https://basescan.org/address/0x785a7a71642b68a87debeedbf2151c51501fe408
 ---
 
 ## 10. Security and Audit

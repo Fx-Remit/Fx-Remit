@@ -1,5 +1,5 @@
 import { createPublicClient, http, getContract, Address, parseAbiItem } from 'viem';
-import { base, celo, polygon } from 'viem/chains';
+import { base, celo } from 'viem/chains';
 import FXRemitRouterABI from '../../services/src/abi/FXRemitRouter.json';
 
 export class ContractService {
@@ -7,7 +7,12 @@ export class ContractService {
   private contract;
 
   constructor(chainId: number, contractAddress: Address) {
-    const chain = chainId === 8453 ? base : chainId === 42220 ? celo : polygon;
+    if (chainId !== 8453 && chainId !== 42220) {
+      throw new Error(
+        `Unsupported chainId ${chainId}. FX Remit EVM supports Base (8453) and Celo (42220) only.`,
+      );
+    }
+    const chain = chainId === 8453 ? base : celo;
     
     this.client = createPublicClient({
       chain,
