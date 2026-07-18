@@ -8,6 +8,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from '../history/TransactionDetailSheet';
+import { networkLabelFromChainId } from '@/lib/network';
 
 export default function HomePage() {
   const { user: privyUser, ready, authenticated, getAccessToken } = usePrivy();
@@ -79,8 +80,10 @@ export default function HomePage() {
     receivedAmount: Number(tx.payoutFiat || 0).toFixed(2),
     receivedToken: 'NGN',
     orderId: tx.orderId,
-    network: 'Celo Network',
-    provider: 'Paycrest',
+    chainId: tx.chainId,
+    network: networkLabelFromChainId(tx.chainId),
+    provider: tx.type === 'DEPOSIT' ? 'Wallet deposit' : 'Paycrest',
+    txHash: tx.txHash,
   });
 
   return (

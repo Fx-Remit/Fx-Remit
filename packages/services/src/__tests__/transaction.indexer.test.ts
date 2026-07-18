@@ -38,15 +38,13 @@ function mockUsers(users: Array<{ id: string; walletAddress: string | null }>) {
   prisma.user.findMany = mock.fn(async () => users) as any;
 }
 
-function mockLookups(existingByHash: any, existingByOrder: any = null) {
-  prisma.transaction.findFirst = mock.fn(async (args: any) => {
-    if (args.where?.txHash) return existingByHash;
-    return null;
-  }) as any;
+function mockLookups(existingByHashLog: any, existingByOrder: any = null) {
   prisma.transaction.findUnique = mock.fn(async (args: any) => {
+    if (args.where?.txHash_logIndex) return existingByHashLog;
     if (args.where?.orderId_chainId) return existingByOrder;
     return null;
   }) as any;
+  prisma.transaction.findFirst = mock.fn(async () => null) as any;
 }
 
 function mockAtomic(capture: {
@@ -131,29 +129,53 @@ describe('TransactionService.updateFromIndexer — happy paths', () => {
 
     assert.equal(capture.upsertArgs.update.status, 'VERIFIED');
     assert.equal(capture.upsertArgs.update.type, 'REMITTANCE');
-    // Ledger already reserved in createPending no second debit on verify
+    // Ledger already reserved in createPending — no second debit on verify
     assert.equal(capture.userUpdateArgs, undefined);
   });
 
-  it('prefers lookup by txHash before orderId_chainId', async () => {
+  it('prefers lookup by txHash_logIndex before orderId_chainId', async () => {
     mockUsers([{ id: 'user-1', walletAddress: '0xSender' }]);
-    const findFirst = mock.fn(async (args: any) => {
-      if (args.where?.txHash === INDEXER.txHash) {
-        return { id: 'by-hash', status: 'PENDING', recipientAcc: '1' };
+    const findUnique = mock.fn(async (args: any) => {
+      if (
+        args.where?.txHash_logIndex?.txHash === INDEXER.txHash &&
+        args.where?.txHash_logIndex?.logIndex === INDEXER.logIndex
+      ) {
+        return { id: 'by-hash-log', status: 'PENDING', recipientAcc: '1' };
       }
-      return null;
-    });
-    const findUnique = mock.fn(async () => {
       throw new Error('should not fall through to orderId lookup');
     });
-    prisma.transaction.findFirst = findFirst as any;
     prisma.transaction.findUnique = findUnique as any;
+    prisma.transaction.findFirst = mock.fn(async () => {
+      throw new Error('should not need pending logIndex=0 fallback');
+    }) as any;
     mock.method(RpcClient, 'getBlockNumber', async () => 1010n);
     mockAtomic({});
 
     await TransactionService.updateFromIndexer(INDEXER);
+    assert.equal(findUnique.mock.callCount(), 1);
+  });
+
+  it('falls back to pending row stamped with real txHash and logIndex 0', async () => {
+    mockUsers([{ id: 'user-1', walletAddress: '0xSender' }]);
+    prisma.transaction.findUnique = mock.fn(async (args: any) => {
+      if (args.where?.txHash_logIndex) return null;
+      if (args.where?.orderId_chainId) return null;
+      return null;
+    }) as any;
+    const findFirst = mock.fn(async (args: any) => {
+      assert.equal(args.where.txHash, INDEXER.txHash);
+      assert.equal(args.where.logIndex, 0);
+      return { id: 'pending-stamped', status: 'PENDING', recipientAcc: '1' };
+    });
+    prisma.transaction.findFirst = findFirst as any;
+    mock.method(RpcClient, 'getBlockNumber', async () => 1010n);
+    const capture: any = {};
+    mockAtomic(capture);
+
+    await TransactionService.updateFromIndexer(INDEXER);
     assert.equal(findFirst.mock.callCount(), 1);
-    assert.equal(findUnique.mock.callCount(), 0);
+    assert.equal(capture.upsertArgs.update.status, 'VERIFIED');
+    assert.equal(capture.userUpdateArgs, undefined);
   });
 });
 
