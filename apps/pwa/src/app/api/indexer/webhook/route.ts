@@ -22,8 +22,11 @@ function authorizeGoldsky(req: NextRequest, body: string, secret: string): boole
 
   const auth = req.headers.get('authorization');
   if (auth) {
-    if (timingSafeEqualString(auth, secret)) return true;
-    if (auth.startsWith('Bearer ') && timingSafeEqualString(auth.slice(7), secret)) {
+    // Standard: Authorization: Bearer <secret>
+    if (auth.startsWith('Bearer ')) {
+      if (timingSafeEqualString(auth.slice(7), secret)) return true;
+    } else if (timingSafeEqualString(auth, secret)) {
+      // Bare secret (no Bearer prefix) — some webhook configs send this
       return true;
     }
   }

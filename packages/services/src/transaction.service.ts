@@ -434,6 +434,9 @@ export class TransactionService {
     const orderId = data.blockNumber * 1000n + BigInt(data.logIndex);
 
     try {
+      // Atomic: create + balance increment commit together. On P2002 the whole
+      // interactive transaction rolls back the catch path below must NEVER
+      // increment walletBalance (lookup-only idempotent return).
       const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const dbTx = await tx.transaction.create({
           data: {
@@ -466,6 +469,7 @@ export class TransactionService {
       return { created: true as const, transaction: result, user };
     } catch (err: any) {
       if (err?.code === "P2002") {
+        // Concurrent writer won — return their row. Do not credit again.
         const raced =
           (await prisma.transaction.findUnique({
             where: {

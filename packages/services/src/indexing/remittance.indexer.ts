@@ -180,11 +180,25 @@ export class RemittanceIndexer {
         : String(fromToken));
 
     const blockNumber = log.block_number ?? log.blockNumber ?? 0;
-    const logIndex = Number(log.log_index ?? log.logIndex ?? log.index ?? 0);
     const txHash =
       log.transaction_hash ||
       log.transactionHash ||
       `unknown-${orderId}-${chainId}`;
+
+    // logIndex is part of @@unique([txHash, logIndex]) and
+    // @@unique([chainId, blockNumber, logIndex]) — never invent 0.
+    const rawLogIndex = log.log_index ?? log.logIndex ?? log.index;
+    if (rawLogIndex === undefined || rawLogIndex === null || rawLogIndex === '') {
+      throw new Error(
+        `Missing log index for RemittanceInitiated tx=${txHash} chain=${chainId}`,
+      );
+    }
+    const logIndex = Number(rawLogIndex);
+    if (!Number.isFinite(logIndex)) {
+      throw new Error(
+        `Invalid log index "${rawLogIndex}" for RemittanceInitiated tx=${txHash}`,
+      );
+    }
 
     console.log(
       `[RemittanceIndexer] Order #${orderId.toString()} | chain=${chainId} | Sender: ${senderAddress}`,
