@@ -1,5 +1,6 @@
 import { prisma } from '@fx-remit/database';
 import { PrivyClient } from '@privy-io/node';
+import { AlchemyNotifyService } from './alchemy-notify.service';
 
 const privy = new PrivyClient({
   appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID || 'BUILD_PHASE',
@@ -17,15 +18,18 @@ export class IdentityService {
 
     console.log(`[IdentityService] Syncing User: DID[${did}] | Event[${type}]`);
 
-    // Extracting mapped identity fields
     const email = user.linked_accounts.find((a: any) => a.type === 'email')?.address;
 
     const walletAddress = user.linked_accounts.find(
       (a: any) => a.type === 'wallet' || a.type === 'smart_wallet',
     )?.address;
 
-    // Atomic Supabase Sync via Prisma
-    return await prisma.user.upsert({
+    const existing = await prisma.user.findUnique({
+      where: { privyDid: did },
+      select: { walletAddress: true },
+    });
+
+    const dbUser = await prisma.user.upsert({
       where: { privyDid: did },
       update: {
         email: email || undefined,
@@ -41,6 +45,18 @@ export class IdentityService {
         lastLoginAt: new Date(),
       },
     });
+
+    // Register / deregister Alchemy Address Activity watchers on wallet link/unlink
+    try {
+      await AlchemyNotifyService.syncWalletChange({
+        previousAddress: existing?.walletAddress,
+        nextAddress: walletAddress || null,
+      });
+    } catch (err) {
+      console.error('[IdentityService] Alchemy Notify sync failed', err);
+    }
+
+    return dbUser;
   }
 
   /**

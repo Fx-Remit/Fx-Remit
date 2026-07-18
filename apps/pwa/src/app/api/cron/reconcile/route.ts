@@ -4,22 +4,20 @@ import { ReconciliationService } from '@fx-remit/services';
 export const dynamic = 'force-dynamic';
 
 /**
- * Vercel Cron: Transaction Reconciliation
- * This endpoint catches transactions that were verified on-chain
- * but failed to initiate a payout due to provider downtime or server errors.
+ * Vercel Cron: remittance recovery + deposit catch-up.
  */
 export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
 
     if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      console.warn("[Cron Reconcile] Unauthorized access attempt");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      console.warn('[Cron Reconcile] Unauthorized access attempt');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('[Cron Reconcile] Triggering stuck transaction recovery...');
-    
-    const results = await ReconciliationService.reconcileStuckTransactions();
+    console.log('[Cron Reconcile] Running remittance + deposit reconciliation…');
+
+    const results = await ReconciliationService.reconcileAll();
 
     console.log('[Cron Reconcile] Process complete:', results);
 
@@ -30,6 +28,9 @@ export async function GET(req: Request) {
     });
   } catch (error: any) {
     console.error('[Cron Reconcile Failure]:', error.message);
-    return NextResponse.json({ error: 'Internal reconciliation error', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal reconciliation error', details: error.message },
+      { status: 500 },
+    );
   }
 }

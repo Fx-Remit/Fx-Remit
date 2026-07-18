@@ -8,7 +8,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.text();
     const signature = req.headers.get('x-goldsky-signature');
-    const secret = process.env.GOLDSKY_WEBHOOK_SECRET;
+    const secret =
+      process.env.GOLDSKY_WEBHOOK_SECRET ||
+      process.env.GOLDSKY_WEBHOOK_SECRET_KEY;
 
     // Verify webhook authenticity using HMAC-SHA256
     if (!secret || !signature) {

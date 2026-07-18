@@ -10,11 +10,10 @@ afterEach(() => {
 });
 
 describe('GET /api/cron/reconcile — happy paths', () => {
-  it('runs reconciliation when bearer token matches', async () => {
-    mock.method(ReconciliationService, 'reconcileStuckTransactions', async () => ({
-      recovered: 1,
-      flagged: 0,
-      failed: 0,
+  it('runs full reconciliation when bearer token matches', async () => {
+    mock.method(ReconciliationService, 'reconcileAll', async () => ({
+      remittances: { recovered: 1, flagged: 0, failed: 0 },
+      deposits: { users: 1, scanned: 2, credited: 0, errors: [] },
     }));
 
     const res = await GET(
@@ -26,7 +25,8 @@ describe('GET /api/cron/reconcile — happy paths', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.success, true);
-    assert.deepEqual(body.results, { recovered: 1, flagged: 0, failed: 0 });
+    assert.equal(body.results.remittances.recovered, 1);
+    assert.equal(body.results.deposits.scanned, 2);
   });
 });
 
@@ -46,7 +46,7 @@ describe('GET /api/cron/reconcile — unhappy paths', () => {
   });
 
   it('returns 500 when reconciliation throws', async () => {
-    mock.method(ReconciliationService, 'reconcileStuckTransactions', async () => {
+    mock.method(ReconciliationService, 'reconcileAll', async () => {
       throw new Error('db unavailable');
     });
 

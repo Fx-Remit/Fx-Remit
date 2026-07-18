@@ -7,16 +7,22 @@ import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '@fx-remit/database';
 import { IdentityService } from '../identity.service.js';
+import { AlchemyNotifyService } from '../alchemy-notify.service.js';
 
 const originalUpsert = prisma.user.upsert;
+const originalFindUnique = prisma.user.findUnique;
 
 afterEach(() => {
   prisma.user.upsert = originalUpsert;
+  prisma.user.findUnique = originalFindUnique;
   mock.restoreAll();
 });
 
 describe('IdentityService.syncUser — happy paths', () => {
   it('upserts email + wallet from linked_accounts', async () => {
+    prisma.user.findUnique = mock.fn(async () => null) as any;
+    mock.method(AlchemyNotifyService, 'syncWalletChange', async () => undefined);
+
     const upsertMock = mock.fn(async (args: any) => {
       assert.equal(args.where.privyDid, 'did:privy:abc');
       assert.equal(args.update.email, 'a@example.com');
@@ -46,6 +52,9 @@ describe('IdentityService.syncUser — happy paths', () => {
   });
 
   it('accepts smart_wallet as wallet address', async () => {
+    prisma.user.findUnique = mock.fn(async () => null) as any;
+    mock.method(AlchemyNotifyService, 'syncWalletChange', async () => undefined);
+
     const upsertMock = mock.fn(async (args: any) => {
       assert.equal(args.update.walletAddress, '0xsmart');
       return { id: 'user-2' };
@@ -62,10 +71,40 @@ describe('IdentityService.syncUser — happy paths', () => {
 
     assert.equal(upsertMock.mock.callCount(), 1);
   });
+
+  it('deregisters previous wallet when address changes', async () => {
+    prisma.user.findUnique = mock.fn(async () => ({
+      walletAddress: '0xold',
+    })) as any;
+
+    const notify = mock.method(
+      AlchemyNotifyService,
+      'syncWalletChange',
+      async (args: { previousAddress?: string | null; nextAddress?: string | null }) => {
+        assert.equal(args.previousAddress, '0xold');
+        assert.equal(args.nextAddress, '0xnew');
+      },
+    );
+
+    prisma.user.upsert = mock.fn(async () => ({ id: 'user-4' })) as any;
+
+    await IdentityService.syncUser({
+      type: 'user.authenticated',
+      data: {
+        id: 'did:privy:rotate',
+        linked_accounts: [{ type: 'wallet', address: '0xnew' }],
+      },
+    });
+
+    assert.equal(notify.mock.callCount(), 1);
+  });
 });
 
 describe('IdentityService.syncUser — edge paths', () => {
   it('creates with empty email/wallet when linked accounts missing', async () => {
+    prisma.user.findUnique = mock.fn(async () => null) as any;
+    mock.method(AlchemyNotifyService, 'syncWalletChange', async () => undefined);
+
     const upsertMock = mock.fn(async (args: any) => {
       assert.equal(args.create.email, '');
       assert.equal(args.create.walletAddress, '');

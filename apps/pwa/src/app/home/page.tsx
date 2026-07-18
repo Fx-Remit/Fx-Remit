@@ -30,6 +30,25 @@ export default function HomePage() {
     retry: 1,
   });
 
+  const { data: balanceData } = useQuery({
+    queryKey: ['live-wallet-balance', dbUser?.walletAddress],
+    queryFn: async () => {
+      const token = await getAccessToken();
+      const res = await fetch('/api/deposit/balance', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Balance fetch failed: ${res.status}`);
+      }
+      return res.json();
+    },
+    enabled: !!dbUser?.walletAddress && !!authenticated,
+    refetchInterval: 15_000,
+    staleTime: 5_000,
+    retry: 1,
+  });
+
   const transactions = historyData?.transactions || [];
 
   const [balanceVisible, setBalanceVisible] = useState(true);
@@ -40,7 +59,11 @@ export default function HomePage() {
   const displayName = dbUser?.displayName || dbUser?.fullName || privyUser?.id?.slice(0, 10);
   const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${privyUser?.id}&backgroundColor=b6e3f4`;
 
-  const balance = (dbUser as any)?.walletBalance?.toString() || '0.00';
+  // Prefer live on-chain stables; fall back to DB ledger if Alchemy is unavailable
+  const liveUsd = typeof balanceData?.liveUsd === 'number' ? balanceData.liveUsd : null;
+  const ledgerUsd = Number((dbUser as any)?.walletBalance?.toString() || 0);
+  const balanceNumber = liveUsd !== null ? liveUsd : ledgerUsd;
+  const balance = balanceNumber.toFixed(2);
 
   const [selectedTx, setSelectedTx] = useState<any>(null);
 
