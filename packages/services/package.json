@@ -11,7 +11,10 @@
     "type-check": "tsc --noEmit",
     "test": "node --import tsx --test src/__tests__/*.test.ts src/stellar/__tests__/*.test.ts",
     "stellar:sep10-test": "node --import tsx src/stellar/scripts/sep10-testnet.ts",
-    "stellar:sep24-test": "node --import tsx src/stellar/scripts/sep24-testnet.ts"
+    "stellar:sep24-test": "node --import tsx src/stellar/scripts/sep24-testnet.ts",
+    "evm:paycrest-smoke": "node --import tsx --env-file=../../apps/pwa/.env.local src/scripts/evm-paycrest-smoke.ts",
+    "evm:webhook-smoke": "node --import tsx --env-file=../../apps/pwa/.env.local src/scripts/evm-webhook-smoke.ts",
+    "evm:sandbox-smoke": "node --import tsx --env-file=../../apps/pwa/.env.local src/scripts/evm-sandbox-smoke.ts"
   },
   "dependencies": {
     "@fx-remit/database": "workspace:*",
