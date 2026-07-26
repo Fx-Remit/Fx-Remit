@@ -1,9 +1,13 @@
-import { X, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
-import React, { useState } from 'react';
+import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { parseUnits, encodeFunctionData } from 'viem';
+import {
+  SettlementPrefetchSession,
+  type PreparedSettlement,
+} from '@/lib/cash-out/settlement-prefetch';
 
 interface ConfirmTransactionSheetProps {
   isOpen: boolean;
@@ -33,7 +37,6 @@ const ERC20_ABI = [
   },
 ] as const;
 
-// Paycrest settlement is on Base — addresses from Paycrest GET /tokens
 const BASE_TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
   USDT: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
   USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
@@ -46,7 +49,6 @@ type Eip1193Provider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
 
-/** Privy embedded wallets need wallet.switchChain; EIP-1193 alone often stays on Ethereum. */
 async function ensureBaseChain(
   wallet: { switchChain: (chainId: number | string) => Promise<void> },
   provider: Eip1193Provider,
@@ -86,11 +88,114 @@ export function ConfirmTransactionSheet({
   idempotencyKey,
   spreadBps,
 }: ConfirmTransactionSheetProps) {
-  const [status, setStatus] = useState<'idle' | 'creating' | 'sending' | 'success'>('idle');
+  const [status, setStatus] = useState<
+    'idle' | 'preparing' | 'creating' | 'sending' | 'success'
+  >('idle');
   const { getAccessToken } = usePrivy();
   const { wallets } = useWallets();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [prefetchReady, setPrefetchReady] = useState(false);
+
+  const sessionRef = useRef<SettlementPrefetchSession | null>(null);
+  const sendingRef = useRef(false);
+
+  // Prefetch create-pending while the user reviews the sheet.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+    const session = new SettlementPrefetchSession({
+      amountUsd: sendAmount,
+      payoutFiat: receiveAmount,
+      recipientName: accName,
+      recipientBank: bankName,
+      recipientAcc: accNum,
+      bankCode,
+      token,
+      externalId: idempotencyKey || undefined,
+    });
+    sessionRef.current = session;
+    setPrefetchReady(false);
+    setError(null);
+    setStatus('preparing');
+
+    session.start(async (body) => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error('Session expired — refresh the page and try again');
+      }
+      const response = await fetch('/api/transaction/create-pending', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to prepare settlement');
+      }
+      return data;
+    });
+
+    session
+      .awaitPrepared()
+      .then(() => {
+        if (cancelled) return;
+        setPrefetchReady(true);
+        setStatus('idle');
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        setPrefetchReady(false);
+        setStatus('idle');
+      });
+
+    return () => {
+      cancelled = true;
+      // Abandon reserved ledger if user closes without sending.
+      if (sendingRef.current) return;
+      const closing = sessionRef.current;
+      sessionRef.current = null;
+      if (!closing) return;
+
+      void (async () => {
+        const externalId = await closing.resolveAbandonExternalId();
+        if (!externalId) return;
+        try {
+          const accessToken = await getAccessToken();
+          if (!accessToken) return;
+          await fetch('/api/transaction/cancel-pending', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ externalId }),
+          });
+          queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+        } catch (e) {
+          console.error('[CONFIRM] abandon cancel failed:', e);
+        }
+      })();
+    };
+  }, [
+    isOpen,
+    sendAmount,
+    receiveAmount,
+    accName,
+    bankName,
+    accNum,
+    bankCode,
+    token,
+    idempotencyKey,
+    getAccessToken,
+    queryClient,
+  ]);
 
   if (!isOpen) return null;
 
@@ -101,6 +206,7 @@ export function ConfirmTransactionSheet({
   const firstName = accName.split(' ')[0];
 
   const handleSend = async () => {
+    sendingRef.current = true;
     setStatus('creating');
     setError(null);
     try {
@@ -111,51 +217,54 @@ export function ConfirmTransactionSheet({
       const wallet = wallets[0];
       if (!wallet) throw new Error('No wallet connected');
 
-      // Create Pending Transaction & Paycrest Order
-      const response = await fetch('/api/transaction/create-pending', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          amountUsd: sendAmount,
-          recipientName: accName,
-          recipientBank: bankName,
-          recipientAcc: accNum,
-          bankCode: bankCode,
-          payoutFiat: receiveAmount,
-          token: token,
-          externalId: idempotencyKey,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to initiate transaction');
+      const session = sessionRef.current;
+      if (!session) {
+        throw new Error('Settlement is not ready — close and try again');
       }
 
-      const orderData = await response.json();
+      let orderData: PreparedSettlement;
+      try {
+        orderData = await session.awaitPrepared();
+      } catch {
+        // Prefetch failed earlier — retry create-pending on Send.
+        session.start(async (body) => {
+          const response = await fetch('/api/transaction/create-pending', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify(body),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || 'Failed to initiate transaction');
+          }
+          return data;
+        });
+        orderData = await session.awaitPrepared();
+      }
+
       const receiveAddress = orderData.paycrest?.receiveAddress;
-      
       if (!receiveAddress) {
         throw new Error('Paycrest did not provide a receive address');
       }
 
-      // Settlement token/network come from Paycrest (Base USDC), not a hard-coded UI assumption
       const settlementToken: string = orderData.paycrest?.token || 'USDC';
       const settlementTokenAddress: `0x${string}` | undefined =
-        orderData.paycrest?.tokenAddress || BASE_TOKEN_ADDRESSES[settlementToken];
+        (orderData.paycrest?.tokenAddress as `0x${string}` | undefined) ||
+        BASE_TOKEN_ADDRESSES[settlementToken];
       const decimals: number =
         typeof orderData.paycrest?.decimals === 'number'
           ? orderData.paycrest.decimals
           : 6;
 
       if (!settlementTokenAddress) {
-        throw new Error(`Token ${settlementToken} not supported for direct transfer yet.`);
+        throw new Error(
+          `Token ${settlementToken} not supported for direct transfer yet.`,
+        );
       }
 
-      //  Execute On-chain Transfer on Base (not Ethereum mainnet)
       setStatus('sending');
 
       const provider = await wallet.getEthereumProvider();
@@ -165,26 +274,29 @@ export function ConfirmTransactionSheet({
 
       const txHash = await provider.request({
         method: 'eth_sendTransaction',
-        params: [{
-          from: wallet.address,
-          to: settlementTokenAddress,
-          chainId: BASE_CHAIN_ID_HEX,
-          data: encodeFunctionData({
-            abi: ERC20_ABI,
-            functionName: 'transfer',
-            args: [receiveAddress as `0x${string}`, amountRaw],
-          }),
-        }],
+        params: [
+          {
+            from: wallet.address,
+            to: settlementTokenAddress,
+            chainId: BASE_CHAIN_ID_HEX,
+            data: encodeFunctionData({
+              abi: ERC20_ABI,
+              functionName: 'transfer',
+              args: [receiveAddress as `0x${string}`, amountRaw],
+            }),
+          },
+        ],
       });
+
+      session.markConsumed();
 
       console.log('[CONFIRM] On-chain Tx Hash:', txHash);
 
-      // Sync Hash with Backend for Indexer Reconciliation
       await fetch('/api/transaction/sync-hash', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           orderId: orderData.transaction.orderId,
@@ -199,51 +311,61 @@ export function ConfirmTransactionSheet({
       console.error('[CONFIRM] Transaction failed:', err);
       setError(err.message || 'An unexpected error occurred');
       setStatus('idle');
+      sendingRef.current = false;
     }
   };
+
+  const sendDisabled =
+    status === 'preparing' ||
+    status === 'creating' ||
+    status === 'sending' ||
+    status === 'success';
 
   return (
     <>
       <div className="fixed inset-0 z-[100] flex items-end">
-        {/* Backdrop */}
         <div
           className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-300"
-          onClick={status === 'idle' ? onClose : undefined}
+          onClick={status === 'idle' || status === 'preparing' ? onClose : undefined}
         />
 
-        {/* Sheet Container */}
         <div
           className="relative flex flex-col items-center pb-12 pt-4 px-5 animate-in slide-in-from-bottom duration-300 bg-[#F8F9FB] rounded-t-[20px]"
           style={{ width: '430px', height: '738px', margin: '0 auto' }}
         >
-          {/* Drag handle */}
           <div className="flex justify-center mb-5">
             <div className="w-12 h-1 bg-gray-300/30 rounded-full" />
           </div>
 
-          {/* Transaction Detail Card */}
           <div
             className="bg-white rounded-[20px] overflow-hidden shadow-[0px_4px_25px_rgba(0,0,0,0.03)] border border-gray-100 flex flex-col relative mb-4"
             style={{ width: '390px', height: '480px', paddingTop: '15px' }}
           >
-            {/* Close Button */}
             <button
               onClick={onClose}
-              disabled={status !== 'idle'}
+              disabled={status === 'creating' || status === 'sending'}
               className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30"
             >
               <X size={20} />
             </button>
 
-            {/* Title */}
             <div className="text-center px-6 pb-4 border-b border-gray-200/60">
               <h2 className="text-[18px] font-[600] text-[#1C1C1C] leading-none text-center">
                 Confirm transaction
               </h2>
+              {status === 'preparing' && (
+                <p className="text-[12px] text-[#888888] mt-2 font-medium">
+                  Preparing secure payout…
+                </p>
+              )}
+              {prefetchReady && status === 'idle' && !error && (
+                <p className="text-[12px] text-[#2261FE] mt-2 font-medium">
+                  Ready to send
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col flex-1 px-6">
-              {/* Total Amount Section */}
               <div className="flex flex-col items-center justify-center py-8 border-b border-gray-200/60">
                 <p className="text-[#4F4F4F] text-[14px] font-[500] leading-none mb-4">
                   Total amount
@@ -253,7 +375,6 @@ export function ConfirmTransactionSheet({
                 </h1>
               </div>
 
-              {/* Details List */}
               <div className="flex-1 flex flex-col items-center justify-center py-6 gap-6">
                 <DetailRow label="Recipient" value={accName} />
                 <DetailRow label="Account no" value={accNum} />
@@ -261,7 +382,9 @@ export function ConfirmTransactionSheet({
                   className="flex items-center justify-between"
                   style={{ width: '350px', height: '17px' }}
                 >
-                  <span className="text-[#888888] text-[14px] font-[500] leading-none">Bank</span>
+                  <span className="text-[#888888] text-[14px] font-[500] leading-none">
+                    Bank
+                  </span>
                   <div className="flex items-center gap-2">
                     <div className="w-[20px] h-[20px] rounded-full overflow-hidden flex items-center justify-center">
                       <img src="/bank icon.svg" alt="Bank" className="w-[20px] h-[20px]" />
@@ -285,30 +408,30 @@ export function ConfirmTransactionSheet({
             </div>
           </div>
 
-          {/* Error Message */}
           {error && (
             <div className="w-[390px] mb-4 p-4 bg-red-50 border border-red-100 rounded-[12px] flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
                 <AlertCircle size={16} className="text-red-500" />
               </div>
-              <p className="text-red-600 text-[13px] font-medium leading-tight">
-                {error}
-              </p>
+              <p className="text-red-600 text-[13px] font-medium leading-tight">{error}</p>
             </div>
           )}
 
-          {/* Action Buttons */}
           <div className="w-[390px] max-w-full space-y-4 mt-auto">
             <button
               onClick={handleSend}
-              disabled={status !== 'idle'}
+              disabled={sendDisabled}
               className="w-full h-[65px] bg-[#2261FE] text-white rounded-[7px] text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
             >
-              {status === 'idle' ? 'Send' : 'Processing...'}
+              {status === 'preparing'
+                ? 'Preparing…'
+                : status === 'idle'
+                  ? 'Send'
+                  : 'Processing...'}
             </button>
             <button
               onClick={onClose}
-              disabled={status !== 'idle'}
+              disabled={status === 'creating' || status === 'sending'}
               className="w-full h-[65px] bg-white text-[#2261FE] border-2 border-[#2261FE]/10 rounded-[7px] text-[18px] font-bold active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
             >
               Edit details
@@ -317,7 +440,6 @@ export function ConfirmTransactionSheet({
         </div>
       </div>
 
-      {/* Processing State Overlay */}
       {(status === 'creating' || status === 'sending') && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="w-full max-w-[430px] flex flex-col items-center text-center">
@@ -326,8 +448,8 @@ export function ConfirmTransactionSheet({
                 {status === 'creating' ? 'Preparing order...' : 'Confirm in wallet...'}
               </h2>
               <p className="text-[#888888] mt-2 font-medium">
-                {status === 'creating' 
-                  ? 'Connecting to Paycrest secure gateway' 
+                {status === 'creating'
+                  ? 'Connecting to Paycrest secure gateway'
                   : 'Please sign the transaction in your wallet'}
               </p>
             </div>
@@ -338,7 +460,6 @@ export function ConfirmTransactionSheet({
         </div>
       )}
 
-      {/* Success State Overlay */}
       {status === 'success' && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div
@@ -367,7 +488,8 @@ export function ConfirmTransactionSheet({
               </h3>
 
               <p className="text-[#888888] text-[15px] font-medium max-w-[280px]">
-                The transaction has been broadcast. It will reflect in the account once verified by the network.
+                The transaction has been broadcast. It will reflect in the account once
+                verified by the network.
               </p>
             </div>
 
@@ -398,10 +520,11 @@ function DetailRow({
   return (
     <div className="flex items-center justify-between" style={{ width: '350px', height: '17px' }}>
       <span className="text-[#888888] text-[14px] font-[500] leading-none">{label}</span>
-      <span className={`text-[#3D3D3D] text-[14px] font-[500] leading-none truncate ml-4 ${isHighlight ? 'text-[#2261FE] font-bold' : ''}`}>
+      <span
+        className={`text-[#3D3D3D] text-[14px] font-[500] leading-none truncate ml-4 ${isHighlight ? 'text-[#2261FE] font-bold' : ''}`}
+      >
         {value}
       </span>
     </div>
   );
 }
-
