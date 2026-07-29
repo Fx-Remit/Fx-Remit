@@ -48,6 +48,7 @@ describe('PayoutService — happy paths', () => {
       data: { status: string };
     };
     assert.equal(args.where.externalId, 'ext-1');
+    assert.deepEqual(args.where.status, { in: ['PENDING', 'PROCESSING'] });
     assert.equal(args.data.status, 'PROCESSING');
   });
 

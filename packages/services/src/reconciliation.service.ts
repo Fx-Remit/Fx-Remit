@@ -118,9 +118,10 @@ export class ReconciliationService {
   }
 
   /**
-   * Full cron pass: remittance recovery + deposit catch-up + Notify wallet backfill.
+   * Full cron pass: expire abandoned pending remittances + recovery + deposits + Notify.
    */
   static async reconcileAll() {
+    const expiredPendings = await this.expireAbandonedPendings();
     const remittances = await this.reconcileStuckTransactions();
     const deposits = await this.reconcileDeposits();
 
@@ -143,6 +144,21 @@ export class ReconciliationService {
       console.error('[ReconciliationService] Notify backfill failed', err);
     }
 
-    return { remittances, deposits, notifyRegistered };
+    return { expiredPendings, remittances, deposits, notifyRegistered };
+  }
+
+  /**
+   * Auto-cancel prefetched remittances stuck in PENDING/PROCESSING with no on-chain hash.
+   * Default TTL: 30 minutes (override with PENDING_REMITTANCE_TTL_MS).
+   */
+  static async expireAbandonedPendings() {
+    const { TransactionService } = await import('./transaction.service');
+    const olderThanMs = Number(
+      process.env.PENDING_REMITTANCE_TTL_MS ?? 30 * 60 * 1000,
+    );
+    console.log(
+      `[ReconciliationService] Expiring pending remittances older than ${olderThanMs}ms…`,
+    );
+    return TransactionService.expireStalePendingRemittances({ olderThanMs });
   }
 }

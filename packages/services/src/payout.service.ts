@@ -82,10 +82,14 @@ export class PayoutService {
         reference: params.externalId,
       });
 
-      // If we have an external ID, update the transaction record
+      // Only advance still-open reserves. If the client abandoned (FAILED) while
+      // Paycrest was in flight, do not resurrect the row to PROCESSING.
       if (params.externalId) {
         await prisma.transaction.updateMany({
-          where: { externalId: params.externalId },
+          where: {
+            externalId: params.externalId,
+            status: { in: ["PENDING", "PROCESSING"] },
+          },
           data: {
             status: "PROCESSING",
             sourceToken: settlementToken,

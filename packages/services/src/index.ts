@@ -1,5 +1,6 @@
 export * from './alchemy.service';
 export * from './alchemy-notify.service';
+export * from './abandon-token';
 export * from './deposit.service';
 export * from './deposit.tokens';
 export * from './indexing/deposit.indexer';

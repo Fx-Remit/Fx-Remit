@@ -4,6 +4,7 @@ import { prisma } from '@fx-remit/database';
 import {
   TransactionService,
   PayoutService,
+  mintAbandonToken,
   InsufficientBalanceError,
 } from '@fx-remit/services';
 
@@ -22,7 +23,7 @@ const createPendingSchema = z.object({
   recipientName: z.string().trim().min(1, "recipientName is required"),
   recipientBank: z.string().trim().min(1, "recipientBank is required"),
   recipientAcc: z.string().trim().min(1, "recipientAcc is required"),
-  token: z.string().optional().default("USDT"),
+  token: z.string().trim().min(1, "token is required"),
   bankCode: z.string().optional(),
   externalId: z.string().optional(),
 });
@@ -161,6 +162,9 @@ export async function POST(req: Request) {
       throw err;
     }
 
+    const externalKey = tx.externalId || appExternalId;
+    const abandonToken = mintAbandonToken(externalKey, user.id);
+
     // Resume in-flight PROCESSING (funds reserved + Paycrest order already created).
     // Happens when the client never received the prior create-pending response.
     if (tx.status === "PROCESSING") {
@@ -184,15 +188,17 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         resumed: true,
+        abandonToken,
         transaction: serializeTransaction(tx),
         paycrest: paycrestPayload(resumed.order, resumed.settlement),
       });
     }
 
     // Create the Paycrest order. On failure, refund the reserved ledger.
+    // PayoutService remaps to the active Paycrest settlement rail when needed.
     const paycrestResp = await PayoutService.createPaycrestOrder({
       amount: amountUsd.toString(),
-      sourceToken: sourceToken,
+      sourceToken,
       destinationCurrency: "NGN", // Defaulting to NGN for now
       recipient: {
         institution: bankCode || recipientBank,
@@ -200,13 +206,11 @@ export async function POST(req: Request) {
         accountName: recipientName,
       },
       refundAddress: user.walletAddress || "",
-      externalId: tx.externalId || appExternalId,
+      externalId: externalKey,
     });
 
     if (!paycrestResp.success || !paycrestResp.order || !paycrestResp.settlement) {
-      await TransactionService.cancelAbandonedPending(
-        tx.externalId || appExternalId,
-      ).catch((e) =>
+      await TransactionService.cancelAbandonedPending(externalKey).catch((e) =>
         console.error("[CREATE_PENDING] refund after Paycrest failure failed:", e),
       );
       return NextResponse.json({
@@ -215,19 +219,30 @@ export async function POST(req: Request) {
     }
 
     // Link the Paycrest order id onto pending-* hash (keep externalId as reference).
+    // If the client abandoned while Paycrest was in flight, attach is a no-op.
     const linked = await TransactionService.attachPaycrestOrder(
       tx.id,
       paycrestResp.order.id,
     );
 
+    if (!linked) {
+      await TransactionService.cancelAbandonedPending(externalKey).catch((e) =>
+        console.error("[CREATE_PENDING] cleanup after abandon race failed:", e),
+      );
+      return NextResponse.json(
+        { error: "Remittance was cancelled before settlement was ready" },
+        { status: 409 },
+      );
+    }
+
     const { settlement } = paycrestResp;
 
     return NextResponse.json({
       success: true,
+      abandonToken,
       transaction: serializeTransaction(linked),
       paycrest: paycrestPayload(paycrestResp.order, settlement),
     });
-
   } catch (error) {
     console.error("[CREATE_PENDING] Error:", error);
     return NextResponse.json(
