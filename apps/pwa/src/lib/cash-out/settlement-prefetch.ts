@@ -2,7 +2,8 @@
  * Prefetch create-pending (ledger reserve + Paycrest order) while the user
  * reviews the confirm sheet so Send can jump straight to the wallet transfer.
  *
- * If the user closes without sending, the reserved remittance must be cancelled.
+ * Lifecycle is owned by the open/close event handlers not by useEffect.
+ * If the user closes without sending, cancel using the known externalId.
  */
 
 export type CreatePendingRequestBody = {
@@ -29,6 +30,8 @@ export type PaycrestSettlementPayload = {
 export type PreparedSettlement = {
   externalId: string;
   resumed: boolean;
+  /** Short-lived cancel capability — not a Privy JWT. */
+  abandonToken?: string;
   transaction: {
     orderId: string;
     id?: string;
@@ -83,6 +86,8 @@ export function parseCreatePendingSuccess(
   return {
     externalId,
     resumed: data.resumed === true,
+    abandonToken:
+      typeof data.abandonToken === 'string' ? data.abandonToken : undefined,
     transaction: {
       orderId: String(transaction.orderId),
       id: typeof transaction.id === 'string' ? transaction.id : undefined,
@@ -94,94 +99,162 @@ export function parseCreatePendingSuccess(
 
 export type PrefetchFetcher = (
   body: CreatePendingRequestBody,
+  signal: AbortSignal,
 ) => Promise<unknown>;
 
 /**
- * Tracks one confirm-sheet prefetch lifecycle.
- * - start() kicks create-pending early
- * - awaitPrepared() is what Send awaits (hits cache if ready)
- * - abandon() returns externalId to cancel if reserved and not consumed
+ * Prefetch must be younger than the server pending TTL (default 30m) so Send
+ * never broadcasts against a remittance the cron already expired/refunded.
+ */
+export const PREFETCH_MAX_AGE_MS = 25 * 60 * 1000;
+
+export class StaleSettlementError extends Error {
+  constructor(message = 'Settlement expired — prepare again') {
+    super(message);
+    this.name = 'StaleSettlementError';
+  }
+}
+
+/**
+ * One confirm-sheet prefetch lifecycle.
+ * Start from the Confirm click; await on Send; abandon from the Close click.
  */
 export class SettlementPrefetchSession {
   private promise: Promise<PreparedSettlement> | null = null;
   private prepared: PreparedSettlement | null = null;
+  private preparedAtMs: number | null = null;
   private error: Error | null = null;
   private consumed = false;
+  private started = false;
+  private abandoned = false;
+  private abortController: AbortController | null = null;
+  private abandonToken: string | null = null;
   private readonly body: CreatePendingRequestBody;
   private readonly fallbackExternalId: string;
+  private readonly maxAgeMs: number;
 
-  constructor(body: CreatePendingRequestBody) {
+  constructor(
+    body: CreatePendingRequestBody,
+    opts?: { maxAgeMs?: number },
+  ) {
     this.body = buildCreatePendingBody(body);
+    this.maxAgeMs = opts?.maxAgeMs ?? PREFETCH_MAX_AGE_MS;
     this.fallbackExternalId =
       (typeof body.externalId === 'string' && body.externalId) ||
       `prefetch_${Date.now()}`;
+    // Always send a stable externalId so abandon cancel can target the same key.
+    if (!this.body.externalId) {
+      this.body.externalId = this.fallbackExternalId;
+    }
+  }
+
+  get externalId(): string {
+    return this.prepared?.externalId ?? this.fallbackExternalId;
+  }
+
+  private isPreparedFresh(): boolean {
+    if (!this.prepared || this.preparedAtMs == null) return false;
+    return Date.now() - this.preparedAtMs < this.maxAgeMs;
+  }
+
+  private clearStalePrepared(): void {
+    this.prepared = null;
+    this.preparedAtMs = null;
+    this.promise = null;
+    this.error = new StaleSettlementError();
   }
 
   start(fetcher: PrefetchFetcher): void {
-    if (this.prepared && !this.consumed) return;
+    if (this.consumed || this.abandoned) return;
+    if (this.prepared && this.isPreparedFresh()) return;
+    if (this.prepared && !this.isPreparedFresh()) {
+      this.clearStalePrepared();
+    }
     if (this.promise && !this.error) return;
 
     this.error = null;
     this.prepared = null;
+    this.preparedAtMs = null;
+    this.started = true;
+    this.abortController = new AbortController();
+    const { signal } = this.abortController;
 
     this.promise = (async () => {
       try {
-        const json = await fetcher(this.body);
+        const json = await fetcher(this.body, signal);
+        if (signal.aborted || this.abandoned) {
+          throw new DOMException('Settlement prefetch aborted', 'AbortError');
+        }
         const result = parseCreatePendingSuccess(json, this.fallbackExternalId);
         this.prepared = result;
+        this.preparedAtMs = Date.now();
+        if (result.abandonToken) {
+          this.abandonToken = result.abandonToken;
+        }
         this.error = null;
         return result;
       } catch (err) {
         const e = err instanceof Error ? err : new Error(String(err));
         this.error = e;
         this.prepared = null;
+        this.preparedAtMs = null;
         throw e;
       }
     })();
   }
 
+  /** Abort in-flight create-pending fetch (does not cancel server row by itself). */
+  abortInFlight(): void {
+    this.abortController?.abort();
+  }
+
   isReady(): boolean {
-    return this.prepared != null && !this.consumed;
+    return (
+      this.prepared != null &&
+      this.isPreparedFresh() &&
+      !this.consumed &&
+      !this.abandoned
+    );
   }
 
   getPrepared(): PreparedSettlement | null {
+    if (!this.isPreparedFresh()) return null;
     return this.prepared;
   }
 
   async awaitPrepared(): Promise<PreparedSettlement> {
+    if (this.abandoned) {
+      throw new Error('Settlement session was abandoned');
+    }
     if (this.consumed && this.prepared) {
       return this.prepared;
+    }
+    if (this.prepared && !this.isPreparedFresh()) {
+      this.clearStalePrepared();
+      throw new StaleSettlementError();
     }
     if (!this.promise) {
       throw new Error('Settlement prefetch was not started');
     }
-    return this.promise;
+    const result = await this.promise;
+    if (!this.consumed && !this.isPreparedFresh()) {
+      this.clearStalePrepared();
+      throw new StaleSettlementError();
+    }
+    return result;
   }
 
-  /** Call after wallet transfer has been submitted successfully enough to keep the reserve. */
+  /** Call after wallet transfer has been submitted — keep the reserve. */
   markConsumed(): void {
     this.consumed = true;
   }
 
-  /**
-   * If we reserved funds and never consumed the settlement, return externalId for cancel.
-   * Clears session so cancel is only suggested once.
-   */
-  takeAbandonExternalId(): string | null {
-    if (this.consumed) return null;
-    if (!this.prepared) {
-      // Still in flight — waiters should cancel after await if user closed
-      return null;
-    }
-    const id = this.prepared.externalId;
-    this.prepared = null;
-    this.promise = null;
-    return id;
+  wasConsumed(): boolean {
+    return this.consumed;
   }
 
-  /** True when a successful prefetch reserved ledger and Send never consumed it. */
-  needsAbandonCancel(): boolean {
-    return !this.consumed && this.prepared != null;
+  getAbandonToken(): string | null {
+    return this.abandonToken;
   }
 
   getLastError(): Error | null {
@@ -189,18 +262,33 @@ export class SettlementPrefetchSession {
   }
 
   /**
-   * Wait for in-flight prefetch (if any) and return externalId to cancel when reserved
-   * but not consumed. Safe to call on sheet close.
+   * Abort in-flight fetch, wait for it to settle, then return externalId to cancel.
+   * Uses the known idempotency key even when the client-side parse/fetch failed,
+   * because create-pending may have reserved ledger before the client saw an error.
+   * Cancel-pending is idempotent (not_found is fine).
    */
   async resolveAbandonExternalId(): Promise<string | null> {
-    if (this.consumed) return null;
+    if (this.consumed || this.abandoned) return null;
+    if (!this.started) return null;
+
+    this.abortInFlight();
+
     if (this.promise) {
       try {
         await this.promise;
       } catch {
-        return null;
+        // Still abandon — server may have reserved under fallbackExternalId.
       }
     }
-    return this.takeAbandonExternalId();
+
+    if (this.consumed) return null;
+
+    this.abandoned = true;
+    const id = this.prepared?.externalId ?? this.fallbackExternalId;
+    this.prepared = null;
+    this.preparedAtMs = null;
+    this.promise = null;
+    this.abortController = null;
+    return id;
   }
 }

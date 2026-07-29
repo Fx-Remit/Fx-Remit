@@ -1,11 +1,12 @@
 process.env.NEXT_PUBLIC_PRIVY_APP_ID ??= 'test-app';
 process.env.PRIVY_APP_SECRET ??= 'test-secret';
+process.env.ABANDON_TOKEN_SECRET ??= 'test-abandon-secret';
 
 import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
-import { TransactionService } from '@fx-remit/services';
+import { TransactionService, mintAbandonToken } from '@fx-remit/services';
 import { POST } from './route';
 
 afterEach(() => {
@@ -52,6 +53,31 @@ describe('POST /api/transaction/cancel-pending — happy paths', () => {
     assert.equal(cancel.mock.calls[0].arguments[0], 'idem-1');
   });
 
+  it('cancels with abandonToken and no Bearer header', async () => {
+    const abandonToken = mintAbandonToken('idem-cap', 'user-1');
+    mock.method(TransactionService, 'findByPaycrestKey', async () => ({
+      id: 'tx-1',
+      userId: 'user-1',
+      externalId: 'idem-cap',
+      status: 'PROCESSING',
+    }));
+    mock.method(TransactionService, 'cancelAbandonedPending', async () => ({
+      id: 'tx-1',
+      status: 'FAILED',
+    }));
+
+    const res = await POST(
+      new Request('http://localhost/api/transaction/cancel-pending', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ externalId: 'idem-cap', abandonToken }),
+      }),
+    );
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    assert.equal(json.cancelled, true);
+  });
+
   it('returns cancelled:false when remittance is unknown', async () => {
     mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
       userId: 'did:privy:user-1',
@@ -68,11 +94,25 @@ describe('POST /api/transaction/cancel-pending — happy paths', () => {
 });
 
 describe('POST /api/transaction/cancel-pending — unhappy paths', () => {
-  it('returns 401 without bearer token', async () => {
+  it('returns 401 without bearer token or abandonToken', async () => {
     const res = await POST(
       new Request('http://localhost/api/transaction/cancel-pending', {
         method: 'POST',
         body: JSON.stringify({ externalId: 'x' }),
+      }),
+    );
+    assert.equal(res.status, 401);
+  });
+
+  it('returns 401 for invalid abandonToken', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/transaction/cancel-pending', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          externalId: 'idem-1',
+          abandonToken: 'not.a.valid.token',
+        }),
       }),
     );
     assert.equal(res.status, 401);

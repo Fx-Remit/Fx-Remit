@@ -457,6 +457,31 @@ describe('TransactionService.cancelAbandonedPending', () => {
   });
 });
 
+describe('TransactionService.expireStalePendingRemittances', () => {
+  it('cancels stale pending-* remittances older than the cutoff', async () => {
+    prisma.transaction.findMany = mock.fn(async (args: any) => {
+      assert.deepEqual(args.where.status, { in: ['PENDING', 'PROCESSING'] });
+      assert.equal(args.where.txHash.startsWith, 'pending-');
+      return [{ id: 'tx-old', externalId: 'ext-old' }];
+    }) as any;
+
+    const cancel = mock.method(
+      TransactionService,
+      'cancelAbandonedPending',
+      async (key: string) => {
+        assert.equal(key, 'ext-old');
+        return { id: 'tx-old', status: 'FAILED' };
+      },
+    );
+
+    const result = await TransactionService.expireStalePendingRemittances({
+      olderThanMs: 60_000,
+    });
+    assert.deepEqual(result, { scanned: 1, expired: 1, failed: 0 });
+    assert.equal(cancel.mock.callCount(), 1);
+  });
+});
+
 describe('TransactionService.getHistory — happy paths', () => {
   it('returns serialized rows ordered by createdAt desc', async () => {
     prisma.transaction.findMany = mock.fn(async (args: any) => {

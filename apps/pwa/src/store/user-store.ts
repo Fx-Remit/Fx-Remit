@@ -10,6 +10,8 @@ interface UserProfile {
   email?: string;
   totalSentUsd?: number;
   transactionCount?: number;
+  /** Ledger spendable balance (Decimal-like from API, or number/string after persist). */
+  walletBalance?: string | number | { toString(): string };
 }
 
 interface UserState {

@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
-import { TransactionService } from '@fx-remit/services';
+import {
+  TransactionService,
+  verifyAbandonToken,
+} from '@fx-remit/services';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -13,32 +16,16 @@ const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
 const cancelPendingSchema = z.object({
   externalId: z.string().trim().min(1, 'externalId is required'),
+  /** Short-lived capability from create-pending (pagehide / keepalive). */
+  abandonToken: z.string().trim().min(1).optional(),
 });
 
 /**
  * Cancel a prefetched / abandoned remittance that never received an on-chain hash.
- * Restores ledger via TransactionService.cancelAbandonedPending.
+ * Auth: Privy Bearer OR a minted abandonToken scoped to externalId + userId.
  */
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.slice(7);
-    let claims;
-    try {
-      claims = await privy.verifyAuthToken(token);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error('[CANCEL_PENDING] Privy verifyAuthToken failed:', message);
-      return NextResponse.json(
-        { error: 'Invalid authentication token' },
-        { status: 401 },
-      );
-    }
-
     let rawBody;
     try {
       rawBody = await req.json();
@@ -57,14 +44,43 @@ export async function POST(req: Request) {
       );
     }
 
-    const { externalId } = parsed.data;
+    const { externalId, abandonToken } = parsed.data;
+    const authHeader = req.headers.get('authorization');
 
-    const user = await prisma.user.findUnique({
-      where: { privyDid: claims.userId },
-      select: { id: true },
-    });
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    let userId: string | null = null;
+
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      try {
+        const claims = await privy.verifyAuthToken(token);
+        const user = await prisma.user.findUnique({
+          where: { privyDid: claims.userId },
+          select: { id: true },
+        });
+        if (!user) {
+          return NextResponse.json({ error: 'User not found' }, { status: 404 });
+        }
+        userId = user.id;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[CANCEL_PENDING] Privy verifyAuthToken failed:', message);
+        // Fall through to abandonToken if present
+      }
+    }
+
+    if (!userId && abandonToken) {
+      const claims = verifyAbandonToken(abandonToken, externalId);
+      if (!claims) {
+        return NextResponse.json(
+          { error: 'Invalid or expired abandon token' },
+          { status: 401 },
+        );
+      }
+      userId = claims.userId;
+    }
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const existing = await TransactionService.findByPaycrestKey(externalId);
@@ -76,7 +92,7 @@ export async function POST(req: Request) {
       });
     }
 
-    if (existing.userId !== user.id) {
+    if (existing.userId !== userId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -90,7 +106,6 @@ export async function POST(req: Request) {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      // On-chain hash already attached — do not unwind
       if (message.includes('on-chain txHash already attached')) {
         return NextResponse.json(
           { error: message, code: 'ALREADY_ON_CHAIN' },

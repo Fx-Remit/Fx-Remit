@@ -75,6 +75,19 @@ describe('parseCreatePendingSuccess', () => {
     assert.equal(prepared.externalId, 'fallback-key');
   });
 
+  it('parses abandonToken from create-pending payload', () => {
+    const prepared = parseCreatePendingSuccess(
+      {
+        success: true,
+        abandonToken: 'ext.user.exp.sig',
+        transaction: { orderId: '1', externalId: 'idem-1' },
+        paycrest: { receiveAddress: '0xAbc' },
+      },
+      'fallback',
+    );
+    assert.equal(prepared.abandonToken, 'ext.user.exp.sig');
+  });
+
   it('rejects missing receiveAddress', () => {
     assert.throws(
       () =>
@@ -132,7 +145,6 @@ describe('SettlementPrefetchSession', () => {
     assert.equal(a.paycrest.receiveAddress, '0xRecv');
     assert.equal(b.transaction.orderId, '42');
     assert.equal(session.isReady(), true);
-    assert.equal(session.needsAbandonCancel(), true);
   });
 
   it('does not abandon after markConsumed', async () => {
@@ -155,7 +167,6 @@ describe('SettlementPrefetchSession', () => {
     await session.awaitPrepared();
     session.markConsumed();
 
-    assert.equal(session.needsAbandonCancel(), false);
     assert.equal(await session.resolveAbandonExternalId(), null);
   });
 
@@ -178,7 +189,6 @@ describe('SettlementPrefetchSession', () => {
 
     const id = await session.resolveAbandonExternalId();
     assert.equal(id, 'idem-3');
-    // second take is empty
     assert.equal(await session.resolveAbandonExternalId(), null);
   });
 
@@ -215,7 +225,7 @@ describe('SettlementPrefetchSession', () => {
     assert.equal(calls, 2);
   });
 
-  it('resolveAbandonExternalId is null when prefetch failed', async () => {
+  it('resolveAbandonExternalId still returns key when prefetch failed', async () => {
     const session = new SettlementPrefetchSession({
       amountUsd: 1,
       payoutFiat: 1000,
@@ -230,6 +240,90 @@ describe('SettlementPrefetchSession', () => {
       throw new Error('nope');
     });
 
-    assert.equal(await session.resolveAbandonExternalId(), null);
+    // Server may have reserved under the same idempotency key; cancel is idempotent.
+    assert.equal(await session.resolveAbandonExternalId(), 'idem-5');
+  });
+
+  it('aborts in-flight fetcher before resolving abandon id', async () => {
+    const session = new SettlementPrefetchSession({
+      amountUsd: 1,
+      payoutFiat: 1000,
+      recipientName: 'A',
+      recipientBank: 'B',
+      recipientAcc: '1',
+      token: 'USDC',
+      externalId: 'idem-abort',
+    });
+
+    let sawAbort = false;
+    session.start(async (_body, signal) => {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(() => resolve(), 5000);
+        signal.addEventListener('abort', () => {
+          sawAbort = true;
+          clearTimeout(t);
+          reject(new DOMException('aborted', 'AbortError'));
+        });
+      });
+      return {
+        success: true,
+        transaction: { orderId: '1' },
+        paycrest: { receiveAddress: '0xR' },
+      };
+    });
+
+    const id = await session.resolveAbandonExternalId();
+    assert.equal(id, 'idem-abort');
+    assert.equal(sawAbort, true);
+  });
+
+  it('rejects stale prepared settlement so Send must re-prefetch', async () => {
+    const session = new SettlementPrefetchSession(
+      {
+        amountUsd: 1,
+        payoutFiat: 1000,
+        recipientName: 'A',
+        recipientBank: 'B',
+        recipientAcc: '1',
+        token: 'USDC',
+        externalId: 'idem-stale',
+      },
+      { maxAgeMs: 5 },
+    );
+
+    session.start(async () => ({
+      success: true,
+      transaction: { orderId: '1', externalId: 'idem-stale' },
+      paycrest: { receiveAddress: '0xR' },
+    }));
+
+    await session.awaitPrepared();
+    await new Promise((r) => setTimeout(r, 10));
+
+    await assert.rejects(() => session.awaitPrepared(), /expired/i);
+    assert.equal(session.isReady(), false);
+  });
+
+  it('assigns a stable externalId when caller omits one', async () => {
+    const session = new SettlementPrefetchSession({
+      amountUsd: 1,
+      payoutFiat: 1000,
+      recipientName: 'A',
+      recipientBank: 'B',
+      recipientAcc: '1',
+      token: 'USDC',
+    });
+
+    session.start(async (body) => {
+      assert.ok(body.externalId);
+      return {
+        success: true,
+        transaction: { orderId: '1', externalId: body.externalId },
+        paycrest: { receiveAddress: '0xR' },
+      };
+    });
+
+    const prepared = await session.awaitPrepared();
+    assert.equal(prepared.externalId, session.externalId);
   });
 });

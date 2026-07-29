@@ -1,27 +1,40 @@
 import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useQueryClient } from '@tanstack/react-query';
-import { parseUnits, encodeFunctionData } from 'viem';
+import { parseUnits, encodeFunctionData, isAddress } from 'viem';
 import {
   SettlementPrefetchSession,
   type PreparedSettlement,
 } from '@/lib/cash-out/settlement-prefetch';
+import { postCreatePending } from '@/lib/cash-out/create-pending-client';
+
+export type PrefetchPhase = 'preparing' | 'ready' | 'error';
+
+function settlementAmountHuman(
+  paycrest: PreparedSettlement['paycrest'],
+  fallbackSendAmount: string,
+): string {
+  const fromProvider = paycrest.amountToTransfer;
+  if (fromProvider == null || fromProvider === '') return fallbackSendAmount;
+  return String(fromProvider);
+}
 
 interface ConfirmTransactionSheetProps {
-  isOpen: boolean;
+  session: SettlementPrefetchSession;
+  prefetchPhase: PrefetchPhase;
+  prefetchError: string | null;
   onClose: () => void;
   sendAmount: string;
   receiveAmount: number;
-  token: string;
   currency: string;
   accNum: string;
   accName: string;
   bankName: string;
-  bankCode?: string;
-  idempotencyKey?: string;
   spreadBps?: number;
+  /** Parent sets this before close so abandon cleanup skips cancel. */
+  onSendingChange?: (sending: boolean) => void;
 }
 
 const ERC20_ABI = [
@@ -43,7 +56,7 @@ const BASE_TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
 };
 
 const BASE_CHAIN_ID = 8453;
-const BASE_CHAIN_ID_HEX = '0x2105'; // 8453
+const BASE_CHAIN_ID_HEX = '0x2105';
 
 type Eip1193Provider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -74,130 +87,31 @@ async function ensureBaseChain(
   }
 }
 
+/**
+ * Presentational confirm sheet. Prefetch lifecycle is owned by the parent
+ * Confirm click / Close click — this component never starts work on render.
+ */
 export function ConfirmTransactionSheet({
-  isOpen,
+  session,
+  prefetchPhase,
+  prefetchError,
   onClose,
   sendAmount,
   receiveAmount,
-  token,
   currency,
   accNum,
   accName,
   bankName,
-  bankCode,
-  idempotencyKey,
   spreadBps,
+  onSendingChange,
 }: ConfirmTransactionSheetProps) {
-  const [status, setStatus] = useState<
-    'idle' | 'preparing' | 'creating' | 'sending' | 'success'
-  >('idle');
+  const [status, setStatus] = useState<'idle' | 'creating' | 'sending' | 'success'>(
+    'idle',
+  );
   const { getAccessToken } = usePrivy();
   const { wallets } = useWallets();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [prefetchReady, setPrefetchReady] = useState(false);
-
-  const sessionRef = useRef<SettlementPrefetchSession | null>(null);
-  const sendingRef = useRef(false);
-
-  // Prefetch create-pending while the user reviews the sheet.
-  useEffect(() => {
-    if (!isOpen) return;
-
-    let cancelled = false;
-    const session = new SettlementPrefetchSession({
-      amountUsd: sendAmount,
-      payoutFiat: receiveAmount,
-      recipientName: accName,
-      recipientBank: bankName,
-      recipientAcc: accNum,
-      bankCode,
-      token,
-      externalId: idempotencyKey || undefined,
-    });
-    sessionRef.current = session;
-    setPrefetchReady(false);
-    setError(null);
-    setStatus('preparing');
-
-    session.start(async (body) => {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        throw new Error('Session expired — refresh the page and try again');
-      }
-      const response = await fetch('/api/transaction/create-pending', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to prepare settlement');
-      }
-      return data;
-    });
-
-    session
-      .awaitPrepared()
-      .then(() => {
-        if (cancelled) return;
-        setPrefetchReady(true);
-        setStatus('idle');
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        setError(message);
-        setPrefetchReady(false);
-        setStatus('idle');
-      });
-
-    return () => {
-      cancelled = true;
-      // Abandon reserved ledger if user closes without sending.
-      if (sendingRef.current) return;
-      const closing = sessionRef.current;
-      sessionRef.current = null;
-      if (!closing) return;
-
-      void (async () => {
-        const externalId = await closing.resolveAbandonExternalId();
-        if (!externalId) return;
-        try {
-          const accessToken = await getAccessToken();
-          if (!accessToken) return;
-          await fetch('/api/transaction/cancel-pending', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ externalId }),
-          });
-          queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
-        } catch (e) {
-          console.error('[CONFIRM] abandon cancel failed:', e);
-        }
-      })();
-    };
-  }, [
-    isOpen,
-    sendAmount,
-    receiveAmount,
-    accName,
-    bankName,
-    accNum,
-    bankCode,
-    token,
-    idempotencyKey,
-    getAccessToken,
-    queryClient,
-  ]);
-
-  if (!isOpen) return null;
 
   const feePercent = spreadBps ? spreadBps / 100 : 0.75;
   const netAmount = receiveAmount;
@@ -205,10 +119,20 @@ export function ConfirmTransactionSheet({
   const currencyName = currency === 'NGN' ? 'Naira' : currency;
   const firstName = accName.split(' ')[0];
 
+  const displayError = error ?? prefetchError;
+
   const handleSend = async () => {
-    sendingRef.current = true;
+    // Never allow a second broadcast once USDC has left the wallet.
+    if (session.wasConsumed()) {
+      setStatus('success');
+      return;
+    }
+
+    onSendingChange?.(true);
     setStatus('creating');
     setError(null);
+    let broadcastTxHash: string | null = null;
+
     try {
       const accessToken = await getAccessToken();
       if (!accessToken) {
@@ -217,37 +141,20 @@ export function ConfirmTransactionSheet({
       const wallet = wallets[0];
       if (!wallet) throw new Error('No wallet connected');
 
-      const session = sessionRef.current;
-      if (!session) {
-        throw new Error('Settlement is not ready — close and try again');
-      }
-
       let orderData: PreparedSettlement;
       try {
         orderData = await session.awaitPrepared();
       } catch {
-        // Prefetch failed earlier — retry create-pending on Send.
-        session.start(async (body) => {
-          const response = await fetch('/api/transaction/create-pending', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify(body),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(data.error || 'Failed to initiate transaction');
-          }
-          return data;
-        });
+        // Prefetch failed earlier retry create-pending on Send (same session key).
+        session.start((body, signal) =>
+          postCreatePending(body, accessToken, signal),
+        );
         orderData = await session.awaitPrepared();
       }
 
       const receiveAddress = orderData.paycrest?.receiveAddress;
-      if (!receiveAddress) {
-        throw new Error('Paycrest did not provide a receive address');
+      if (!receiveAddress || !isAddress(receiveAddress)) {
+        throw new Error('Paycrest did not provide a valid receive address');
       }
 
       const settlementToken: string = orderData.paycrest?.token || 'USDC';
@@ -259,7 +166,7 @@ export function ConfirmTransactionSheet({
           ? orderData.paycrest.decimals
           : 6;
 
-      if (!settlementTokenAddress) {
+      if (!settlementTokenAddress || !isAddress(settlementTokenAddress)) {
         throw new Error(
           `Token ${settlementToken} not supported for direct transfer yet.`,
         );
@@ -270,7 +177,9 @@ export function ConfirmTransactionSheet({
       const provider = await wallet.getEthereumProvider();
       await ensureBaseChain(wallet, provider);
 
-      const amountRaw = parseUnits(sendAmount, decimals);
+      // Prefer Paycrest's exact settlement amount when provided.
+      const amountHuman = settlementAmountHuman(orderData.paycrest, sendAmount);
+      const amountRaw = parseUnits(amountHuman, decimals);
 
       const txHash = await provider.request({
         method: 'eth_sendTransaction',
@@ -288,11 +197,12 @@ export function ConfirmTransactionSheet({
         ],
       });
 
+      broadcastTxHash = typeof txHash === 'string' ? txHash : String(txHash);
       session.markConsumed();
 
-      console.log('[CONFIRM] On-chain Tx Hash:', txHash);
+      console.log('[CONFIRM] On-chain Tx Hash:', broadcastTxHash);
 
-      await fetch('/api/transaction/sync-hash', {
+      const syncRes = await fetch('/api/transaction/sync-hash', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -300,33 +210,47 @@ export function ConfirmTransactionSheet({
         },
         body: JSON.stringify({
           orderId: orderData.transaction.orderId,
-          txHash: txHash,
+          txHash: broadcastTxHash,
         }),
       });
+
+      if (!syncRes.ok) {
+        console.error('[CONFIRM] sync-hash failed:', syncRes.status);
+        // Broadcast already succeeded do not unlock Send for a second transfer.
+      }
 
       queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
 
       setStatus('success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[CONFIRM] Transaction failed:', err);
-      setError(err.message || 'An unexpected error occurred');
+
+      // If the wallet already broadcast, never return to a retryable idle state.
+      if (broadcastTxHash || session.wasConsumed()) {
+        queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+        setStatus('success');
+        setError(
+          'Payment broadcast. Status sync may be delayed — check history before sending again.',
+        );
+        return;
+      }
+
+      const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+      setError(message);
       setStatus('idle');
-      sendingRef.current = false;
+      onSendingChange?.(false);
     }
   };
 
-  const sendDisabled =
-    status === 'preparing' ||
-    status === 'creating' ||
-    status === 'sending' ||
-    status === 'success';
+  const busy = status === 'creating' || status === 'sending';
+  const sendDisabled = busy || status === 'success';
 
   return (
     <>
       <div className="fixed inset-0 z-[100] flex items-end">
         <div
           className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-300"
-          onClick={status === 'idle' || status === 'preparing' ? onClose : undefined}
+          onClick={!busy && status !== 'success' ? onClose : undefined}
         />
 
         <div
@@ -343,7 +267,7 @@ export function ConfirmTransactionSheet({
           >
             <button
               onClick={onClose}
-              disabled={status === 'creating' || status === 'sending'}
+              disabled={busy}
               className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30"
             >
               <X size={20} />
@@ -353,12 +277,12 @@ export function ConfirmTransactionSheet({
               <h2 className="text-[18px] font-[600] text-[#1C1C1C] leading-none text-center">
                 Confirm transaction
               </h2>
-              {status === 'preparing' && (
+              {prefetchPhase === 'preparing' && status === 'idle' && (
                 <p className="text-[12px] text-[#888888] mt-2 font-medium">
                   Preparing secure payout…
                 </p>
               )}
-              {prefetchReady && status === 'idle' && !error && (
+              {prefetchPhase === 'ready' && status === 'idle' && !displayError && (
                 <p className="text-[12px] text-[#2261FE] mt-2 font-medium">
                   Ready to send
                 </p>
@@ -408,12 +332,14 @@ export function ConfirmTransactionSheet({
             </div>
           </div>
 
-          {error && (
+          {displayError && (
             <div className="w-[390px] mb-4 p-4 bg-red-50 border border-red-100 rounded-[12px] flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
                 <AlertCircle size={16} className="text-red-500" />
               </div>
-              <p className="text-red-600 text-[13px] font-medium leading-tight">{error}</p>
+              <p className="text-red-600 text-[13px] font-medium leading-tight">
+                {displayError}
+              </p>
             </div>
           )}
 
@@ -423,15 +349,11 @@ export function ConfirmTransactionSheet({
               disabled={sendDisabled}
               className="w-full h-[65px] bg-[#2261FE] text-white rounded-[7px] text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
             >
-              {status === 'preparing'
-                ? 'Preparing…'
-                : status === 'idle'
-                  ? 'Send'
-                  : 'Processing...'}
+              {status === 'idle' ? 'Send' : 'Processing...'}
             </button>
             <button
               onClick={onClose}
-              disabled={status === 'creating' || status === 'sending'}
+              disabled={busy}
               className="w-full h-[65px] bg-white text-[#2261FE] border-2 border-[#2261FE]/10 rounded-[7px] text-[18px] font-bold active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
             >
               Edit details

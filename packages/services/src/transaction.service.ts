@@ -340,18 +340,75 @@ export class TransactionService {
   }
 
   /**
+   * Expire stale prefetched / abandoned remittances that never received an on-chain hash.
+   * Safe for cron: only touches pending-* placeholder hashes.
+   */
+  static async expireStalePendingRemittances(opts?: {
+    olderThanMs?: number;
+    limit?: number;
+  }) {
+    const olderThanMs = opts?.olderThanMs ?? 30 * 60 * 1000;
+    const limit = opts?.limit ?? 100;
+    const cutoff = new Date(Date.now() - olderThanMs);
+
+    const stale = await prisma.transaction.findMany({
+      where: {
+        type: 'REMITTANCE',
+        status: { in: ['PENDING', 'PROCESSING'] },
+        txHash: { startsWith: 'pending-' },
+        updatedAt: { lte: cutoff },
+      },
+      select: { id: true, externalId: true },
+      take: limit,
+      orderBy: { updatedAt: 'asc' },
+    });
+
+    let expired = 0;
+    let failed = 0;
+
+    for (const row of stale) {
+      const key = row.externalId;
+      if (!key) {
+        failed += 1;
+        continue;
+      }
+      try {
+        await this.cancelAbandonedPending(key);
+        expired += 1;
+      } catch (err) {
+        failed += 1;
+        console.error(
+          `[TransactionService] expireStalePendingRemittances failed for ${key}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    return { scanned: stale.length, expired, failed };
+  }
+
+  /**
    * Link a Paycrest order id onto the pending placeholder hash.
    * Keeps `externalId` as the frontend idempotency / Paycrest reference so retries still match.
    * Webhooks resolve via reference, order id, or `pending-{orderId}` (see findByPaycrestKey).
    */
   static async attachPaycrestOrder(id: string, paycrestOrderId: string) {
-    return await prisma.transaction.update({
-      where: { id },
+    // Refuse to attach onto an abandoned/cancelled row (client abandon race).
+    const attached = await prisma.transaction.updateMany({
+      where: {
+        id,
+        status: { in: ["PENDING", "PROCESSING"] },
+        txHash: { startsWith: "pending-" },
+      },
       data: {
         txHash: `pending-${paycrestOrderId}`,
         updatedAt: new Date(),
       },
     });
+    if (attached.count !== 1) {
+      return null;
+    }
+    return await prisma.transaction.findUnique({ where: { id } });
   }
 
   /** Extract Paycrest order id from a pending-* / abandoned-* placeholder hash. */
