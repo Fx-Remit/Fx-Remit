@@ -26,6 +26,8 @@ function CashOutConfirmContent() {
   const [session, setSession] = useState<SettlementPrefetchSession | null>(null);
   const [prefetchPhase, setPrefetchPhase] = useState<PrefetchPhase>('preparing');
   const [prefetchError, setPrefetchError] = useState<string | null>(null);
+  /** Shown on the confirm page when open fails before the sheet mounts. */
+  const [openError, setOpenError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
 
   /** Bumps on every open/close so stale prefetch .then handlers cannot update UI. */
@@ -126,6 +128,7 @@ function CashOutConfirmContent() {
       });
       if (result.cancelled) {
         queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+        queryClient.invalidateQueries({ queryKey: ['user-profile'] });
       }
     } catch (e) {
       console.error('[CONFIRM] abandon cancel failed:', e);
@@ -191,10 +194,11 @@ function CashOutConfirmContent() {
     if (session || closing) return;
 
     abandonEpochRef.current += 1;
+    setOpenError(null);
 
     const accessToken = await getAccessToken();
     if (!accessToken) {
-      setPrefetchError('Session expired — refresh the page and try again');
+      setOpenError('Session expired — refresh the page and try again');
       return;
     }
     // Bridge only until abandonToken is minted by create-pending.
@@ -355,7 +359,14 @@ function CashOutConfirmContent() {
         </div>
       </div>
 
-      <div className="p-6 pb-12 bg-white mt-auto w-full flex justify-center">
+      <div className="p-6 pb-12 bg-white mt-auto w-full flex flex-col items-center gap-3">
+        {openError && (
+          <div className="max-w-[430px] w-full p-4 bg-red-50 border border-red-100 rounded-[12px]">
+            <p className="text-red-600 text-[13px] font-medium leading-tight text-center">
+              {openError}
+            </p>
+          </div>
+        )}
         <button
           onClick={() => {
             void openConfirmSheet();

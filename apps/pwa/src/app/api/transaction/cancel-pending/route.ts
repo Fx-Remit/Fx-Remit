@@ -57,10 +57,12 @@ export async function POST(req: Request) {
           where: { privyDid: claims.userId },
           select: { id: true },
         });
-        if (!user) {
-          return NextResponse.json({ error: 'User not found' }, { status: 404 });
+        if (user) {
+          userId = user.id;
+        } else {
+          // Fall through to abandonToken — Privy ok but local user row missing.
+          console.warn('[CANCEL_PENDING] Privy user has no DB row; trying abandonToken');
         }
-        userId = user.id;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error('[CANCEL_PENDING] Privy verifyAuthToken failed:', message);
@@ -80,6 +82,10 @@ export async function POST(req: Request) {
     }
 
     if (!userId) {
+      // Distinguish missing DB user (Bearer present) from no credentials.
+      if (authHeader?.startsWith('Bearer ') && !abandonToken) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

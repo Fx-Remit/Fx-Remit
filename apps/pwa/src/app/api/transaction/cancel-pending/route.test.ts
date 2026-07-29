@@ -78,6 +78,39 @@ describe('POST /api/transaction/cancel-pending — happy paths', () => {
     assert.equal(json.cancelled, true);
   });
 
+  it('falls through to abandonToken when Bearer user row is missing', async () => {
+    mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
+      userId: 'did:privy:ghost',
+    }));
+    prisma.user.findUnique = mock.fn(async () => null) as any;
+
+    const abandonToken = mintAbandonToken('idem-ghost', 'user-1');
+    mock.method(TransactionService, 'findByPaycrestKey', async () => ({
+      id: 'tx-1',
+      userId: 'user-1',
+      externalId: 'idem-ghost',
+      status: 'PROCESSING',
+    }));
+    mock.method(TransactionService, 'cancelAbandonedPending', async () => ({
+      id: 'tx-1',
+      status: 'FAILED',
+    }));
+
+    const res = await POST(
+      new Request('http://localhost/api/transaction/cancel-pending', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({ externalId: 'idem-ghost', abandonToken }),
+      }),
+    );
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    assert.equal(json.cancelled, true);
+  });
+
   it('returns cancelled:false when remittance is unknown', async () => {
     mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
       userId: 'did:privy:user-1',
