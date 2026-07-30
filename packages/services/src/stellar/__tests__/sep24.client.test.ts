@@ -1,7 +1,7 @@
 import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import axios from 'axios';
-import { Sep24Client } from '../sep24.client.js';
+import { Sep24Client, resolveSep24DestinationAsset } from '../sep24.client.js';
 import { clearAnchorTomlCache } from '../anchor-toml.js';
 import type { AnchorConfig } from '../types.js';
 
@@ -55,13 +55,19 @@ describe('Sep24Client — happy paths', () => {
       }
       throw new Error(`Unexpected GET ${url}`);
     });
-    mock.method(axios, 'post', async () => ({
-      data: {
-        id: 'tx-123',
-        url: 'https://testanchor.example/withdraw?id=tx-123',
-        type: 'interactive_customer_info_needed',
-      },
-    }));
+    const postMock = mock.fn(async (_url: string, body: string, opts: { headers: Record<string, string> }) => {
+      assert.equal(opts.headers['Content-Type'], 'application/x-www-form-urlencoded');
+      assert.match(String(body), /asset_code=USDC/);
+      assert.match(String(body), /destination_asset=iso4217%3AUSD|destination_asset=iso4217:USD/);
+      return {
+        data: {
+          id: 'tx-123',
+          url: 'https://testanchor.example/withdraw?id=tx-123',
+          type: 'interactive_customer_info_needed',
+        },
+      };
+    });
+    mock.method(axios, 'post', postMock);
 
     const client = new Sep24Client();
     const result = await client.startWithdrawInteractive({
@@ -71,7 +77,7 @@ describe('Sep24Client — happy paths', () => {
       assetCode: 'USDC',
       assetIssuer: ANCHOR.usdcIssuer,
       amount: '10',
-      destinationAsset: 'NGN',
+      destinationAsset: resolveSep24DestinationAsset(ANCHOR, 'NGN'),
       lang: 'en',
     });
 
@@ -101,10 +107,16 @@ describe('Sep24Client — happy paths', () => {
     assert.equal(opts.params.id, 'tx-123');
   });
 
-  it('corridorToDestinationAsset maps NGN and KES', () => {
+  it('resolveSep24DestinationAsset maps testanchor to iso4217:USD', () => {
+    assert.equal(resolveSep24DestinationAsset(ANCHOR, 'NGN'), 'iso4217:USD');
+    assert.equal(resolveSep24DestinationAsset(ANCHOR, 'KES'), 'iso4217:USD');
+  });
+
+  it('corridorToDestinationAsset maps NGN and KES without anchor', () => {
     const client = new Sep24Client();
     assert.equal(client.corridorToDestinationAsset('NGN'), 'NGN');
     assert.equal(client.corridorToDestinationAsset('KES'), 'KES');
+    assert.equal(client.corridorToDestinationAsset('NGN', ANCHOR), 'iso4217:USD');
   });
 });
 
