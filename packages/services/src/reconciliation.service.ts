@@ -72,7 +72,16 @@ export class ReconciliationService {
             refundAddress,
           });
 
-          if (recoveryResult.success) {
+          if (recoveryResult.success && recoveryResult.order?.id) {
+            // Exit VERIFIED so cron does not re-create Paycrest orders every pass.
+            // Keep the real on-chain txHash; PROCESSING awaits Paycrest webhooks.
+            await prisma.transaction.update({
+              where: { id: tx.id },
+              data: {
+                status: 'PROCESSING',
+                updatedAt: new Date(),
+              },
+            });
             results.recovered++;
           } else {
             console.error(

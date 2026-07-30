@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronDown, X, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 
@@ -40,10 +41,32 @@ export default function BankCashOutPage() {
   const [isPaymentMethodSheetOpen, setIsPaymentMethodSheetOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<'bank' | 'mobile'>('bank');
 
+  const { getAccessToken, authenticated } = usePrivy();
   const { profile: dbUser } = useUserStore();
-  const availableBalance = dbUser && (dbUser as any).walletBalance
-    ? new Decimal((dbUser as any).walletBalance.toString()).toFixed(2)
-    : '0.00';
+
+  const { data: balanceData } = useQuery({
+    queryKey: ['live-wallet-balance', dbUser?.walletAddress],
+    queryFn: async () => {
+      const token = await getAccessToken();
+      const res = await fetch('/api/deposit/balance', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Balance fetch failed: ${res.status}`);
+      }
+      return res.json();
+    },
+    enabled: !!dbUser?.walletAddress && !!authenticated,
+    staleTime: 5_000,
+    retry: 1,
+  });
+
+  const availableBalance = (
+    typeof balanceData?.ledgerUsd === 'number'
+      ? balanceData.ledgerUsd
+      : Number((dbUser as { walletBalance?: { toString(): string } })?.walletBalance?.toString() || 0)
+  ).toFixed(2);
 
   // For tiered wholesale rates, we pass the send amount if available, otherwise fallback to 1 unit.
   const queryAmount = lastEdited === 'send' && debouncedAmount ? debouncedAmount : '1';

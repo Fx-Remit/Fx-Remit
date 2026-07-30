@@ -61,9 +61,17 @@ describe('ReconciliationService — happy paths', () => {
       return { success: true, order: { id: 'ord_r1' } };
     });
 
+    const updateMock = mock.fn(async (args: any) => {
+      assert.equal(args.where.id, 'stuck-1');
+      assert.equal(args.data.status, 'PROCESSING');
+      return { id: 'stuck-1', status: 'PROCESSING' };
+    });
+    prisma.transaction.update = updateMock as any;
+
     const results = await ReconciliationService.reconcileStuckTransactions();
     assert.deepEqual(results, { recovered: 1, flagged: 0, failed: 0 });
     assert.equal(createOrder.mock.callCount(), 1);
+    assert.equal(updateMock.mock.callCount(), 1);
   });
 
   it('uses SUSPENSE_WALLET_ADDRESS when user wallet missing', async () => {
@@ -76,6 +84,10 @@ describe('ReconciliationService — happy paths', () => {
       assert.equal(params.refundAddress, '0xSuspense');
       return { success: true, order: { id: 'ord_r2' } };
     });
+    prisma.transaction.update = mock.fn(async () => ({
+      id: 'stuck-1',
+      status: 'PROCESSING',
+    })) as any;
 
     const results = await ReconciliationService.reconcileStuckTransactions();
     assert.equal(results.recovered, 1);
