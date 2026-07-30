@@ -55,10 +55,10 @@ describe('Sep24Client — happy paths', () => {
       }
       throw new Error(`Unexpected GET ${url}`);
     });
-    const postMock = mock.fn(async (_url: string, body: string, opts: { headers: Record<string, string> }) => {
-      assert.equal(opts.headers['Content-Type'], 'application/x-www-form-urlencoded');
-      assert.match(String(body), /asset_code=USDC/);
-      assert.match(String(body), /destination_asset=iso4217%3AUSD|destination_asset=iso4217:USD/);
+    const postMock = mock.fn(async (_url: string, body: Record<string, string>, opts: { headers: Record<string, string> }) => {
+      assert.equal(opts.headers['Content-Type'], 'application/json');
+      assert.equal(body.asset_code, 'USDC');
+      assert.equal(body.destination_asset, 'iso4217:USD');
       return {
         data: {
           id: 'tx-123',
