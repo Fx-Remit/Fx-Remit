@@ -1,4 +1,4 @@
-# FX Remit — Stellar rail 
+# FX Remit — Stellar rail
 
 This package implements the **Stellar settlement path** alongside the existing EVM + Paycrest rail. EVM is not replaced.
 
@@ -7,23 +7,49 @@ This package implements the **Stellar settlement path** alongside the existing E
 | Module | SEP | Purpose |
 | ------ | --- | ------- |
 | `sep10.client.ts` | SEP-10 | Anchor web authentication |
-| `sep38.client.ts` | SEP-38 | FX quotes (USDC → NGN/KES) |
+| `sep38.client.ts` | SEP-38 | FX quotes (USDC → NGN/KES; testanchor uses USD) |
 | `sep24.client.ts` | SEP-24 | Interactive withdraw (cash-out start) |
 | `anchor-toml.ts` | — | Discover anchor endpoints |
 | `anchors.config.ts` | — | Corridor → anchor routing stubs |
 
 ## Environment
 
+Set these in `apps/pwa/.env.local` (see `apps/pwa/.env.example`). Defaults keep the rail **off**.
+
+| Variable | Where | Purpose |
+| -------- | ----- | ------- |
+| `NEXT_PUBLIC_STELLAR_ENABLED` | PWA | Must be `true` for `/api/stellar/*` |
+| `NEXT_PUBLIC_STELLAR_NETWORK` | PWA client | `testnet` (default) or `public` — Freighter / Horizon |
+| `STELLAR_NETWORK` | Server | `testnet` (default) or `public` — anchor pool |
+| `STELLAR_TEST_SECRET` | Server / scripts | Dev-only `S…` seed for SEP-10/24 smoke (never commit) |
+| `STELLAR_TEST_AMOUNT` | Scripts | Optional SEP-24 smoke amount (default `1`) |
+
+## Testnet USDC (important)
+
+On Stellar, USDC is `(code, issuer)`. SDF testanchor publishes a specific issuer in its `stellar.toml` — that value is `USDC_TESTNET_ISSUER` in `anchors.config.ts`. It is **not** the classic Circle testnet issuer (`CIRCLE_USDC_TESTNET_ISSUER`). Trustline and SEP calls for this rail must use the testanchor issuer.
+
+## Friendbot + smoke scripts
+
+1. Create or reuse a testnet keypair (`G…` / `S…`). Freighter testnet accounts work for SEP-10 signing later; smoke scripts need `STELLAR_TEST_SECRET`.
+2. Fund XLM via Friendbot: `https://friendbot.stellar.org/?addr=G…`
+3. Establish a **trustline** to testanchor USDC (`USDC` + `USDC_TESTNET_ISSUER`) before expecting a USDC balance or SEP-24 payment.
+4. Obtain test USDC via the anchor’s deposit / sandbox flow if needed (SEP-24 withdraw start can still return an interactive URL without a prior balance; completing payout needs USDC).
+5. Export locally (do not commit):
+
 ```bash
-STELLAR_NETWORK=testnet   # or public
+export STELLAR_NETWORK=testnet
+export STELLAR_TEST_SECRET=S...
 ```
 
-## Scripts
+6. Run:
 
 ```bash
 pnpm --filter @fx-remit/services stellar:sep10-test
+pnpm --filter @fx-remit/services stellar:sep24-test
 ```
+
+SEP-10 can succeed with an unfunded account (signature-only). SEP-24 withdraw start expects a configured secret; funding/trustline matter for later payment submit.
 
 ## Incremental build
 
-Commits land here before the full unified cash-out UX. See repo root `STELLAR_INTEGRATION_PLAN.md`.
+Work tracks parent issue **Stellar testnet readiness** (SEP-10 → quote → SEP-24 withdraw start). No product cash-out UI in that epic. See repo root `STELLAR_INTEGRATION_PLAN.md`.

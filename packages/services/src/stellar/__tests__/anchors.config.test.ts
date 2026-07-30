@@ -6,6 +6,8 @@ import {
   getStellarNetwork,
   TEST_ANCHOR,
   PRODUCTION_ANCHORS,
+  USDC_TESTNET_ISSUER,
+  CIRCLE_USDC_TESTNET_ISSUER,
 } from '../anchors.config.js';
 
 const ORIGINAL_ENV = process.env.STELLAR_NETWORK;
@@ -56,6 +58,15 @@ describe('anchors.config — happy paths', () => {
   it('getDefaultAnchor on testnet returns TEST_ANCHOR', () => {
     assert.equal(getDefaultAnchor('NGN', 'testnet').id, TEST_ANCHOR.id);
     assert.equal(getDefaultAnchor('KES', 'testnet').id, TEST_ANCHOR.id);
+  });
+
+  it('TEST_ANCHOR USDC issuer matches SDF testanchor toml (not classic Circle)', () => {
+    assert.equal(
+      TEST_ANCHOR.usdcIssuer,
+      'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+    );
+    assert.equal(TEST_ANCHOR.usdcIssuer, USDC_TESTNET_ISSUER);
+    assert.notEqual(USDC_TESTNET_ISSUER, CIRCLE_USDC_TESTNET_ISSUER);
   });
 
   it('getDefaultAnchor on public returns highest-priority corridor match', () => {

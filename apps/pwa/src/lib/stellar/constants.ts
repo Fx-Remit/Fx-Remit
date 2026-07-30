@@ -5,8 +5,12 @@ export type StellarNetwork = 'public' | 'testnet';
 export const USDC_MAINNET_ISSUER =
   'GA5ZSEJYB37JRC5AVAAWEQVKGE4GMLFRMDTOWNZTFJX5YGNH55SXRR5';
 
+/**
+ * Must match `USDC_TESTNET_ISSUER` in `@fx-remit/services` anchors.config
+ * (SDF testanchor toml USDC, not classic Circle testnet USDC).
+ */
 export const USDC_TESTNET_ISSUER =
-  'GBBD47IF6LWK7P7MDEVSCN7DABMYZ4PKCFXLJ2J4G5UO7K4R6WXXZ3VY';
+  'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
 
 export const HORIZON_URL: Record<StellarNetwork, string> = {
   public: 'https://horizon.stellar.org',
