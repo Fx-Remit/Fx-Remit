@@ -45,10 +45,11 @@ export STELLAR_TEST_SECRET=S...
 
 ```bash
 pnpm --filter @fx-remit/services stellar:sep10-test
+pnpm --filter @fx-remit/services stellar:sep38-test
 pnpm --filter @fx-remit/services stellar:sep24-test
 ```
 
-SEP-10 can succeed with an unfunded account (signature-only). SEP-24 withdraw start expects a configured secret; funding/trustline matter for later payment submit.
+SEP-10 can succeed with an unfunded account (signature-only). SEP-38 against testanchor returns a **USD** stand-in rate (`demo_fiat`) — not NGN/KES. SEP-24 withdraw start expects a configured secret; funding/trustline matter for later payment submit.
 
 ## Incremental build
 
