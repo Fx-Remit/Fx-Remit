@@ -3,21 +3,56 @@ import type { StellarTomlEndpoints } from './types.js';
 
 const TOML_CACHE = new Map<string, StellarTomlEndpoints>();
 
+function isAsciiSpace(ch: string): boolean {
+  return ch === ' ' || ch === '\t';
+}
+
+/** Strip trailing ` # comment` from unquoted values without regex (avoids ReDoS). */
+function stripUnquotedInlineComment(value: string): string {
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === '#' && i > 0 && isAsciiSpace(value[i - 1]!)) {
+      return value.slice(0, i).trimEnd();
+    }
+  }
+  return value;
+}
+
+function stripSurroundingQuotes(value: string): string {
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === '"' || first === "'") && first === last) {
+      return value.slice(1, -1);
+    }
+  }
+  return value;
+}
+
 /**
  * Parse a single stellar.toml key. Tolerates optional whitespace around `=`
  * (real anchors use `KEY = "value"`; some fixtures use `KEY="value"`).
+ * Line-scan only — no unbounded `\s*` regexes on remote toml bodies (CodeQL).
  */
 function getTomlValue(raw: string, key: string): string | undefined {
-  const re = new RegExp(`^\\s*${key}\\s*=\\s*(.*)$`, 'm');
-  const match = raw.match(re);
-  if (!match) return undefined;
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith(key)) continue;
 
-  let value = match[1].trim();
-  // Strip inline comments outside quotes: value # comment
-  if (!value.startsWith('"') && !value.startsWith("'")) {
-    value = value.replace(/\s+#.*$/, '').trim();
+    const afterKey = trimmed.slice(key.length);
+    const eqIdx = afterKey.indexOf('=');
+    if (eqIdx < 0) continue;
+
+    // Characters between key and `=` must be whitespace only (or empty).
+    const between = afterKey.slice(0, eqIdx);
+    if (![...between].every(isAsciiSpace)) continue;
+
+    let value = afterKey.slice(eqIdx + 1).trim();
+    if (!value.startsWith('"') && !value.startsWith("'")) {
+      value = stripUnquotedInlineComment(value);
+    }
+    return stripSurroundingQuotes(value);
   }
-  return value.replace(/^["']|["']$/g, '');
+  return undefined;
 }
 
 function firstTomlValue(raw: string, keys: string[]): string | undefined {
