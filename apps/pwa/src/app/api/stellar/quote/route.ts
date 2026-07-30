@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
         spread_bps: retail.markup_bps,
         valid_until: retail.valid_until,
         expires_at: wholesale.expires_at,
-        formatted_rate: `1 ${wholesale.source_currency} = ${retail.retail_rate} ${corridor}`,
+        demo_fiat: wholesale.demo_fiat,
+        demo_note: wholesale.demo_note,
+        formatted_rate: `1 ${wholesale.source_currency} = ${retail.retail_rate} ${wholesale.destination_currency}`,
       },
     });
   } catch (error: unknown) {

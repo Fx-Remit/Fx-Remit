@@ -39,16 +39,33 @@ export interface Sep38Price {
   price: string;
   total_price?: string;
   expires_at?: string;
+  sell_amount?: string;
+  buy_amount?: string;
+}
+
+/** Single-pair SEP-38 GET /price response */
+export interface Sep38IndicativePrice {
+  price: string;
+  total_price?: string;
+  sell_amount?: string;
+  buy_amount?: string;
+  expires_at?: string;
 }
 
 export interface StellarWholesaleQuote {
   source_currency: string;
+  /** Actual fiat quoted by the anchor (may be USD on SDF testanchor). */
   destination_currency: string;
+  /** Product corridor requested by FX Remit (NGN | KES). */
   corridor: StellarCorridor;
+  /** Fiat units per 1 USDC (destination per source). */
   rate: number;
   anchor_id: string;
   wholesale_price: string;
   expires_at?: string;
+  /** When set, anchor quoted this fiat instead of the product corridor (testnet demo). */
+  demo_fiat?: string;
+  demo_note?: string;
 }
 
 export interface Sep24WithdrawInteractiveResponse {
