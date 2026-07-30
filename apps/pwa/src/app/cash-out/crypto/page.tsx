@@ -5,14 +5,14 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useState, Suspense } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserStore } from '@/store/user-store';
-import { Decimal } from 'decimal.js';
-import { parseUnits, encodeFunctionData } from 'viem';
+import { parseUnits, encodeFunctionData, isAddress } from 'viem';
+import { postCancelPending } from '@/lib/cash-out/create-pending-client';
 
-const NETWORK_DATA: Record<string, { name: string; icon: string }> = {
-  celo: { name: 'Celo Mainnet', icon: '/cel2.svg' },
-  base: { name: 'Base Mainnet', icon: '/base.svg' },
-  ethereum: { name: 'Ethereum Mainnet', icon: '/eth.svg' },
+const NETWORK_DATA: Record<string, { name: string; icon: string; chainId: number; hex: string }> = {
+  celo: { name: 'Celo Mainnet', icon: '/cel2.svg', chainId: 42220, hex: '0xa4ec' },
+  base: { name: 'Base Mainnet', icon: '/base.svg', chainId: 8453, hex: '0x2105' },
 };
 
 const ERC20_ABI = [
@@ -28,100 +28,222 @@ const ERC20_ABI = [
   },
 ] as const;
 
-// Token Addresses on Celo (Default)
-const TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
-  USDT: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e',
-  USDC: '0xceBA911A676E46944e8574d30c6a596A4299bE6B',
-  cUSD: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
+type Eip1193Provider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
+
+async function ensureChain(
+  wallet: { switchChain: (chainId: number | string) => Promise<void> },
+  provider: Eip1193Provider,
+  network: keyof typeof NETWORK_DATA,
+) {
+  const meta = NETWORK_DATA[network];
+  await wallet.switchChain(meta.chainId);
+
+  const chainIdHex = String(
+    await provider.request({ method: 'eth_chainId' }),
+  ).toLowerCase();
+  if (chainIdHex !== meta.hex) {
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: meta.hex }],
+    });
+    const again = String(
+      await provider.request({ method: 'eth_chainId' }),
+    ).toLowerCase();
+    if (again !== meta.hex) {
+      throw new Error(`Please switch your wallet to ${meta.name}`);
+    }
+  }
+}
 
 function CryptoCashOutContent() {
   const searchParams = useSearchParams();
   const token = (searchParams.get('token') || 'USDT').toUpperCase();
 
+  const isCeloNative = token === 'CELO' || token === 'CUSD';
   const [walletAddress, setWalletAddress] = useState('');
-  const [network, setNetwork] = useState(token === 'CELO' || token === 'CUSD' ? 'celo' : 'base');
+  const [network, setNetwork] = useState<'base' | 'celo'>(
+    isCeloNative ? 'celo' : 'base',
+  );
   const [amount, setAmount] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success'>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  const { getAccessToken } = usePrivy();
+  const { getAccessToken, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const { profile: dbUser } = useUserStore();
+  const queryClient = useQueryClient();
+
+  const { data: balanceData } = useQuery({
+    queryKey: ['live-wallet-balance', dbUser?.walletAddress],
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      const res = await fetch('/api/deposit/balance', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Balance fetch failed: ${res.status}`);
+      }
+      return res.json();
+    },
+    enabled: !!dbUser?.walletAddress && !!authenticated,
+    staleTime: 5_000,
+    retry: 1,
+  });
+
+  const availableBalance = (
+    typeof balanceData?.ledgerUsd === 'number'
+      ? balanceData.ledgerUsd
+      : Number((dbUser as { walletBalance?: { toString(): string } })?.walletBalance?.toString() || 0)
+  ).toFixed(2);
 
   const handleSend = async () => {
     setIsConfirmOpen(false);
     setStatus('processing');
     setError(null);
 
+    let externalId: string | undefined;
+    let abandonToken: string | undefined;
+    let broadcasted = false;
+
     try {
+      if (!isAddress(walletAddress)) {
+        throw new Error('Enter a valid destination wallet address');
+      }
+
       const wallet = wallets[0];
       if (!wallet) throw new Error('No wallet connected. Please sign in again.');
 
-      const provider = await wallet.getEthereumProvider();
+      const accessToken = await getAccessToken();
+      if (!accessToken) throw new Error('Session expired. Please sign in again.');
 
-      let txHash;
-      if (token === 'CELO') {
-        const amountRaw = parseUnits(amount, 18);
-        txHash = await provider.request({
-          method: 'eth_sendTransaction',
-          params: [{
-            from: wallet.address,
-            to: walletAddress as `0x${string}`,
-            value: '0x' + amountRaw.toString(16),
-          }],
-        });
-      } else {
-        const tokenAddress = TOKEN_ADDRESSES[token];
-        if (!tokenAddress) {
-          throw new Error(`Token ${token} not supported for direct transfer on this chain yet.`);
-        }
-
-        const decimals = (token === 'USDT' || token === 'USDC') ? 6 : 18;
-        const amountRaw = parseUnits(amount, decimals);
-
-        txHash = await provider.request({
-          method: 'eth_sendTransaction',
-          params: [{
-            from: wallet.address,
-            to: tokenAddress,
-            data: encodeFunctionData({
-              abi: ERC20_ABI,
-              functionName: 'transfer',
-              args: [walletAddress as `0x${string}`, amountRaw],
-            }),
-          }],
-        });
+      const pendingRes = await fetch('/api/transaction/create-crypto-pending', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          amountUsd: Number(amount),
+          destinationAddress: walletAddress,
+          network: isCeloNative ? 'celo' : network,
+          token,
+        }),
+      });
+      const pendingData = await pendingRes.json().catch(() => ({}));
+      if (!pendingRes.ok) {
+        throw new Error(
+          typeof pendingData.error === 'string'
+            ? pendingData.error
+            : 'Failed to reserve balance',
+        );
       }
 
+      externalId = pendingData.transaction?.externalId as string | undefined;
+      abandonToken = pendingData.abandonToken as string | undefined;
+      const orderId = pendingData.transaction?.orderId as string | undefined;
+      const transfer = pendingData.transfer as {
+        chainId: number;
+        network: 'base' | 'celo';
+        tokenAddress: `0x${string}`;
+        decimals: number;
+        destinationAddress: string;
+      };
+
+      if (!orderId || !transfer) {
+        throw new Error('Invalid reserve response');
+      }
+
+      const provider = (await wallet.getEthereumProvider()) as Eip1193Provider;
+      await ensureChain(wallet, provider, transfer.network);
+
+      let txHash: string;
+      if (token === 'CELO') {
+        const amountRaw = parseUnits(amount, 18);
+        txHash = (await provider.request({
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from: wallet.address,
+              to: transfer.destinationAddress as `0x${string}`,
+              value: `0x${amountRaw.toString(16)}`,
+            },
+          ],
+        })) as string;
+      } else {
+        const amountRaw = parseUnits(amount, transfer.decimals);
+        txHash = (await provider.request({
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from: wallet.address,
+              to: transfer.tokenAddress,
+              data: encodeFunctionData({
+                abi: ERC20_ABI,
+                functionName: 'transfer',
+                args: [transfer.destinationAddress as `0x${string}`, amountRaw],
+              }),
+            },
+          ],
+        })) as string;
+      }
+
+      broadcasted = true;
+
+      const syncRes = await fetch('/api/transaction/sync-hash', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ orderId, txHash }),
+      });
+      if (!syncRes.ok) {
+        const syncErr = await syncRes.json().catch(() => ({}));
+        throw new Error(
+          typeof syncErr.error === 'string'
+            ? syncErr.error
+            : 'Broadcast succeeded but failed to sync. Contact support with your tx hash.',
+        );
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
+      await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
       console.log('[CRYPTO CASHOUT] Tx Hash:', txHash);
       setStatus('success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[CRYPTO CASHOUT] Failed:', err);
-      setError(err.message || 'Transaction failed');
+      if (!broadcasted && externalId) {
+        try {
+          const accessToken = await getAccessToken();
+          await postCancelPending(externalId, {
+            accessToken: accessToken || undefined,
+            abandonToken,
+          });
+          await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
+          await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+        } catch (cancelErr) {
+          console.error('[CRYPTO CASHOUT] cancel after failure failed:', cancelErr);
+        }
+      }
+      setError(err instanceof Error ? err.message : 'Transaction failed');
       setStatus('idle');
     }
   };
 
-  const isCeloNative = token === 'CELO' || token === 'CUSD';
-
   const networks = [
-    { id: 'celo', name: 'Celo network' },
-    { id: 'base', name: 'Base network' },
-    { id: 'ethereum', name: 'Ethereum network' },
+    { id: 'celo' as const, name: 'Celo network' },
+    { id: 'base' as const, name: 'Base network' },
   ];
 
   const selectedNetwork = networks.find((n) => n.id === network)?.name || 'Choose network';
 
-  const availableBalance = dbUser && (dbUser as any).walletBalance
-    ? new Decimal((dbUser as any).walletBalance.toString()).toFixed(2)
-    : '0.00';
-
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      {/* Header */}
       <div className="px-5 pt-12 pb-4 flex items-center relative border-b border-gray-100/50">
         <Link
           href="/home"
@@ -135,15 +257,12 @@ function CryptoCashOutContent() {
       </div>
 
       <div className="flex-1 px-5 pt-8 pb-32">
-        {/* Form Fields */}
         <div className="space-y-6">
-          {/* Cash out token info */}
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
             <img src={`/${token.toLowerCase()}.svg`} alt={token} className="w-8 h-8 rounded-full" />
             <span className="font-semibold text-[#1C1C1C]">Cashing out {token}</span>
           </div>
 
-          {/* Error Message */}
           {error && (
             <div className="p-4 bg-red-50 border border-red-100 rounded-[12px] flex items-center gap-3">
               <AlertCircle size={20} className="text-red-500 flex-shrink-0" />
@@ -151,7 +270,6 @@ function CryptoCashOutContent() {
             </div>
           )}
 
-          {/* Wallet address */}
           <div>
             <label
               style={{ fontWeight: 500, fontSize: '16px', color: '#1C1C1C', lineHeight: '100%' }}
@@ -169,7 +287,6 @@ function CryptoCashOutContent() {
             />
           </div>
 
-          {/* Network - Only shown if not Celo native */}
           {!isCeloNative && (
             <div className="relative z-20">
               <label
@@ -216,7 +333,6 @@ function CryptoCashOutContent() {
             </div>
           )}
 
-          {/* Amount to send */}
           <div>
             <label
               style={{ fontWeight: 500, fontSize: '16px', color: '#1C1C1C', lineHeight: '100%' }}
@@ -246,7 +362,6 @@ function CryptoCashOutContent() {
           </div>
         </div>
 
-        {/* Saved addresses section */}
         <div className="mt-10">
           <div className="flex items-center justify-between mb-8">
             <h2
@@ -271,7 +386,6 @@ function CryptoCashOutContent() {
         </div>
       </div>
 
-      {/* Footer */}
       <div className="fixed bottom-0 left-0 right-0 p-5 bg-transparent z-50">
         <button
           style={{
@@ -283,30 +397,30 @@ function CryptoCashOutContent() {
             lineHeight: '100%',
           }}
           className="w-full bg-[#2261FE] flex items-center justify-center active:scale-[0.98] transition-transform shadow-lg shadow-blue-200/50 disabled:opacity-50"
-          disabled={!walletAddress || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > parseFloat(availableBalance)}
+          disabled={
+            !walletAddress ||
+            !amount ||
+            parseFloat(amount) <= 0 ||
+            parseFloat(amount) > parseFloat(availableBalance)
+          }
           onClick={() => setIsConfirmOpen(true)}
         >
           Confirm & Send
         </button>
       </div>
 
-      {/* Confirmation Bottom Sheet */}
       {isConfirmOpen && (
         <div className="fixed inset-0 z-[100] flex items-end">
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-black/40" onClick={() => setIsConfirmOpen(false)} />
 
-          {/* Sheet */}
           <div
             className="relative w-full bg-[#f6f6f6] rounded-t-[40px] px-6 pb-10 pt-4 shadow-2xl animate-in slide-in-from-bottom duration-300"
             style={{ maxWidth: '430px', margin: '0 auto' }}
           >
-            {/* Drag handle */}
             <div className="flex justify-center mb-5">
               <div className="w-12 h-1 bg-gray-300 rounded-full" />
             </div>
 
-            {/* Close */}
             <button
               onClick={() => setIsConfirmOpen(false)}
               className="absolute right-6 top-6 w-8 h-8 flex items-center justify-center text-gray-900 bg-gray-200/50 rounded-full"
@@ -314,12 +428,10 @@ function CryptoCashOutContent() {
               <X size={20} />
             </button>
 
-            {/* Title */}
             <div className="text-center mb-6">
               <h2 className="text-[20px] font-bold text-[#1C1C1C]">Confirm transaction</h2>
             </div>
 
-            {/* Summary Card */}
             <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100 flex flex-col items-center mb-8">
               <p className="text-gray-400 text-[14px] font-medium mb-1">Total amount</p>
               <p className="text-[#1C1C1C] text-[40px] font-bold mb-8">${amount || '0'}</p>
@@ -336,12 +448,12 @@ function CryptoCashOutContent() {
                   <span className="text-[#888888] text-[14px] font-medium">Network</span>
                   <div className="flex items-center gap-2">
                     <img
-                      src={NETWORK_DATA[network]?.icon}
+                      src={NETWORK_DATA[isCeloNative ? 'celo' : network]?.icon}
                       alt=""
                       className="w-6 h-6 object-contain"
                     />
                     <span className="text-[#1C1C1C] text-[14px] font-semibold">
-                      {NETWORK_DATA[network]?.name}
+                      {NETWORK_DATA[isCeloNative ? 'celo' : network]?.name}
                     </span>
                   </div>
                 </div>
@@ -360,7 +472,6 @@ function CryptoCashOutContent() {
               </div>
             </div>
 
-            {/* Buttons */}
             <div className="space-y-3">
               <button
                 onClick={handleSend}
@@ -381,7 +492,6 @@ function CryptoCashOutContent() {
         </div>
       )}
 
-      {/* Processing State */}
       {status === 'processing' && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6">
           <div className="w-full max-w-sm bg-white rounded-[32px] p-8 flex flex-col items-center">
@@ -395,7 +505,6 @@ function CryptoCashOutContent() {
         </div>
       )}
 
-      {/* Success State */}
       {status === 'success' && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div

@@ -4,13 +4,12 @@ import { ChevronLeft, ChevronDown } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ConfirmTransactionSheet,
   type PrefetchPhase,
 } from './ConfirmTransactionSheet';
 import { useUserStore } from '@/store/user-store';
-import { Decimal } from 'decimal.js';
 import { SettlementPrefetchSession } from '@/lib/cash-out/settlement-prefetch';
 import {
   abandonPrefetchSession,
@@ -20,7 +19,7 @@ import {
 function CashOutConfirmContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { getAccessToken } = usePrivy();
+  const { getAccessToken, authenticated } = usePrivy();
   const queryClient = useQueryClient();
 
   const [session, setSession] = useState<SettlementPrefetchSession | null>(null);
@@ -69,11 +68,32 @@ function CashOutConfirmContent() {
   const spread = searchParams.get('spread') || '75';
 
   const { profile: dbUser } = useUserStore();
-  const rawBalance = dbUser?.walletBalance;
-  const availableBalance =
-    rawBalance != null && rawBalance !== ''
-      ? new Decimal(String(rawBalance)).toFixed(2)
-      : '0.00';
+
+  const { data: balanceData } = useQuery({
+    queryKey: ['live-wallet-balance', dbUser?.walletAddress],
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      const res = await fetch('/api/deposit/balance', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Balance fetch failed: ${res.status}`);
+      }
+      return res.json();
+    },
+    enabled: !!dbUser?.walletAddress && !!authenticated,
+    staleTime: 5_000,
+    retry: 1,
+  });
+
+  const availableBalance = (
+    typeof balanceData?.ledgerUsd === 'number'
+      ? balanceData.ledgerUsd
+      : Number(
+          (dbUser as { walletBalance?: { toString(): string } })?.walletBalance?.toString() || 0,
+        )
+  ).toFixed(2);
 
   const isBank = type === 'bank';
   const feePercentText = `${(Number(spread) / 100).toFixed(2)}%`;

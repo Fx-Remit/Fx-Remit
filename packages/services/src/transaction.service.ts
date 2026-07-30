@@ -340,8 +340,30 @@ export class TransactionService {
   }
 
   /**
+   * App-local pending keys (not Paycrest order ids).
+   * Prefetch uses `pnd_*`; crypto withdraw uses `crypto_*`.
+   */
+  static isAppLocalPendingKey(key: string): boolean {
+    return key.startsWith('pnd_') || key.startsWith('crypto_');
+  }
+
+  /**
+   * Paycrest statuses where it is safe to auto-expire / refund the ledger reserve.
+   * Anything else (pending, processing, validated, …) may already have received funds.
+   */
+  private static readonly PAYCREST_EXPIRE_SAFE = new Set([
+    'expired',
+    'cancelled',
+    'canceled',
+    'failed',
+    'refunded',
+  ]);
+
+  /**
    * Expire stale prefetched / abandoned remittances that never received an on-chain hash.
    * Safe for cron: only touches pending-* placeholder hashes.
+   * If a Paycrest order id is attached and the order is still live, skip refund
+   * (covers broadcast-without-sync-hash races).
    */
   static async expireStalePendingRemittances(opts?: {
     olderThanMs?: number;
@@ -358,13 +380,14 @@ export class TransactionService {
         txHash: { startsWith: 'pending-' },
         updatedAt: { lte: cutoff },
       },
-      select: { id: true, externalId: true },
+      select: { id: true, externalId: true, txHash: true },
       take: limit,
       orderBy: { updatedAt: 'asc' },
     });
 
     let expired = 0;
     let failed = 0;
+    let deferred = 0;
 
     for (const row of stale) {
       const key = row.externalId;
@@ -373,6 +396,26 @@ export class TransactionService {
         continue;
       }
       try {
+        const placeholder = this.paycrestOrderIdFromTxHash(row.txHash);
+        if (placeholder && !this.isAppLocalPendingKey(placeholder)) {
+          const { PayoutService } = await import('./payout.service.js');
+          const live = await PayoutService.getSettlementOrder(placeholder);
+          if (live.success && live.order) {
+            const status = String(
+              (live.order as { status?: string }).status || '',
+            ).toLowerCase();
+            if (!this.PAYCREST_EXPIRE_SAFE.has(status)) {
+              // Order still active at Paycrest — do not refund reserved ledger.
+              await prisma.transaction.update({
+                where: { id: row.id },
+                data: { updatedAt: new Date() },
+              });
+              deferred += 1;
+              continue;
+            }
+          }
+        }
+
         await this.cancelAbandonedPending(key);
         expired += 1;
       } catch (err) {
@@ -384,7 +427,59 @@ export class TransactionService {
       }
     }
 
-    return { scanned: stale.length, expired, failed };
+    return { scanned: stale.length, expired, failed, deferred };
+  }
+
+  /**
+   * Attach a real on-chain hash to a pending remittance owned by `userId`.
+   * Crypto withdraws (`recipientBank` starts with `crypto:`) mark COMPLETED.
+   */
+  static async attachOnChainHash(params: {
+    userId: string;
+    orderId: bigint;
+    txHash: string;
+  }) {
+    const hash = params.txHash.trim();
+    if (!/^0x[a-fA-F0-9]{64}$/.test(hash)) {
+      throw new Error('Invalid txHash');
+    }
+
+    const existing = await prisma.transaction.findUnique({
+      where: {
+        orderId_chainId: {
+          orderId: params.orderId,
+          chainId: 0,
+        },
+      },
+    });
+
+    if (!existing) {
+      return null;
+    }
+    if (existing.userId !== params.userId) {
+      throw new Error('Forbidden');
+    }
+    if (existing.type !== 'REMITTANCE') {
+      throw new Error('Not a remittance');
+    }
+
+    if (!existing.txHash.startsWith('pending-')) {
+      if (existing.txHash.toLowerCase() === hash.toLowerCase()) {
+        return existing;
+      }
+      throw new Error('Transaction already has an on-chain hash');
+    }
+
+    const isCrypto = (existing.recipientBank || '').startsWith('crypto:');
+
+    return await prisma.transaction.update({
+      where: { id: existing.id },
+      data: {
+        txHash: hash,
+        ...(isCrypto ? { status: 'COMPLETED' as Status } : {}),
+        updatedAt: new Date(),
+      },
+    });
   }
 
   /**

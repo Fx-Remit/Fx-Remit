@@ -8,6 +8,7 @@ import {
   TransactionService,
   InsufficientBalanceError,
 } from '../transaction.service.js';
+import { PayoutService } from '../payout.service.js';
 
 const originals = {
   findUnique: prisma.transaction.findUnique,
@@ -462,7 +463,7 @@ describe('TransactionService.expireStalePendingRemittances', () => {
     prisma.transaction.findMany = mock.fn(async (args: any) => {
       assert.deepEqual(args.where.status, { in: ['PENDING', 'PROCESSING'] });
       assert.equal(args.where.txHash.startsWith, 'pending-');
-      return [{ id: 'tx-old', externalId: 'ext-old' }];
+      return [{ id: 'tx-old', externalId: 'ext-old', txHash: 'pending-pnd_old' }];
     }) as any;
 
     const cancel = mock.method(
@@ -477,8 +478,142 @@ describe('TransactionService.expireStalePendingRemittances', () => {
     const result = await TransactionService.expireStalePendingRemittances({
       olderThanMs: 60_000,
     });
-    assert.deepEqual(result, { scanned: 1, expired: 1, failed: 0 });
+    assert.deepEqual(result, { scanned: 1, expired: 1, failed: 0, deferred: 0 });
     assert.equal(cancel.mock.callCount(), 1);
+  });
+
+  it('defers expire when Paycrest order is still live after unsynced broadcast', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-live',
+        externalId: 'ext-live',
+        txHash: 'pending-paycrest-ord-1',
+      },
+    ]) as any;
+
+    const touch = mock.fn(async (args: any) => {
+      assert.equal(args.where.id, 'tx-live');
+      assert.ok(args.data.updatedAt instanceof Date);
+      return { id: 'tx-live' };
+    });
+    prisma.transaction.update = touch as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async (id: string) => {
+      assert.equal(id, 'paycrest-ord-1');
+      return { success: true, order: { id, status: 'pending' } };
+    });
+
+    const cancel = mock.method(
+      TransactionService,
+      'cancelAbandonedPending',
+      async () => {
+        throw new Error('should not cancel');
+      },
+    );
+
+    const result = await TransactionService.expireStalePendingRemittances({
+      olderThanMs: 60_000,
+    });
+    assert.deepEqual(result, { scanned: 1, expired: 0, failed: 0, deferred: 1 });
+    assert.equal(touch.mock.callCount(), 1);
+    assert.equal(cancel.mock.callCount(), 0);
+  });
+
+  it('expires when Paycrest order is already expired/failed', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-dead',
+        externalId: 'ext-dead',
+        txHash: 'pending-paycrest-ord-dead',
+      },
+    ]) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: { id: 'paycrest-ord-dead', status: 'expired' },
+    }));
+
+    const cancel = mock.method(
+      TransactionService,
+      'cancelAbandonedPending',
+      async (key: string) => {
+        assert.equal(key, 'ext-dead');
+        return { id: 'tx-dead', status: 'FAILED' };
+      },
+    );
+
+    const result = await TransactionService.expireStalePendingRemittances({
+      olderThanMs: 60_000,
+    });
+    assert.deepEqual(result, { scanned: 1, expired: 1, failed: 0, deferred: 0 });
+    assert.equal(cancel.mock.callCount(), 1);
+  });
+});
+
+describe('TransactionService.attachOnChainHash', () => {
+  const HASH =
+    '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+  it('attaches hash only for the owning user', async () => {
+    const existing = sampleTx({
+      userId: 'user-1',
+      status: 'PENDING',
+      txHash: 'pending-pnd_1',
+      recipientBank: '058',
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    const updateMock = mock.fn(async (args: any) => {
+      assert.equal(args.data.txHash, HASH);
+      assert.equal(args.data.status, undefined);
+      return { ...existing, txHash: HASH };
+    });
+    prisma.transaction.update = updateMock as any;
+
+    const result = await TransactionService.attachOnChainHash({
+      userId: 'user-1',
+      orderId: 42n,
+      txHash: HASH,
+    });
+    assert.equal(result?.txHash, HASH);
+    assert.equal(updateMock.mock.callCount(), 1);
+  });
+
+  it('rejects when userId does not own the row', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({ userId: 'owner', txHash: 'pending-x' }),
+    ) as any;
+
+    await assert.rejects(
+      () =>
+        TransactionService.attachOnChainHash({
+          userId: 'attacker',
+          orderId: 42n,
+          txHash: HASH,
+        }),
+      /Forbidden/,
+    );
+  });
+
+  it('marks crypto withdraw COMPLETED', async () => {
+    const existing = sampleTx({
+      userId: 'user-1',
+      status: 'PENDING',
+      txHash: 'pending-crypto_1',
+      recipientBank: 'crypto:base',
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    prisma.transaction.update = mock.fn(async (args: any) => {
+      assert.equal(args.data.status, 'COMPLETED');
+      assert.equal(args.data.txHash, HASH);
+      return { ...existing, ...args.data };
+    }) as any;
+
+    const result = await TransactionService.attachOnChainHash({
+      userId: 'user-1',
+      orderId: 42n,
+      txHash: HASH,
+    });
+    assert.equal(result?.status, 'COMPLETED');
   });
 });
 
