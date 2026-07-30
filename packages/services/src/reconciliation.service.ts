@@ -59,6 +59,28 @@ export class ReconciliationService {
             );
           }
 
+          // Skip crypto withdraws — they are not Paycrest offramps.
+          if (tx.recipientBank?.startsWith('crypto:')) {
+            console.warn(
+              `[ReconciliationService] Skipping crypto withdraw ${tx.id} in Paycrest recovery`,
+            );
+            results.failed++;
+            continue;
+          }
+
+          // Claim VERIFIED → PROCESSING before calling Paycrest so a later cron
+          // cannot create a second order if the DB write after create fails.
+          const claimed = await prisma.transaction.updateMany({
+            where: { id: tx.id, status: 'VERIFIED' },
+            data: {
+              status: 'PROCESSING',
+              updatedAt: new Date(),
+            },
+          });
+          if (claimed.count !== 1) {
+            continue;
+          }
+
           const recoveryResult = await PayoutService.createPaycrestOrder({
             amount: tx.amountUsd.toString(),
             sourceToken: tx.sourceToken,
@@ -73,17 +95,17 @@ export class ReconciliationService {
           });
 
           if (recoveryResult.success && recoveryResult.order?.id) {
-            // Exit VERIFIED so cron does not re-create Paycrest orders every pass.
-            // Keep the real on-chain txHash; PROCESSING awaits Paycrest webhooks.
-            await prisma.transaction.update({
-              where: { id: tx.id },
+            // Keep real on-chain txHash; PROCESSING awaits Paycrest webhooks.
+            results.recovered++;
+          } else {
+            // Revert claim so a later pass can retry recovery.
+            await prisma.transaction.updateMany({
+              where: { id: tx.id, status: 'PROCESSING' },
               data: {
-                status: 'PROCESSING',
+                status: 'VERIFIED',
                 updatedAt: new Date(),
               },
             });
-            results.recovered++;
-          } else {
             console.error(
               `[ReconciliationService] Recovery failed for Order #${tx.orderId.toString()}: ${
                 recoveryResult.error

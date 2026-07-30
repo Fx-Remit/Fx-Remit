@@ -11,6 +11,7 @@ import { ReconciliationService } from '../reconciliation.service.js';
 const originals = {
   findMany: prisma.transaction.findMany,
   update: prisma.transaction.update,
+  updateMany: prisma.transaction.updateMany,
 };
 
 const ZERO = '0x0000000000000000000000000000000000000000';
@@ -18,6 +19,7 @@ const ZERO = '0x0000000000000000000000000000000000000000';
 afterEach(() => {
   prisma.transaction.findMany = originals.findMany;
   prisma.transaction.update = originals.update;
+  prisma.transaction.updateMany = originals.updateMany;
   delete process.env.SUSPENSE_WALLET_ADDRESS;
   mock.restoreAll();
 });
@@ -46,14 +48,25 @@ describe('ReconciliationService — happy paths', () => {
     assert.deepEqual(results, { recovered: 0, flagged: 0, failed: 0 });
   });
 
-  it('recovers when recipient data and refund wallet exist', async () => {
+  it('claims VERIFIED → PROCESSING before creating Paycrest order', async () => {
     prisma.transaction.findMany = mock.fn(async (args: any) => {
       assert.equal(args.where.status, 'VERIFIED');
       assert.ok(args.where.updatedAt.lte instanceof Date);
       return [stuckTx()];
     }) as any;
 
+    const claimOrder: string[] = [];
+    const updateManyMock = mock.fn(async (args: any) => {
+      claimOrder.push('claim');
+      assert.equal(args.where.id, 'stuck-1');
+      assert.equal(args.where.status, 'VERIFIED');
+      assert.equal(args.data.status, 'PROCESSING');
+      return { count: 1 };
+    });
+    prisma.transaction.updateMany = updateManyMock as any;
+
     const createOrder = mock.method(PayoutService, 'createPaycrestOrder', async (params: any) => {
+      claimOrder.push('create');
       assert.equal(params.externalId, 'ext-99');
       assert.equal(params.refundAddress, '0xUserWallet');
       assert.equal(params.destinationCurrency, 'NGN');
@@ -61,17 +74,11 @@ describe('ReconciliationService — happy paths', () => {
       return { success: true, order: { id: 'ord_r1' } };
     });
 
-    const updateMock = mock.fn(async (args: any) => {
-      assert.equal(args.where.id, 'stuck-1');
-      assert.equal(args.data.status, 'PROCESSING');
-      return { id: 'stuck-1', status: 'PROCESSING' };
-    });
-    prisma.transaction.update = updateMock as any;
-
     const results = await ReconciliationService.reconcileStuckTransactions();
     assert.deepEqual(results, { recovered: 1, flagged: 0, failed: 0 });
+    assert.deepEqual(claimOrder, ['claim', 'create']);
     assert.equal(createOrder.mock.callCount(), 1);
-    assert.equal(updateMock.mock.callCount(), 1);
+    assert.equal(updateManyMock.mock.callCount(), 1);
   });
 
   it('uses SUSPENSE_WALLET_ADDRESS when user wallet missing', async () => {
@@ -80,14 +87,12 @@ describe('ReconciliationService — happy paths', () => {
       stuckTx({ user: { walletAddress: null } }),
     ]) as any;
 
+    prisma.transaction.updateMany = mock.fn(async () => ({ count: 1 })) as any;
+
     mock.method(PayoutService, 'createPaycrestOrder', async (params: any) => {
       assert.equal(params.refundAddress, '0xSuspense');
       return { success: true, order: { id: 'ord_r2' } };
     });
-    prisma.transaction.update = mock.fn(async () => ({
-      id: 'stuck-1',
-      status: 'PROCESSING',
-    })) as any;
 
     const results = await ReconciliationService.reconcileStuckTransactions();
     assert.equal(results.recovered, 1);
@@ -124,6 +129,11 @@ describe('ReconciliationService — happy paths', () => {
 describe('ReconciliationService — unhappy paths', () => {
   it('counts failed when Paycrest recovery returns success:false', async () => {
     prisma.transaction.findMany = mock.fn(async () => [stuckTx()]) as any;
+    const updates: string[] = [];
+    prisma.transaction.updateMany = mock.fn(async (args: any) => {
+      updates.push(args.data.status);
+      return { count: 1 };
+    }) as any;
     mock.method(PayoutService, 'createPaycrestOrder', async () => ({
       success: false,
       error: 'Liquidity Provider Unavailable',
@@ -132,6 +142,8 @@ describe('ReconciliationService — unhappy paths', () => {
 
     const results = await ReconciliationService.reconcileStuckTransactions();
     assert.deepEqual(results, { recovered: 0, flagged: 0, failed: 1 });
+    // Claim then revert
+    assert.deepEqual(updates, ['PROCESSING', 'VERIFIED']);
   });
 
   it('counts failed when refund address is missing', async () => {

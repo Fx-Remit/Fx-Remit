@@ -57,13 +57,10 @@ function resolveToken(
   const chainId = NETWORK_CHAIN_ID[network];
   const upper = symbol.toUpperCase();
 
+  // Native CELO is not 1:1 with USD ledger reserves USD but would send CELO 1:1.
+  // Stablecoins only until a priced CELO path exists.
   if (upper === 'CELO') {
-    if (network !== 'celo') return null;
-    return {
-      address: '0x0000000000000000000000000000000000000000',
-      decimals: 18,
-      symbol: 'CELO',
-    };
+    return null;
   }
 
   const listed = DEPOSIT_TOKENS[chainId]?.find(
@@ -121,9 +118,13 @@ export async function POST(req: Request) {
 
     const tokenMeta = resolveToken(network, sourceToken);
     if (!tokenMeta) {
+      const upper = sourceToken.toUpperCase();
       return NextResponse.json(
         {
-          error: `Token ${sourceToken} is not supported on ${network}`,
+          error:
+            upper === 'CELO'
+              ? 'Native CELO cash-out is not supported (ledger is USD; use cUSD, USDC, or USDT)'
+              : `Token ${sourceToken} is not supported on ${network}`,
         },
         { status: 400 },
       );
@@ -172,17 +173,30 @@ export async function POST(req: Request) {
     const externalKey = tx.externalId || appExternalId;
     const abandonToken = mintAbandonToken(externalKey, user.id);
 
+    // Prefer reserved row metadata so a resumed pending cannot desync from transfer intent.
+    const networkFromRow = (tx.recipientBank || '').startsWith('crypto:')
+      ? (tx.recipientBank!.slice('crypto:'.length) as 'base' | 'celo')
+      : network;
+    const destFromRow =
+      typeof tx.recipientAcc === 'string' && isAddress(tx.recipientAcc)
+        ? tx.recipientAcc
+        : destinationAddress;
+    const resolvedNetwork =
+      networkFromRow === 'base' || networkFromRow === 'celo' ? networkFromRow : network;
+    const resumedToken = resolveToken(resolvedNetwork, tx.sourceToken || tokenMeta.symbol);
+    const transferMeta = resumedToken || tokenMeta;
+
     return NextResponse.json({
       success: true,
       abandonToken,
       transaction: serializeTransaction(tx),
       transfer: {
-        network,
-        chainId: NETWORK_CHAIN_ID[network],
-        token: tokenMeta.symbol,
-        tokenAddress: tokenMeta.address,
-        decimals: tokenMeta.decimals,
-        destinationAddress,
+        network: resolvedNetwork,
+        chainId: NETWORK_CHAIN_ID[resolvedNetwork],
+        token: transferMeta.symbol,
+        tokenAddress: transferMeta.address,
+        decimals: transferMeta.decimals,
+        destinationAddress: destFromRow,
       },
     });
   } catch (error) {
