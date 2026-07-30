@@ -2,7 +2,7 @@
 
 **Purpose:** Technical and product plan for adding Stellar as a remittance and cash-out rail inside FX Remit, alongside the existing EVM path.  
 **Audience:** Engineering, product, partners.  
-**Status:** In progress — dual-rail design; Stellar package scaffold started.  
+**Status:** In progress
 **Corridors (MVP):** NGN (Nigeria) + KES (Kenya).  
 **Closed beta (EVM):** [Dune — FX Remit](https://dune.com/kanas1/fx-remit) · Repo: [Fx-Remit/Fx-Remit](https://github.com/Fx-Remit/Fx-Remit)
 
@@ -557,13 +557,14 @@ Next partner steps: sandbox access with Link, ClickPesa, and Flutterwave; Freigh
 | --------------------------------- | ------ | ----------------------------------------------------- |
 | Scaffold (types, anchors, README) | Done   | `packages/services/src/stellar/`                      |
 | SEP-10 client + testnet script    | Done   | `sep10.client.ts`, `scripts/sep10-testnet.ts`         |
-| Freighter + USDC balance (dev)    | Done   | `apps/pwa/src/lib/stellar/`, `/stellar/dev`           |
+| Freighter + USDC balance helpers  | Done   | `apps/pwa/src/lib/stellar/`                           |
 | SEP-38 quote API                  | Done   | `GET /api/stellar/quote`                              |
 | SEP-24 withdraw start (sandbox)   | Done   | `sep24.client.ts`, `POST /api/stellar/withdraw/start` |
+| Freighter SEP-10 challenge/token  | Done   | `POST /api/stellar/auth/challenge`, `/auth/token`     |
 | Prisma rail fields (additive)     | Done   | `schema.prisma` — run `prisma migrate` before use     |
 
 
-**Enable locally:** `NEXT_PUBLIC_STELLAR_ENABLED=true` · optional `STELLAR_NETWORK=testnet` · `STELLAR_TEST_SECRET` for withdraw API/scripts.
+**Enable locally:** `NEXT_PUBLIC_STELLAR_ENABLED=true` · optional `STELLAR_NETWORK=testnet` · `STELLAR_TEST_SECRET` for smoke scripts (Freighter path needs no server secret).
 
 **Still ahead:** unified cash-out confirm, embedded wallet, history merge, mainnet.
 

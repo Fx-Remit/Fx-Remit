@@ -6,9 +6,15 @@ import {
   setAllowed,
   requestAccess,
   getAddress,
+  signTransaction,
 } from '@stellar/freighter-api';
 import { Horizon, Asset } from '@stellar/stellar-sdk';
-import { getClientStellarNetwork, getUsdcIssuer, HORIZON_URL } from './constants';
+import {
+  getClientStellarNetwork,
+  getUsdcIssuer,
+  HORIZON_URL,
+  STELLAR_NETWORK_PASSPHRASE,
+} from './constants';
 
 export interface FreighterConnection {
   publicKey: string;
@@ -17,10 +23,10 @@ export interface FreighterConnection {
 }
 
 async function ensureFreighterAllowed(): Promise<void> {
-  const allowed = await isAllowed();
-  if (!allowed) {
+  const allowedRes = await isAllowed();
+  if (!allowedRes.isAllowed) {
     const ok = await setAllowed();
-    if (!ok) {
+    if (!ok.isAllowed) {
       throw new Error('Freighter access denied');
     }
   }
@@ -28,33 +34,53 @@ async function ensureFreighterAllowed(): Promise<void> {
 
 export async function connectFreighter(): Promise<string> {
   const connected = await isConnected();
-  if (!connected) {
+  if (!connected.isConnected) {
     throw new Error('Freighter extension not installed');
   }
 
   await ensureFreighterAllowed();
   const access = await requestAccess();
-  if (!access) {
-    throw new Error('Freighter did not grant access');
+  if (access.error || !access.address) {
+    throw new Error(access.error?.message ?? 'Freighter did not grant access');
   }
 
-  const { address } = await getAddress();
-  if (!address) {
-    throw new Error('Freighter returned no address');
-  }
-
-  return address;
+  return access.address;
 }
 
 export async function getFreighterPublicKey(): Promise<string | null> {
   const connected = await isConnected();
-  if (!connected) return null;
+  if (!connected.isConnected) return null;
 
   const allowed = await isAllowed();
-  if (!allowed) return null;
+  if (!allowed.isAllowed) return null;
 
-  const { address } = await getAddress();
-  return address ?? null;
+  const { address, error } = await getAddress();
+  if (error || !address) return null;
+  return address;
+}
+
+/**
+ * Sign a SEP-10 challenge (or any) transaction XDR in Freighter.
+ * Does not submit to Horizon — returns signed XDR for the auth/token API.
+ */
+export async function signTransactionXdr(
+  transactionXdr: string,
+  opts?: { networkPassphrase?: string; address?: string },
+): Promise<string> {
+  const network = getClientStellarNetwork();
+  const networkPassphrase =
+    opts?.networkPassphrase ?? STELLAR_NETWORK_PASSPHRASE[network];
+
+  const result = await signTransaction(transactionXdr, {
+    networkPassphrase,
+    address: opts?.address,
+  });
+
+  if (result.error || !result.signedTxXdr) {
+    throw new Error(result.error?.message ?? 'Freighter signing failed');
+  }
+
+  return result.signedTxXdr;
 }
 
 export async function fetchUsdcBalance(publicKey: string): Promise<string> {
