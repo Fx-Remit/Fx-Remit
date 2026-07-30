@@ -49,7 +49,13 @@ pnpm --filter @fx-remit/services stellar:sep38-test
 pnpm --filter @fx-remit/services stellar:sep24-test
 ```
 
-SEP-10 can succeed with an unfunded account (signature-only). SEP-38 against testanchor returns a **USD** stand-in rate (`demo_fiat`) — not NGN/KES. SEP-24 withdraw start expects a configured secret; funding/trustline matter for later payment submit.
+### SEP-10 smoke (`stellar:sep10-test`)
+
+Verified live against `testanchor.stellar.org` (prints `SEP-10 auth OK` and a JWT prefix).
+
+Omit `STELLAR_TEST_SECRET` to use a **random keypair** for a one-shot auth check, or set it to reuse a known `S…` seed. SEP-10 only signs the anchor challenge — it does **not** need Friendbot funding or a USDC balance. Prefer a funded `STELLAR_TEST_SECRET` when you will also run SEP-24 next.
+
+SEP-38 against testanchor returns a **USD** stand-in rate (`demo_fiat`) — not NGN/KES. SEP-24 withdraw start expects a configured secret; funding/trustline matter for later payment submit.
 
 ## Incremental build
 
