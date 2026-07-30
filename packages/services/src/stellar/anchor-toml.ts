@@ -100,3 +100,8 @@ export async function fetchAnchorToml(homeDomain: string): Promise<StellarTomlEn
 export function clearAnchorTomlCache(): void {
   TOML_CACHE.clear();
 }
+
+/** Test helper: seed cache so route tests skip live stellar.toml fetches. */
+export function seedAnchorTomlCache(homeDomain: string, endpoints: StellarTomlEndpoints): void {
+  TOML_CACHE.set(homeDomain, endpoints);
+}

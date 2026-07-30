@@ -30,7 +30,7 @@ On Stellar, USDC is `(code, issuer)`. SDF testanchor publishes a specific issuer
 
 ## Friendbot + smoke scripts
 
-1. Create or reuse a testnet keypair (`G…` / `S…`). Freighter testnet accounts work for SEP-10 signing later; smoke scripts need `STELLAR_TEST_SECRET`.
+1. Create or reuse a testnet keypair (`G…` / `S…`). Freighter testnet accounts use the browser SEP-10 APIs; smoke scripts need `STELLAR_TEST_SECRET`.
 2. Fund XLM via Friendbot: `https://friendbot.stellar.org/?addr=G…`
 3. Establish a **trustline** to testanchor USDC (`USDC` + `USDC_TESTNET_ISSUER`) before expecting a USDC balance or SEP-24 payment.
 4. Obtain test USDC via the anchor’s deposit / sandbox flow if needed (SEP-24 withdraw start can still return an interactive URL without a prior balance; completing payout needs USDC).
@@ -55,6 +55,18 @@ Verified live against `testanchor.stellar.org` (prints `SEP-10 auth OK` and a JW
 
 Omit `STELLAR_TEST_SECRET` to use a **random keypair** for a one-shot auth check, or set it to reuse a known `S…` seed. SEP-10 only signs the anchor challenge — it does **not** need Friendbot funding or a USDC balance. Prefer a funded `STELLAR_TEST_SECRET` when you will also run SEP-24 next.
 
+### Freighter SEP-10 (API only)
+
+With `NEXT_PUBLIC_STELLAR_ENABLED=true`, the PWA exposes:
+
+| Endpoint | Body | Returns |
+| -------- | ---- | ------- |
+| `POST /api/stellar/auth/challenge` | `{ account, corridor }` | challenge `transaction` XDR + `network_passphrase` |
+| `POST /api/stellar/auth/token` | `{ signedTransaction, corridor }` | anchor `token` (JWT) |
+| `POST /api/stellar/withdraw/start` | `{ corridor, amount, account, authToken }` **or** `signedChallenge` **or** server `STELLAR_TEST_SECRET` | `transaction_id` + `interactive_url` |
+
+Signing stays in Freighter (`signTransactionXdr` / `authenticateWithFreighter` in `apps/pwa/src/lib/stellar/`). No product cash-out UI — call the APIs from the client when wiring cash-out.
+
 SEP-38 against testanchor returns a **USD** stand-in rate (`demo_fiat`) — not NGN/KES.
 
 ### SEP-24 withdraw start (`stellar:sep24-test`)
@@ -63,7 +75,7 @@ Requires `STELLAR_TEST_SECRET`. Against SDF testanchor, `destination_asset` is f
 
 Friendbot + trustline expectations: fund the account with XLM via Friendbot, then add a trustline to testanchor USDC (`USDC_TESTNET_ISSUER`). Testanchor USDC withdraw limits are typically **1–10**. Starting interactive withdraw can succeed and return a hosted URL without a prior USDC balance; completing the flow later needs USDC on that trustline.
 
-API (dev): with `NEXT_PUBLIC_STELLAR_ENABLED=true` and `STELLAR_TEST_SECRET` set in `apps/pwa/.env.local`, `POST /api/stellar/withdraw/start` with `{ "corridor": "NGN", "amount": "1" }` returns `transaction_id` and `interactive_url`.
+API (dev): with `NEXT_PUBLIC_STELLAR_ENABLED=true`, either set `STELLAR_TEST_SECRET` and `POST { "corridor": "NGN", "amount": "1" }`, or pass Freighter `account` + `authToken` / `signedChallenge`.
 
 ## Incremental build
 

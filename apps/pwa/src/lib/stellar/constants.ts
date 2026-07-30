@@ -17,6 +17,11 @@ export const HORIZON_URL: Record<StellarNetwork, string> = {
   testnet: 'https://horizon-testnet.stellar.org',
 };
 
+export const STELLAR_NETWORK_PASSPHRASE: Record<StellarNetwork, string> = {
+  public: 'Public Global Stellar Network ; September 2015',
+  testnet: 'Test SDF Network ; September 2015',
+};
+
 export function isStellarEnabled(): boolean {
   return process.env.NEXT_PUBLIC_STELLAR_ENABLED === 'true';
 }
