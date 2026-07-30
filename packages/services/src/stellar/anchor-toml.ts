@@ -3,20 +3,43 @@ import type { StellarTomlEndpoints } from './types.js';
 
 const TOML_CACHE = new Map<string, StellarTomlEndpoints>();
 
-function parseTomlEndpoints(raw: string): StellarTomlEndpoints {
-  const lines = raw.split('\n');
-  const get = (key: string): string | undefined => {
-    const line = lines.find((l) => l.startsWith(`${key}=`));
-    if (!line) return undefined;
-    return line.slice(key.length + 1).trim().replace(/^"|"$/g, '');
-  };
+/**
+ * Parse a single stellar.toml key. Tolerates optional whitespace around `=`
+ * (real anchors use `KEY = "value"`; some fixtures use `KEY="value"`).
+ */
+function getTomlValue(raw: string, key: string): string | undefined {
+  const re = new RegExp(`^\\s*${key}\\s*=\\s*(.*)$`, 'm');
+  const match = raw.match(re);
+  if (!match) return undefined;
 
+  let value = match[1].trim();
+  // Strip inline comments outside quotes: value # comment
+  if (!value.startsWith('"') && !value.startsWith("'")) {
+    value = value.replace(/\s+#.*$/, '').trim();
+  }
+  return value.replace(/^["']|["']$/g, '');
+}
+
+function firstTomlValue(raw: string, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = getTomlValue(raw, key);
+    if (value) return value;
+  }
+  return undefined;
+}
+
+export function parseTomlEndpoints(raw: string): StellarTomlEndpoints {
   return {
-    webAuthEndpoint: get('WEB_AUTH_ENDPOINT'),
-    transferServerSep24: get('TRANSFER_SERVER_SEP0024') ?? get('TRANSFER_SERVER'),
-    transferServerSep6: get('TRANSFER_SERVER_SEP0006'),
-    kycServerUrl: get('KYC_SERVER_URL') ?? get('KYC_SERVER'),
-    sep38QuoteServer: get('QUOTE_SERVER') ?? get('SEP38_QUOTE_SERVER'),
+    webAuthEndpoint: getTomlValue(raw, 'WEB_AUTH_ENDPOINT'),
+    transferServerSep24: firstTomlValue(raw, ['TRANSFER_SERVER_SEP0024', 'TRANSFER_SERVER']),
+    transferServerSep6: getTomlValue(raw, 'TRANSFER_SERVER_SEP0006'),
+    kycServerUrl: firstTomlValue(raw, ['KYC_SERVER_URL', 'KYC_SERVER']),
+    // SDF testanchor + many production anchors publish ANCHOR_QUOTE_SERVER
+    sep38QuoteServer: firstTomlValue(raw, [
+      'ANCHOR_QUOTE_SERVER',
+      'QUOTE_SERVER',
+      'SEP38_QUOTE_SERVER',
+    ]),
   };
 }
 
