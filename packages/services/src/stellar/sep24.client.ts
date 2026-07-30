@@ -54,33 +54,34 @@ export class Sep24Client {
 
   /**
    * Start an interactive withdraw (cash-out). Returns hosted URL for KYC / bank details.
-   * SEP-24 requires application/x-www-form-urlencoded (or multipart), not JSON.
+   * SDF testanchor accepts JSON; SEP-24 also allows form-urlencoded — we use JSON for compatibility.
    */
   async startWithdrawInteractive(
     params: Sep24WithdrawParams,
   ): Promise<Sep24WithdrawInteractiveResponse> {
     const transferServer = await this.getTransferServer(params.anchor);
-    const body = new URLSearchParams();
-    body.set('asset_code', params.assetCode);
-    body.set('asset_issuer', params.assetIssuer);
-    body.set('account', params.account);
-    body.set('amount', params.amount);
+    const body: Record<string, string> = {
+      asset_code: params.assetCode,
+      asset_issuer: params.assetIssuer,
+      account: params.account,
+      amount: params.amount,
+    };
 
     if (params.destinationAsset) {
-      body.set('destination_asset', params.destinationAsset);
+      body.destination_asset = params.destinationAsset;
     }
     if (params.lang) {
-      body.set('lang', params.lang);
+      body.lang = params.lang;
     }
 
     const { data } = await axios.post<Sep24WithdrawInteractiveResponse>(
       `${transferServer}/transactions/withdraw/interactive`,
-      body.toString(),
+      body,
       {
         timeout: 30_000,
         headers: {
           Authorization: `Bearer ${params.authToken}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
       },
     );
