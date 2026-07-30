@@ -336,6 +336,53 @@ describe('TransactionService.createPending — happy paths', () => {
     assert.equal(dollar.mock.callCount(), 0);
   });
 
+  it('does not amount-match open bank remittances for crypto withdraws', async () => {
+    prisma.transaction.findUnique = mock.fn(async () => null) as any;
+    const findFirst = mock.fn(async () => {
+      throw new Error('crypto must not amount-match');
+    });
+    prisma.transaction.findFirst = findFirst as any;
+
+    const capture: { updateManyArgs?: any; createArgs?: any } = {};
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const tx = {
+        user: {
+          updateMany: async (args: any) => {
+            capture.updateManyArgs = args;
+            return { count: 1 };
+          },
+        },
+        transaction: {
+          create: async (args: any) => {
+            capture.createArgs = args;
+            return sampleTx({
+              ...args.data,
+              id: 'crypto-new',
+              status: 'PENDING',
+            });
+          },
+        },
+      };
+      return cb(tx);
+    }) as any;
+
+    const result = await TransactionService.createPending({
+      userId: 'user-1',
+      orderId: 99n,
+      externalId: 'crypto_fresh',
+      sourceToken: 'USDC',
+      amountUsd: 25,
+      payoutFiat: 25,
+      recipientName: 'Crypto withdraw',
+      recipientBank: 'crypto:base',
+      recipientAcc: '0x1111111111111111111111111111111111111111',
+    });
+
+    assert.equal(result.id, 'crypto-new');
+    assert.equal(findFirst.mock.callCount(), 0);
+    assert.equal(capture.createArgs.data.recipientBank, 'crypto:base');
+  });
+
   it('reopens FAILED abandoned row and re-reserves ledger', async () => {
     const existing = sampleTx({
       status: 'FAILED',
@@ -463,7 +510,14 @@ describe('TransactionService.expireStalePendingRemittances', () => {
     prisma.transaction.findMany = mock.fn(async (args: any) => {
       assert.deepEqual(args.where.status, { in: ['PENDING', 'PROCESSING'] });
       assert.equal(args.where.txHash.startsWith, 'pending-');
-      return [{ id: 'tx-old', externalId: 'ext-old', txHash: 'pending-pnd_old' }];
+      return [
+        {
+          id: 'tx-old',
+          externalId: 'ext-old',
+          txHash: 'pending-pnd_old',
+          recipientBank: '058',
+        },
+      ];
     }) as any;
 
     const cancel = mock.method(
@@ -482,12 +536,45 @@ describe('TransactionService.expireStalePendingRemittances', () => {
     assert.equal(cancel.mock.callCount(), 1);
   });
 
+  it('never auto-refunds crypto withdraws stuck on pending-crypto_*', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-crypto',
+        externalId: 'crypto_1',
+        txHash: 'pending-crypto_1',
+        recipientBank: 'crypto:base',
+      },
+    ]) as any;
+
+    const touch = mock.fn(async (args: any) => {
+      assert.equal(args.where.id, 'tx-crypto');
+      return { id: 'tx-crypto' };
+    });
+    prisma.transaction.update = touch as any;
+
+    const cancel = mock.method(
+      TransactionService,
+      'cancelAbandonedPending',
+      async () => {
+        throw new Error('should not cancel crypto');
+      },
+    );
+
+    const result = await TransactionService.expireStalePendingRemittances({
+      olderThanMs: 60_000,
+    });
+    assert.deepEqual(result, { scanned: 1, expired: 0, failed: 0, deferred: 1 });
+    assert.equal(touch.mock.callCount(), 1);
+    assert.equal(cancel.mock.callCount(), 0);
+  });
+
   it('defers expire when Paycrest order is still live after unsynced broadcast', async () => {
     prisma.transaction.findMany = mock.fn(async () => [
       {
         id: 'tx-live',
         externalId: 'ext-live',
         txHash: 'pending-paycrest-ord-1',
+        recipientBank: '058',
       },
     ]) as any;
 
@@ -519,12 +606,48 @@ describe('TransactionService.expireStalePendingRemittances', () => {
     assert.equal(cancel.mock.callCount(), 0);
   });
 
+  it('defers expire when Paycrest lookup fails (do not refund)', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-ambig',
+        externalId: 'ext-ambig',
+        txHash: 'pending-paycrest-ord-ambig',
+        recipientBank: '058',
+      },
+    ]) as any;
+
+    const touch = mock.fn(async () => ({ id: 'tx-ambig' }));
+    prisma.transaction.update = touch as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: false,
+      error: 'timeout',
+      status: 504,
+    }));
+
+    const cancel = mock.method(
+      TransactionService,
+      'cancelAbandonedPending',
+      async () => {
+        throw new Error('should not cancel on lookup failure');
+      },
+    );
+
+    const result = await TransactionService.expireStalePendingRemittances({
+      olderThanMs: 60_000,
+    });
+    assert.deepEqual(result, { scanned: 1, expired: 0, failed: 0, deferred: 1 });
+    assert.equal(touch.mock.callCount(), 1);
+    assert.equal(cancel.mock.callCount(), 0);
+  });
+
   it('expires when Paycrest order is already expired/failed', async () => {
     prisma.transaction.findMany = mock.fn(async () => [
       {
         id: 'tx-dead',
         externalId: 'ext-dead',
         txHash: 'pending-paycrest-ord-dead',
+        recipientBank: '058',
       },
     ]) as any;
 

@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { useDebounce } from '@/hooks/use-debounce';
 import { Decimal } from 'decimal.js';
+import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
 
 const TOKENS = [
   { symbol: 'USDT', icon: '/usdt.svg' },
@@ -62,11 +63,12 @@ export default function BankCashOutPage() {
     retry: 1,
   });
 
-  const availableBalance = (
-    typeof balanceData?.ledgerUsd === 'number'
-      ? balanceData.ledgerUsd
-      : Number((dbUser as { walletBalance?: { toString(): string } })?.walletBalance?.toString() || 0)
-  ).toFixed(2);
+  const spendable = spendableLedgerUsd({
+    balanceData,
+    fallbackWalletBalance: (dbUser as { walletBalance?: { toString(): string } })
+      ?.walletBalance,
+  });
+  const availableBalance = spendable.amount;
 
   // For tiered wholesale rates, we pass the send amount if available, otherwise fallback to 1 unit.
   const queryAmount = lastEdited === 'send' && debouncedAmount ? debouncedAmount : '1';
