@@ -3,12 +3,13 @@
 import { ChevronLeft, ChevronDown, X, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useRef } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserStore } from '@/store/user-store';
 import { parseUnits, encodeFunctionData, isAddress } from 'viem';
 import { postCancelPending } from '@/lib/cash-out/create-pending-client';
+import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
 
 const NETWORK_DATA: Record<string, { name: string; icon: string; chainId: number; hex: string }> = {
   celo: { name: 'Celo Mainnet', icon: '/cel2.svg', chainId: 42220, hex: '0xa4ec' },
@@ -30,6 +31,16 @@ const ERC20_ABI = [
 
 type Eip1193Provider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+};
+
+type CryptoReserveSession = {
+  externalId: string;
+  orderId?: string;
+  abandonToken?: string;
+  /** USD amount reserved on the ledger — must match on-chain transfer. */
+  amountUsd: string;
+  /** Set after eth_sendTransaction — retries must only re-sync, never re-broadcast. */
+  txHash?: string;
 };
 
 async function ensureChain(
@@ -61,16 +72,21 @@ function CryptoCashOutContent() {
   const searchParams = useSearchParams();
   const token = (searchParams.get('token') || 'USDT').toUpperCase();
 
-  const isCeloNative = token === 'CELO' || token === 'CUSD';
+  /** Native CELO is blocked (USD ledger ≠ CELO units). cUSD stays Celo-only. */
+  const celoUnsupported = token === 'CELO';
+  const isCeloOnlyToken = token === 'CUSD';
   const [walletAddress, setWalletAddress] = useState('');
   const [network, setNetwork] = useState<'base' | 'celo'>(
-    isCeloNative ? 'celo' : 'base',
+    isCeloOnlyToken ? 'celo' : 'base',
   );
   const [amount, setAmount] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const reserveSessionRef = useRef<CryptoReserveSession | null>(null);
+  /** True after broadcast when sync-hash still needs to succeed — bypasses spendable gate. */
+  const [syncRetryAvailable, setSyncRetryAvailable] = useState(false);
 
   const { getAccessToken, authenticated } = usePrivy();
   const { wallets } = useWallets();
@@ -95,22 +111,69 @@ function CryptoCashOutContent() {
     retry: 1,
   });
 
-  const availableBalance = (
-    typeof balanceData?.ledgerUsd === 'number'
-      ? balanceData.ledgerUsd
-      : Number((dbUser as { walletBalance?: { toString(): string } })?.walletBalance?.toString() || 0)
-  ).toFixed(2);
+  const spendable = spendableLedgerUsd({
+    balanceData,
+    fallbackWalletBalance: (dbUser as { walletBalance?: { toString(): string } })
+      ?.walletBalance,
+  });
+  const availableBalance = spendable.amount;
 
   const handleSend = async () => {
     setIsConfirmOpen(false);
     setStatus('processing');
     setError(null);
 
-    let externalId: string | undefined;
-    let abandonToken: string | undefined;
-    let broadcasted = false;
+    let externalId: string | undefined = reserveSessionRef.current?.externalId;
+    let abandonToken: string | undefined = reserveSessionRef.current?.abandonToken;
+    let broadcasted = !!reserveSessionRef.current?.txHash;
 
     try {
+      if (celoUnsupported) {
+        throw new Error(
+          'Native CELO cash-out is not supported. Use cUSD, USDC, or USDT.',
+        );
+      }
+
+      const accessToken = await getAccessToken();
+      if (!accessToken) throw new Error('Session expired. Please sign in again.');
+
+      // After a successful broadcast, only retry sync-hash — never reserve/send again.
+      // Must run before spendable.ready gate so incomplete balance sync cannot block linking.
+      if (reserveSessionRef.current?.txHash && reserveSessionRef.current.orderId) {
+        const syncRes = await fetch('/api/transaction/sync-hash', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            orderId: reserveSessionRef.current.orderId,
+            txHash: reserveSessionRef.current.txHash,
+          }),
+        });
+        if (!syncRes.ok) {
+          const syncErr = await syncRes.json().catch(() => ({}));
+          throw new Error(
+            typeof syncErr.error === 'string'
+              ? syncErr.error
+              : 'Broadcast succeeded but failed to sync. Contact support with your tx hash.',
+          );
+        }
+        reserveSessionRef.current = null;
+        setSyncRetryAvailable(false);
+        await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
+        await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+        setStatus('success');
+        return;
+      }
+
+      if (!spendable.ready) {
+        throw new Error(
+          spendable.syncIncomplete
+            ? 'Balance sync incomplete. Wait a moment and try again.'
+            : 'Balance unavailable. Refresh and try again.',
+        );
+      }
       if (!isAddress(walletAddress)) {
         throw new Error('Enter a valid destination wallet address');
       }
@@ -118,8 +181,28 @@ function CryptoCashOutContent() {
       const wallet = wallets[0];
       if (!wallet) throw new Error('No wallet connected. Please sign in again.');
 
-      const accessToken = await getAccessToken();
-      if (!accessToken) throw new Error('Session expired. Please sign in again.');
+      const requestedUsd = Number(amount);
+      if (!Number.isFinite(requestedUsd) || requestedUsd <= 0) {
+        throw new Error('Enter a valid amount');
+      }
+
+      // If the form amount changed since the last reserve, abandon the old row first.
+      if (
+        reserveSessionRef.current?.externalId &&
+        reserveSessionRef.current.amountUsd != null &&
+        Number(reserveSessionRef.current.amountUsd) !== requestedUsd
+      ) {
+        await postCancelPending(reserveSessionRef.current.externalId, {
+          accessToken,
+          abandonToken: reserveSessionRef.current.abandonToken,
+        });
+        reserveSessionRef.current = null;
+        setSyncRetryAvailable(false);
+      }
+
+      const idempotencyKey =
+        reserveSessionRef.current?.externalId ??
+        `crypto_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
       const pendingRes = await fetch('/api/transaction/create-crypto-pending', {
         method: 'POST',
@@ -128,10 +211,11 @@ function CryptoCashOutContent() {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          amountUsd: Number(amount),
+          amountUsd: requestedUsd,
           destinationAddress: walletAddress,
-          network: isCeloNative ? 'celo' : network,
+          network: isCeloOnlyToken ? 'celo' : network,
           token,
+          externalId: idempotencyKey,
         }),
       });
       const pendingData = await pendingRes.json().catch(() => ({}));
@@ -146,6 +230,9 @@ function CryptoCashOutContent() {
       externalId = pendingData.transaction?.externalId as string | undefined;
       abandonToken = pendingData.abandonToken as string | undefined;
       const orderId = pendingData.transaction?.orderId as string | undefined;
+      const reservedUsd = String(
+        pendingData.transaction?.amountUsd ?? requestedUsd,
+      );
       const transfer = pendingData.transfer as {
         chainId: number;
         network: 'base' | 'celo';
@@ -154,45 +241,49 @@ function CryptoCashOutContent() {
         destinationAddress: string;
       };
 
-      if (!orderId || !transfer) {
+      if (!orderId || !transfer || !externalId) {
         throw new Error('Invalid reserve response');
       }
+
+      // On-chain amount must equal ledger reserve (not a possibly-edited form value).
+      if (Number(reservedUsd) !== requestedUsd) {
+        throw new Error(
+          `Reserved amount ($${reservedUsd}) does not match send amount ($${requestedUsd}). Try again.`,
+        );
+      }
+
+      reserveSessionRef.current = {
+        externalId,
+        orderId,
+        abandonToken,
+        amountUsd: reservedUsd,
+      };
 
       const provider = (await wallet.getEthereumProvider()) as Eip1193Provider;
       await ensureChain(wallet, provider, transfer.network);
 
-      let txHash: string;
-      if (token === 'CELO') {
-        const amountRaw = parseUnits(amount, 18);
-        txHash = (await provider.request({
-          method: 'eth_sendTransaction',
-          params: [
-            {
-              from: wallet.address,
-              to: transfer.destinationAddress as `0x${string}`,
-              value: `0x${amountRaw.toString(16)}`,
-            },
-          ],
-        })) as string;
-      } else {
-        const amountRaw = parseUnits(amount, transfer.decimals);
-        txHash = (await provider.request({
-          method: 'eth_sendTransaction',
-          params: [
-            {
-              from: wallet.address,
-              to: transfer.tokenAddress,
-              data: encodeFunctionData({
-                abi: ERC20_ABI,
-                functionName: 'transfer',
-                args: [transfer.destinationAddress as `0x${string}`, amountRaw],
-              }),
-            },
-          ],
-        })) as string;
-      }
+      const amountRaw = parseUnits(reservedUsd, transfer.decimals);
+      const txHash = (await provider.request({
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: wallet.address,
+            to: transfer.tokenAddress,
+            data: encodeFunctionData({
+              abi: ERC20_ABI,
+              functionName: 'transfer',
+              args: [transfer.destinationAddress as `0x${string}`, amountRaw],
+            }),
+          },
+        ],
+      })) as string;
 
       broadcasted = true;
+      reserveSessionRef.current = {
+        ...reserveSessionRef.current,
+        txHash,
+      };
+      setSyncRetryAvailable(true);
 
       const syncRes = await fetch('/api/transaction/sync-hash', {
         method: 'POST',
@@ -211,6 +302,8 @@ function CryptoCashOutContent() {
         );
       }
 
+      reserveSessionRef.current = null;
+      setSyncRetryAvailable(false);
       await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
       await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
       console.log('[CRYPTO CASHOUT] Tx Hash:', txHash);
@@ -219,11 +312,13 @@ function CryptoCashOutContent() {
       console.error('[CRYPTO CASHOUT] Failed:', err);
       if (!broadcasted && externalId) {
         try {
-          const accessToken = await getAccessToken();
+          const tokenForCancel = await getAccessToken();
           await postCancelPending(externalId, {
-            accessToken: accessToken || undefined,
+            accessToken: tokenForCancel || undefined,
             abandonToken,
           });
+          reserveSessionRef.current = null;
+          setSyncRetryAvailable(false);
           await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
           await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
         } catch (cancelErr) {
@@ -263,10 +358,16 @@ function CryptoCashOutContent() {
             <span className="font-semibold text-[#1C1C1C]">Cashing out {token}</span>
           </div>
 
-          {error && (
+          {(error || celoUnsupported || spendable.syncIncomplete) && (
             <div className="p-4 bg-red-50 border border-red-100 rounded-[12px] flex items-center gap-3">
               <AlertCircle size={20} className="text-red-500 flex-shrink-0" />
-              <p className="text-red-600 text-[13px] font-medium leading-tight">{error}</p>
+              <p className="text-red-600 text-[13px] font-medium leading-tight">
+                {celoUnsupported
+                  ? 'Native CELO cash-out is not supported. Use cUSD, USDC, or USDT.'
+                  : spendable.syncIncomplete && !error
+                    ? 'Balance sync incomplete — cash-out is paused until sync finishes.'
+                    : error}
+              </p>
             </div>
           )}
 
@@ -287,7 +388,7 @@ function CryptoCashOutContent() {
             />
           </div>
 
-          {!isCeloNative && (
+          {!isCeloOnlyToken && !celoUnsupported && (
             <div className="relative z-20">
               <label
                 style={{ fontWeight: 500, fontSize: '16px', color: '#1C1C1C', lineHeight: '100%' }}
@@ -358,6 +459,7 @@ function CryptoCashOutContent() {
               className="mt-2 font-medium"
             >
               Available: ${availableBalance}
+              {!spendable.ready ? ' (syncing…)' : ''}
             </p>
           </div>
         </div>
@@ -398,14 +500,24 @@ function CryptoCashOutContent() {
           }}
           className="w-full bg-[#2261FE] flex items-center justify-center active:scale-[0.98] transition-transform shadow-lg shadow-blue-200/50 disabled:opacity-50"
           disabled={
-            !walletAddress ||
-            !amount ||
-            parseFloat(amount) <= 0 ||
-            parseFloat(amount) > parseFloat(availableBalance)
+            celoUnsupported ||
+            (syncRetryAvailable
+              ? false
+              : !spendable.ready ||
+                !walletAddress ||
+                !amount ||
+                parseFloat(amount) <= 0 ||
+                parseFloat(amount) > parseFloat(availableBalance))
           }
-          onClick={() => setIsConfirmOpen(true)}
+          onClick={() => {
+            if (syncRetryAvailable) {
+              void handleSend();
+              return;
+            }
+            setIsConfirmOpen(true);
+          }}
         >
-          Confirm & Send
+          {syncRetryAvailable ? 'Retry sync' : 'Confirm & Send'}
         </button>
       </div>
 
@@ -448,19 +560,14 @@ function CryptoCashOutContent() {
                   <span className="text-[#888888] text-[14px] font-medium">Network</span>
                   <div className="flex items-center gap-2">
                     <img
-                      src={NETWORK_DATA[isCeloNative ? 'celo' : network]?.icon}
+                      src={NETWORK_DATA[isCeloOnlyToken ? 'celo' : network]?.icon}
                       alt=""
                       className="w-6 h-6 object-contain"
                     />
                     <span className="text-[#1C1C1C] text-[14px] font-semibold">
-                      {NETWORK_DATA[isCeloNative ? 'celo' : network]?.name}
+                      {NETWORK_DATA[isCeloOnlyToken ? 'celo' : network]?.name}
                     </span>
                   </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-[#888888] text-[14px] font-medium">Processing fee</span>
-                  <span className="text-[#1C1C1C] text-[14px] font-semibold">0.00%</span>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-gray-50">

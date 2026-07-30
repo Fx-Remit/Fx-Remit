@@ -15,6 +15,7 @@ import {
   abandonPrefetchSession,
   postCreatePending,
 } from '@/lib/cash-out/create-pending-client';
+import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
 
 function CashOutConfirmContent() {
   const router = useRouter();
@@ -87,13 +88,12 @@ function CashOutConfirmContent() {
     retry: 1,
   });
 
-  const availableBalance = (
-    typeof balanceData?.ledgerUsd === 'number'
-      ? balanceData.ledgerUsd
-      : Number(
-          (dbUser as { walletBalance?: { toString(): string } })?.walletBalance?.toString() || 0,
-        )
-  ).toFixed(2);
+  const spendable = spendableLedgerUsd({
+    balanceData,
+    fallbackWalletBalance: (dbUser as { walletBalance?: { toString(): string } })
+      ?.walletBalance,
+  });
+  const availableBalance = spendable.amount;
 
   const isBank = type === 'bank';
   const feePercentText = `${(Number(spread) / 100).toFixed(2)}%`;
@@ -391,7 +391,7 @@ function CashOutConfirmContent() {
           onClick={() => {
             void openConfirmSheet();
           }}
-          disabled={!!session || closing}
+          disabled={!!session || closing || !spendable.ready}
           className="max-w-[430px] w-full h-[65px] bg-[#2261FE] text-white rounded-[7px] text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
         >
           Confirm & Send

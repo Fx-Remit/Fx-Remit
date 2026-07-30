@@ -347,6 +347,10 @@ export class TransactionService {
     return key.startsWith('pnd_') || key.startsWith('crypto_');
   }
 
+  static isCryptoWithdraw(recipientBank: string | null | undefined): boolean {
+    return (recipientBank || '').startsWith('crypto:');
+  }
+
   /**
    * Paycrest statuses where it is safe to auto-expire / refund the ledger reserve.
    * Anything else (pending, processing, validated, …) may already have received funds.
@@ -359,11 +363,20 @@ export class TransactionService {
     'refunded',
   ]);
 
+  private static async touchPendingUpdatedAt(id: string) {
+    await prisma.transaction.update({
+      where: { id },
+      data: { updatedAt: new Date() },
+    });
+  }
+
   /**
    * Expire stale prefetched / abandoned remittances that never received an on-chain hash.
    * Safe for cron: only touches pending-* placeholder hashes.
-   * If a Paycrest order id is attached and the order is still live, skip refund
-   * (covers broadcast-without-sync-hash races).
+   *
+   * Never auto-refund crypto withdraws (broadcast may have succeeded without sync-hash).
+   * For Paycrest-attached hashes: only refund when Paycrest confirms a terminal-safe status;
+   * lookup failures defer (do not refund).
    */
   static async expireStalePendingRemittances(opts?: {
     olderThanMs?: number;
@@ -380,7 +393,7 @@ export class TransactionService {
         txHash: { startsWith: 'pending-' },
         updatedAt: { lte: cutoff },
       },
-      select: { id: true, externalId: true, txHash: true },
+      select: { id: true, externalId: true, txHash: true, recipientBank: true },
       take: limit,
       orderBy: { updatedAt: 'asc' },
     });
@@ -396,23 +409,30 @@ export class TransactionService {
         continue;
       }
       try {
+        // Crypto may already be on-chain while hash is still pending-crypto_* — never auto-refund.
+        if (this.isCryptoWithdraw(row.recipientBank)) {
+          await this.touchPendingUpdatedAt(row.id);
+          deferred += 1;
+          continue;
+        }
+
         const placeholder = this.paycrestOrderIdFromTxHash(row.txHash);
         if (placeholder && !this.isAppLocalPendingKey(placeholder)) {
           const { PayoutService } = await import('./payout.service.js');
           const live = await PayoutService.getSettlementOrder(placeholder);
-          if (live.success && live.order) {
-            const status = String(
-              (live.order as { status?: string }).status || '',
-            ).toLowerCase();
-            if (!this.PAYCREST_EXPIRE_SAFE.has(status)) {
-              // Order still active at Paycrest — do not refund reserved ledger.
-              await prisma.transaction.update({
-                where: { id: row.id },
-                data: { updatedAt: new Date() },
-              });
-              deferred += 1;
-              continue;
-            }
+          if (!live.success || !live.order) {
+            // Ambiguous: order may still be live — do not refund on lookup failure.
+            await this.touchPendingUpdatedAt(row.id);
+            deferred += 1;
+            continue;
+          }
+          const status = String(
+            (live.order as { status?: string }).status || '',
+          ).toLowerCase();
+          if (!this.PAYCREST_EXPIRE_SAFE.has(status)) {
+            await this.touchPendingUpdatedAt(row.id);
+            deferred += 1;
+            continue;
           }
         }
 
@@ -541,8 +561,10 @@ export class TransactionService {
       where: { externalId: data.externalId },
     });
 
-    // Older rows remapped externalId → Paycrest order id; still resume the open reserve
-    if (!existing) {
+    // Bank only: older rows remapped externalId → Paycrest order id; resume open reserve.
+    // Never amount-match crypto withdraws — that can attach a new crypto send onto a bank
+    // remittance (or another crypto row) with the same USD amount.
+    if (!existing && !this.isCryptoWithdraw(data.recipientBank)) {
       existing = await prisma.transaction.findFirst({
         where: {
           userId: data.userId,
@@ -550,6 +572,7 @@ export class TransactionService {
           status: { in: ["PENDING", "PROCESSING"] },
           txHash: { startsWith: "pending-" },
           amountUsd: amount,
+          NOT: { recipientBank: { startsWith: "crypto:" } },
         },
         orderBy: { createdAt: "desc" },
       });
