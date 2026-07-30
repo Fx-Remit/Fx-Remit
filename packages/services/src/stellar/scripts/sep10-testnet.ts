@@ -3,9 +3,12 @@
  * SEP-10 testnet smoke test against SDF test anchor.
  *
  * Usage:
+ *   pnpm --filter @fx-remit/services stellar:sep10-test
  *   STELLAR_TEST_SECRET=S... pnpm --filter @fx-remit/services stellar:sep10-test
  *
- * If STELLAR_TEST_SECRET is omitted, a random keypair is generated (account must be funded on testnet).
+ * If STELLAR_TEST_SECRET is omitted, a random keypair is generated.
+ * SEP-10 is signature-only against the challenge — no Friendbot funding or
+ * USDC balance is required for this smoke (unlike SEP-24).
  */
 import { Sep10Client, generateKeypair, keypairFromSecret } from '../sep10.client.js';
 import { TEST_ANCHOR, STELLAR_NETWORK_PASSPHRASE, getStellarNetwork } from '../anchors.config.js';
