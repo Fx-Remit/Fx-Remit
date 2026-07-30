@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   Sep10Client,
   Sep24Client,
+  resolveSep24DestinationAsset,
   fetchAnchorToml,
   getDefaultAnchor,
   keypairFromSecret,
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest) {
     const { token } = await sep10.authenticate(account, anchor.homeDomain, keypair);
 
     const sep24 = new Sep24Client();
+    const destinationAsset = resolveSep24DestinationAsset(anchor, corridor);
     const withdraw = await sep24.startWithdrawInteractive({
       anchor,
       authToken: token,
@@ -79,13 +81,15 @@ export async function POST(req: NextRequest) {
       assetCode: anchor.usdcAssetCode,
       assetIssuer: anchor.usdcIssuer,
       amount,
-      destinationAsset: sep24.corridorToDestinationAsset(corridor),
+      destinationAsset,
     });
 
     return NextResponse.json({
       success: true,
       rail: 'STELLAR',
       anchor_id: anchor.id,
+      corridor,
+      destination_asset: destinationAsset,
       transaction_id: withdraw.id,
       interactive_url: withdraw.url,
       type: withdraw.type,

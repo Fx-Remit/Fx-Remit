@@ -6,6 +6,7 @@ import type {
   StellarCorridor,
 } from './types.js';
 import { fetchAnchorToml } from './anchor-toml.js';
+import { TEST_ANCHOR } from './anchors.config.js';
 
 export interface Sep24WithdrawParams {
   anchor: AnchorConfig;
@@ -16,6 +17,22 @@ export interface Sep24WithdrawParams {
   amount: string;
   destinationAsset?: string;
   lang?: string;
+}
+
+/**
+ * Off-chain destination for SEP-24 withdraw.
+ * SDF testanchor only supports USD/CAD — not NGN/KES product corridors.
+ */
+export function resolveSep24DestinationAsset(
+  anchor: AnchorConfig,
+  corridor: StellarCorridor,
+): string {
+  const isTestAnchor =
+    anchor.id === TEST_ANCHOR.id || anchor.homeDomain === TEST_ANCHOR.homeDomain;
+  if (isTestAnchor) {
+    return 'iso4217:USD';
+  }
+  return `iso4217:${corridor}`;
 }
 
 /**
@@ -37,33 +54,33 @@ export class Sep24Client {
 
   /**
    * Start an interactive withdraw (cash-out). Returns hosted URL for KYC / bank details.
+   * SEP-24 requires application/x-www-form-urlencoded (or multipart), not JSON.
    */
   async startWithdrawInteractive(
     params: Sep24WithdrawParams,
   ): Promise<Sep24WithdrawInteractiveResponse> {
     const transferServer = await this.getTransferServer(params.anchor);
-    const body: Record<string, string> = {
-      asset_code: params.assetCode,
-      asset_issuer: params.assetIssuer,
-      account: params.account,
-      amount: params.amount,
-    };
+    const body = new URLSearchParams();
+    body.set('asset_code', params.assetCode);
+    body.set('asset_issuer', params.assetIssuer);
+    body.set('account', params.account);
+    body.set('amount', params.amount);
 
     if (params.destinationAsset) {
-      body.destination_asset = params.destinationAsset;
+      body.set('destination_asset', params.destinationAsset);
     }
     if (params.lang) {
-      body.lang = params.lang;
+      body.set('lang', params.lang);
     }
 
     const { data } = await axios.post<Sep24WithdrawInteractiveResponse>(
       `${transferServer}/transactions/withdraw/interactive`,
-      body,
+      body.toString(),
       {
         timeout: 30_000,
         headers: {
           Authorization: `Bearer ${params.authToken}`,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
       },
     );
@@ -91,8 +108,11 @@ export class Sep24Client {
     return data;
   }
 
-  /** Map corridor to off-chain asset hint for withdraw body */
-  corridorToDestinationAsset(corridor: StellarCorridor): string {
+  /** @deprecated Prefer resolveSep24DestinationAsset(anchor, corridor) */
+  corridorToDestinationAsset(corridor: StellarCorridor, anchor?: AnchorConfig): string {
+    if (anchor) {
+      return resolveSep24DestinationAsset(anchor, corridor);
+    }
     return corridor;
   }
 }
