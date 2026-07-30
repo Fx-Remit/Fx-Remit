@@ -37,6 +37,8 @@ type CryptoReserveSession = {
   externalId: string;
   orderId?: string;
   abandonToken?: string;
+  /** USD amount reserved on the ledger — must match on-chain transfer. */
+  amountUsd: string;
   /** Set after eth_sendTransaction — retries must only re-sync, never re-broadcast. */
   txHash?: string;
 };
@@ -83,6 +85,8 @@ function CryptoCashOutContent() {
   const [status, setStatus] = useState<'idle' | 'processing' | 'success'>('idle');
   const [error, setError] = useState<string | null>(null);
   const reserveSessionRef = useRef<CryptoReserveSession | null>(null);
+  /** True after broadcast when sync-hash still needs to succeed — bypasses spendable gate. */
+  const [syncRetryAvailable, setSyncRetryAvailable] = useState(false);
 
   const { getAccessToken, authenticated } = usePrivy();
   const { wallets } = useWallets();
@@ -129,24 +133,12 @@ function CryptoCashOutContent() {
           'Native CELO cash-out is not supported. Use cUSD, USDC, or USDT.',
         );
       }
-      if (!spendable.ready) {
-        throw new Error(
-          spendable.syncIncomplete
-            ? 'Balance sync incomplete. Wait a moment and try again.'
-            : 'Balance unavailable. Refresh and try again.',
-        );
-      }
-      if (!isAddress(walletAddress)) {
-        throw new Error('Enter a valid destination wallet address');
-      }
-
-      const wallet = wallets[0];
-      if (!wallet) throw new Error('No wallet connected. Please sign in again.');
 
       const accessToken = await getAccessToken();
       if (!accessToken) throw new Error('Session expired. Please sign in again.');
 
       // After a successful broadcast, only retry sync-hash — never reserve/send again.
+      // Must run before spendable.ready gate so incomplete balance sync cannot block linking.
       if (reserveSessionRef.current?.txHash && reserveSessionRef.current.orderId) {
         const syncRes = await fetch('/api/transaction/sync-hash', {
           method: 'POST',
@@ -168,10 +160,44 @@ function CryptoCashOutContent() {
           );
         }
         reserveSessionRef.current = null;
+        setSyncRetryAvailable(false);
         await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
         await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
         setStatus('success');
         return;
+      }
+
+      if (!spendable.ready) {
+        throw new Error(
+          spendable.syncIncomplete
+            ? 'Balance sync incomplete. Wait a moment and try again.'
+            : 'Balance unavailable. Refresh and try again.',
+        );
+      }
+      if (!isAddress(walletAddress)) {
+        throw new Error('Enter a valid destination wallet address');
+      }
+
+      const wallet = wallets[0];
+      if (!wallet) throw new Error('No wallet connected. Please sign in again.');
+
+      const requestedUsd = Number(amount);
+      if (!Number.isFinite(requestedUsd) || requestedUsd <= 0) {
+        throw new Error('Enter a valid amount');
+      }
+
+      // If the form amount changed since the last reserve, abandon the old row first.
+      if (
+        reserveSessionRef.current?.externalId &&
+        reserveSessionRef.current.amountUsd != null &&
+        Number(reserveSessionRef.current.amountUsd) !== requestedUsd
+      ) {
+        await postCancelPending(reserveSessionRef.current.externalId, {
+          accessToken,
+          abandonToken: reserveSessionRef.current.abandonToken,
+        });
+        reserveSessionRef.current = null;
+        setSyncRetryAvailable(false);
       }
 
       const idempotencyKey =
@@ -185,7 +211,7 @@ function CryptoCashOutContent() {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          amountUsd: Number(amount),
+          amountUsd: requestedUsd,
           destinationAddress: walletAddress,
           network: isCeloOnlyToken ? 'celo' : network,
           token,
@@ -204,6 +230,9 @@ function CryptoCashOutContent() {
       externalId = pendingData.transaction?.externalId as string | undefined;
       abandonToken = pendingData.abandonToken as string | undefined;
       const orderId = pendingData.transaction?.orderId as string | undefined;
+      const reservedUsd = String(
+        pendingData.transaction?.amountUsd ?? requestedUsd,
+      );
       const transfer = pendingData.transfer as {
         chainId: number;
         network: 'base' | 'celo';
@@ -216,16 +245,24 @@ function CryptoCashOutContent() {
         throw new Error('Invalid reserve response');
       }
 
+      // On-chain amount must equal ledger reserve (not a possibly-edited form value).
+      if (Number(reservedUsd) !== requestedUsd) {
+        throw new Error(
+          `Reserved amount ($${reservedUsd}) does not match send amount ($${requestedUsd}). Try again.`,
+        );
+      }
+
       reserveSessionRef.current = {
         externalId,
         orderId,
         abandonToken,
+        amountUsd: reservedUsd,
       };
 
       const provider = (await wallet.getEthereumProvider()) as Eip1193Provider;
       await ensureChain(wallet, provider, transfer.network);
 
-      const amountRaw = parseUnits(amount, transfer.decimals);
+      const amountRaw = parseUnits(reservedUsd, transfer.decimals);
       const txHash = (await provider.request({
         method: 'eth_sendTransaction',
         params: [
@@ -246,6 +283,7 @@ function CryptoCashOutContent() {
         ...reserveSessionRef.current,
         txHash,
       };
+      setSyncRetryAvailable(true);
 
       const syncRes = await fetch('/api/transaction/sync-hash', {
         method: 'POST',
@@ -265,6 +303,7 @@ function CryptoCashOutContent() {
       }
 
       reserveSessionRef.current = null;
+      setSyncRetryAvailable(false);
       await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
       await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
       console.log('[CRYPTO CASHOUT] Tx Hash:', txHash);
@@ -273,12 +312,13 @@ function CryptoCashOutContent() {
       console.error('[CRYPTO CASHOUT] Failed:', err);
       if (!broadcasted && externalId) {
         try {
-          const accessToken = await getAccessToken();
+          const tokenForCancel = await getAccessToken();
           await postCancelPending(externalId, {
-            accessToken: accessToken || undefined,
+            accessToken: tokenForCancel || undefined,
             abandonToken,
           });
           reserveSessionRef.current = null;
+          setSyncRetryAvailable(false);
           await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
           await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
         } catch (cancelErr) {
@@ -461,15 +501,23 @@ function CryptoCashOutContent() {
           className="w-full bg-[#2261FE] flex items-center justify-center active:scale-[0.98] transition-transform shadow-lg shadow-blue-200/50 disabled:opacity-50"
           disabled={
             celoUnsupported ||
-            !spendable.ready ||
-            !walletAddress ||
-            !amount ||
-            parseFloat(amount) <= 0 ||
-            parseFloat(amount) > parseFloat(availableBalance)
+            (syncRetryAvailable
+              ? false
+              : !spendable.ready ||
+                !walletAddress ||
+                !amount ||
+                parseFloat(amount) <= 0 ||
+                parseFloat(amount) > parseFloat(availableBalance))
           }
-          onClick={() => setIsConfirmOpen(true)}
+          onClick={() => {
+            if (syncRetryAvailable) {
+              void handleSend();
+              return;
+            }
+            setIsConfirmOpen(true);
+          }}
         >
-          Confirm & Send
+          {syncRetryAvailable ? 'Retry sync' : 'Confirm & Send'}
         </button>
       </div>
 
