@@ -4,9 +4,20 @@ import type { AnchorConfig, StellarCorridor, StellarNetwork } from './types.js';
 export const USDC_MAINNET_ISSUER =
   'GA5ZSEJYB37JRC5AVAAWEQVKGE4GMLFRMDTOWNZTFJX5YGNH55SXRR5';
 
-/** SDF testnet USDC (test anchor) */
-export const USDC_TESTNET_ISSUER =
+/**
+ * Classic Circle USDC issuer on Stellar testnet (ecosystem default).
+ * Not the same asset as SDF testanchor's published USDC — keep for reference only.
+ */
+export const CIRCLE_USDC_TESTNET_ISSUER =
   'GBBD47IF6LWK7P7MDEVSCN7DABMYZ4PKCFXLJ2J4G5UO7K4R6WXXZ3VY';
+
+/**
+ * USDC issuer from SDF testanchor `stellar.toml` `[[CURRENCIES]]` (code = USDC).
+ * Re-check if https://testanchor.stellar.org/.well-known/stellar.toml changes.
+ * SEP-24/38 and Freighter balance for this rail must use this issuer.
+ */
+export const USDC_TESTNET_ISSUER =
+  'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
 
 export const STELLAR_NETWORK_PASSPHRASE: Record<StellarNetwork, string> = {
   public: 'Public Global Stellar Network ; September 2015',

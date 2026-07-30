@@ -11,7 +11,7 @@ const ANCHOR: AnchorConfig = {
   homeDomain: 'testanchor.example',
   corridors: ['NGN', 'KES'],
   usdcAssetCode: 'USDC',
-  usdcIssuer: 'GBBD47IF6LWK7P7MDEVSCN7DABMYZ4PKCFXLJ2J4G5UO7K4R6WXXZ3VY',
+  usdcIssuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
   priority: 0,
   methods: ['bank'],
 };
