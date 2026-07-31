@@ -7,6 +7,7 @@ import { prisma } from '@fx-remit/database';
 import {
   createStellarWithdrawStart,
   resolveStellarPersistUser,
+  STELLAR_RAIL_CHAIN_ID,
 } from './stellar-transaction.service.js';
 
 const originals = {
@@ -28,7 +29,7 @@ function sampleStellarTx(overrides: Record<string, unknown> = {}) {
     userId: 'user-1',
     orderId: 123n,
     txHash: 'stellar-pending-anchor-1',
-    chainId: 0,
+    chainId: STELLAR_RAIL_CHAIN_ID,
     blockNumber: 123n,
     logIndex: 0,
     sourceToken: 'USDC',
@@ -81,7 +82,8 @@ describe('createStellarWithdrawStart — happy paths', () => {
     assert.equal(created!.corridor, 'NGN');
     assert.equal(created!.externalId, 'stellar:anchor-1');
     assert.equal(created!.txHash, 'stellar-pending-anchor-1');
-    assert.equal(created!.chainId, 0);
+    assert.equal(created!.chainId, STELLAR_RAIL_CHAIN_ID);
+    assert.notEqual(created!.chainId, 0); // must not share EVM pending placeholder space
     assert.equal(created!.sourceToken, 'USDC');
     assert.equal(created!.recipientAcc, 'GABC');
     assert.equal(created!.recipientBank, 'stellar:testanchor');

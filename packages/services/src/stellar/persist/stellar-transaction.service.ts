@@ -16,8 +16,16 @@ export interface CreateStellarWithdrawStartInput {
 }
 
 /**
- * Stable BigInt order id for Stellar rows (@@unique([orderId, chainId]) with chainId 0).
- * Not an EVM order id placeholder until a Stellar-native id scheme exists.
+ * Synthetic chain id for Stellar rail rows.
+ * Must not equal EVM pending placeholder (0) or live L2s (8453 / 42220) so
+ * @@unique([orderId, chainId]) and @@unique([chainId, blockNumber, logIndex])
+ * never collide with createPending.
+ */
+export const STELLAR_RAIL_CHAIN_ID = 0x5354; // 21332 — "ST"
+
+/**
+ * Stable BigInt order id for Stellar rows under STELLAR_RAIL_CHAIN_ID.
+ * Not an EVM order id until a Stellar-native id scheme exists.
  */
 function stellarOrderIdFromAnchorTx(anchorTransactionId: string): bigint {
   const hex = createHash('sha256')
@@ -26,7 +34,6 @@ function stellarOrderIdFromAnchorTx(anchorTransactionId: string): bigint {
     .slice(0, 15);
   return BigInt(`0x${hex}`);
 }
-
 
 export async function createStellarWithdrawStart(
   data: CreateStellarWithdrawStartInput,
@@ -70,7 +77,7 @@ export async function createStellarWithdrawStart(
       type: 'REMITTANCE',
       externalId,
       txHash: `stellar-pending-${data.anchorTransactionId}`,
-      chainId: 0,
+      chainId: STELLAR_RAIL_CHAIN_ID,
       orderId,
       blockNumber: orderId,
       logIndex: 0,

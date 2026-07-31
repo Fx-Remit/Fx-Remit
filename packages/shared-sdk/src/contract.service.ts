@@ -1,6 +1,6 @@
 import { createPublicClient, http, getContract, Address, parseAbiItem } from 'viem';
 import { base, celo } from 'viem/chains';
-import FXRemitRouterABI from '../../services/src/abi/FXRemitRouter.json';
+import FXRemitRouterABI from './abi/FXRemitRouter.json';
 
 export class ContractService {
   private client;
