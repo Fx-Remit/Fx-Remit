@@ -7,18 +7,21 @@ import { prisma } from '@fx-remit/database';
 import {
   createStellarWithdrawStart,
   resolveStellarPersistUser,
+  setStellarPaymentHash,
   STELLAR_RAIL_CHAIN_ID,
 } from './stellar-transaction.service.js';
 
 const originals = {
   findFirst: prisma.transaction.findFirst,
   create: prisma.transaction.create,
+  update: prisma.transaction.update,
   userFindUnique: prisma.user.findUnique,
 };
 
 afterEach(() => {
   prisma.transaction.findFirst = originals.findFirst;
   prisma.transaction.create = originals.create;
+  prisma.transaction.update = originals.update;
   prisma.user.findUnique = originals.userFindUnique;
 });
 
@@ -193,5 +196,60 @@ describe('resolveStellarPersistUser', () => {
     prisma.user.findUnique = (async () => null) as typeof prisma.user.findUnique;
     const user = await resolveStellarPersistUser({ account: 'GUNKNOWN' });
     assert.equal(user, null);
+  });
+});
+
+describe('setStellarPaymentHash', () => {
+  it('stores hash and mirrors onto txHash', async () => {
+    const existing = sampleStellarTx();
+    prisma.transaction.findFirst = (async () => existing) as typeof prisma.transaction.findFirst;
+    let updated: Record<string, unknown> | null = null;
+    prisma.transaction.update = (async (args: { data: Record<string, unknown> }) => {
+      updated = args.data;
+      return sampleStellarTx({
+        stellarPaymentHash: args.data.stellarPaymentHash,
+        txHash: args.data.txHash,
+      }) as never;
+    }) as typeof prisma.transaction.update;
+
+    const row = await setStellarPaymentHash({
+      anchorTransactionId: 'anchor-1',
+      stellarPaymentHash: 'abc123hash',
+    });
+    assert.equal(row.stellarPaymentHash, 'abc123hash');
+    assert.ok(updated);
+    assert.equal(updated!.stellarPaymentHash, 'abc123hash');
+    assert.equal(updated!.txHash, 'abc123hash');
+  });
+
+  it('is idempotent when same hash already stored', async () => {
+    prisma.transaction.findFirst = (async () =>
+      sampleStellarTx({ stellarPaymentHash: 'same' })) as typeof prisma.transaction.findFirst;
+    let updateCalled = false;
+    prisma.transaction.update = (async () => {
+      updateCalled = true;
+      throw new Error('should not update');
+    }) as typeof prisma.transaction.update;
+
+    const row = await setStellarPaymentHash({
+      anchorTransactionId: 'anchor-1',
+      stellarPaymentHash: 'same',
+    });
+    assert.equal(row.stellarPaymentHash, 'same');
+    assert.equal(updateCalled, false);
+  });
+
+  it('rejects when a different hash is already stored', async () => {
+    prisma.transaction.findFirst = (async () =>
+      sampleStellarTx({ stellarPaymentHash: 'old' })) as typeof prisma.transaction.findFirst;
+
+    await assert.rejects(
+      () =>
+        setStellarPaymentHash({
+          anchorTransactionId: 'anchor-1',
+          stellarPaymentHash: 'new',
+        }),
+      /already has stellarPaymentHash/,
+    );
   });
 });

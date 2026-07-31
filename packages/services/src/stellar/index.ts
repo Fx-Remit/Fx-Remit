@@ -5,6 +5,8 @@ export * from './sep10/sep10.client.js';
 export * from './sep38/sep38.client.js';
 export * from './sep24/sep24.client.js';
 export * from './persist/stellar-transaction.service.js';
+export * from './payment/stellar-payment.service.js';
+export * from './payment/complete-sep24-withdraw.js';
 
 import { PricingService } from '../paycrest/pricing.service.js';
 import type { RetailQuote } from '../paycrest/pricing.service.js';

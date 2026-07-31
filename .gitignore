@@ -42,5 +42,7 @@ typechain-types/
 node_modules/
 .pnpm-debug.log*
 
+packages/services/.sep24-interactive-url.txt
+
 # API
 packages/api/tsconfig.json

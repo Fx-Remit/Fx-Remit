@@ -410,6 +410,7 @@ packages/services/src/stellar/
   sep10/           # client + tests + smoke
   sep24/
   sep38/
+  payment/         # Horizon USDC Payment + SEP-24 status poll
   persist/         # sandbox rail=STELLAR DB writes
   # later: sep12/, sep31/, reconcile/
 
@@ -561,7 +562,10 @@ Next partner steps: sandbox access with Link, ClickPesa, and Flutterwave; Freigh
 | SEP-24 withdraw start (sandbox)   | Done   | `stellar/sep24/` · `POST /api/stellar/withdraw/start` |
 | Freighter SEP-10 challenge/token  | Done   | `POST /api/stellar/auth/challenge`, `/auth/token`     |
 | Persist STELLAR on withdraw start | Done   | `stellar/persist/` (sandbox API only)                 |
+| SEP-24 pay + status poll          | Done*  | `stellar/payment/` · `POST /api/stellar/withdraw/pay` |
 | Prisma rail fields (additive)     | Done   | `schema.prisma` — run `prisma migrate` before use     |
+
+\* **Code + unit tests done.** Live E2E smoke (`stellar:sep24-test` → interactive KYC → `stellar:sep24-pay-test`) is **blocked upstream**: SDF `anchor-reference-server-testanchor.stellar.org` `/transaction` and `/submit` fail with a Transaction deserialization error, so the Reference UI never shows the Withdrawal KYC form (empty `/status` only). Re-verify when that host recovers; see `packages/services/src/stellar/README.md`.
 
 
 **Enable locally:** `NEXT_PUBLIC_STELLAR_ENABLED=true` · optional `STELLAR_NETWORK=testnet` · `STELLAR_TEST_SECRET` for smoke scripts (Freighter path needs no server secret). Stellar DB writes stay behind that flag and are not hooked into live EVM cash-out.

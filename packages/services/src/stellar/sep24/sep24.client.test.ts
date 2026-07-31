@@ -1,7 +1,11 @@
 import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import axios from 'axios';
-import { Sep24Client, resolveSep24DestinationAsset } from './sep24.client.js';
+import {
+  Sep24Client,
+  resolveSep24DestinationAsset,
+  isSep24TransferReady,
+} from './sep24.client.js';
 import { clearAnchorTomlCache } from '../config/anchor-toml.js';
 import type { AnchorConfig } from '../types/types.js';
 
@@ -105,6 +109,126 @@ describe('Sep24Client — happy paths', () => {
     };
     assert.equal(opts.headers.Authorization, 'Bearer tok');
     assert.equal(opts.params.id, 'tx-123');
+  });
+
+  it('getTransaction unwraps { transaction: ... } envelope', async () => {
+    mock.method(axios, 'get', async () => ({
+      data: {
+        transaction: {
+          id: 'tx-wrapped',
+          status: 'pending_user_transfer_start',
+          withdraw_anchor_account: 'GANCHOR',
+          withdraw_memo: 'memo-1',
+        },
+      },
+    }));
+
+    const client = new Sep24Client();
+    const tx = await client.getTransaction(
+      'https://testanchor.example/sep24',
+      'tok',
+      'tx-wrapped',
+    );
+    assert.equal(tx.id, 'tx-wrapped');
+    assert.equal(tx.withdraw_memo, 'memo-1');
+  });
+
+  it('pollUntilTransferReady returns when memo + account present', async () => {
+    let calls = 0;
+    mock.method(axios, 'get', async () => {
+      calls += 1;
+      if (calls === 1) {
+        return { data: { id: 'tx-1', status: 'incomplete' } };
+      }
+      return {
+        data: {
+          id: 'tx-1',
+          status: 'pending_user_transfer_start',
+          withdraw_anchor_account: 'GANCHOR',
+          withdraw_memo: '42',
+          withdraw_memo_type: 'id',
+        },
+      };
+    });
+
+    const client = new Sep24Client();
+    const tx = await client.pollUntilTransferReady({
+      transferServer: 'https://testanchor.example/sep24',
+      authToken: 'tok',
+      transactionId: 'tx-1',
+      intervalMs: 1,
+      timeoutMs: 5_000,
+    });
+    assert.equal(tx.withdraw_anchor_account, 'GANCHOR');
+    assert.equal(tx.withdraw_memo, '42');
+    assert.ok(calls >= 2);
+  });
+
+  it('pollUntilTransferReady rejects when already past user transfer', async () => {
+    mock.method(axios, 'get', async () => ({
+      data: {
+        id: 'tx-1',
+        status: 'pending_anchor',
+        withdraw_anchor_account: 'GANCHOR',
+        withdraw_memo: '42',
+      },
+    }));
+
+    const client = new Sep24Client();
+    await assert.rejects(
+      () =>
+        client.pollUntilTransferReady({
+          transferServer: 'https://testanchor.example/sep24',
+          authToken: 'tok',
+          transactionId: 'tx-1',
+          intervalMs: 1,
+          timeoutMs: 2_000,
+        }),
+      /no longer awaiting user transfer/,
+    );
+  });
+
+  it('pollUntilTerminal returns timedOut without throwing', async () => {
+    mock.method(axios, 'get', async () => ({
+      data: {
+        id: 'tx-1',
+        status: 'pending_anchor',
+        withdraw_anchor_account: 'GANCHOR',
+        withdraw_memo: '42',
+      },
+    }));
+
+    const client = new Sep24Client();
+    const result = await client.pollUntilTerminal({
+      transferServer: 'https://testanchor.example/sep24',
+      authToken: 'tok',
+      transactionId: 'tx-1',
+      intervalMs: 1,
+      timeoutMs: 30,
+    });
+    assert.equal(result.timedOut, true);
+    assert.equal(result.tx.status, 'pending_anchor');
+  });
+
+  it('isSep24TransferReady requires pending_user_transfer_start', () => {
+    assert.equal(
+      isSep24TransferReady({
+        id: 'x',
+        status: 'pending_anchor',
+        withdraw_anchor_account: 'G',
+        withdraw_memo: 'm',
+      }),
+      false,
+    );
+    assert.equal(
+      isSep24TransferReady({
+        id: 'x',
+        status: 'pending_user_transfer_start',
+        withdraw_anchor_account: 'G',
+        withdraw_memo: 'm',
+      }),
+      true,
+    );
   });
 
   it('resolveSep24DestinationAsset maps testanchor to iso4217:USD', () => {

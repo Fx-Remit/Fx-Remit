@@ -119,3 +119,49 @@ export async function resolveStellarPersistUser(params: {
   });
   return byKey;
 }
+
+/**
+ * Attach Horizon payment hash to an existing rail=STELLAR remittance.
+ * Idempotent when the same hash is already stored.
+ */
+export async function setStellarPaymentHash(params: {
+  anchorTransactionId: string;
+  stellarPaymentHash: string;
+}): Promise<Transaction> {
+  const hash = params.stellarPaymentHash.trim();
+  if (!hash) {
+    throw new Error('stellarPaymentHash required');
+  }
+
+  const row = await prisma.transaction.findFirst({
+    where: {
+      anchorTransactionId: params.anchorTransactionId,
+      rail: 'STELLAR',
+    },
+  });
+
+  if (!row) {
+    throw new Error(
+      `No STELLAR remittance for anchor tx ${params.anchorTransactionId}`,
+    );
+  }
+
+  if (row.stellarPaymentHash) {
+    if (row.stellarPaymentHash === hash) {
+      return row;
+    }
+    throw new Error(
+      `Remittance ${row.id} already has stellarPaymentHash ${row.stellarPaymentHash}`,
+    );
+  }
+
+  return prisma.transaction.update({
+    where: { id: row.id },
+    data: {
+      stellarPaymentHash: hash,
+      // Keep placeholder uniqueness but surface the payment on txHash for history
+      txHash: hash,
+      updatedAt: new Date(),
+    },
+  });
+}
