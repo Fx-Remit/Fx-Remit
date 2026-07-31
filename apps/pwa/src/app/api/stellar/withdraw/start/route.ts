@@ -5,6 +5,8 @@ import {
   resolveSep24DestinationAsset,
   keypairFromSecret,
   isValidPublicKey,
+  createStellarWithdrawStart,
+  resolveStellarPersistUser,
   type StellarCorridor,
 } from '@fx-remit/services';
 import { isStellarApiEnabled, parseCorridor, resolveAnchorWebAuth } from '../../_lib';
@@ -20,7 +22,12 @@ export const dynamic = 'force-dynamic';
  * 2. signedChallenge + account — server exchanges signed XDR for JWT
  * 3. STELLAR_TEST_SECRET — server signs (smoke / CI)
  *
- * POST { corridor, amount, account?, authToken?, signedChallenge? }
+ * Optional persist (sandbox only): writes rail=STELLAR only when a user is
+ * linked to the SEP-10 `account` (`stellar_public_key` match). Optional
+ * `userId` must also have that same key — body id alone is never trusted.
+ * Smoke without an app user still returns the interactive URL (persisted: false).
+ *
+ * POST { corridor, amount, account?, authToken?, signedChallenge?, userId? }
  */
 export async function POST(req: NextRequest) {
   if (!isStellarApiEnabled()) {
@@ -33,6 +40,7 @@ export async function POST(req: NextRequest) {
     account?: string;
     authToken?: string;
     signedChallenge?: string;
+    userId?: string;
   };
   try {
     body = await req.json();
@@ -54,6 +62,7 @@ export async function POST(req: NextRequest) {
   const authToken = body.authToken?.trim();
   const signedChallenge = body.signedChallenge?.trim();
   const bodyAccount = body.account?.trim();
+  const bodyUserId = body.userId?.trim();
 
   if (bodyAccount && !isValidPublicKey(bodyAccount)) {
     return NextResponse.json({ error: 'Invalid Stellar account (G…)' }, { status: 400 });
@@ -110,6 +119,33 @@ export async function POST(req: NextRequest) {
       destinationAsset,
     });
 
+    let persisted = false;
+    let remittanceId: string | undefined;
+
+    const user = await resolveStellarPersistUser({
+      userId: bodyUserId,
+      account,
+    });
+
+    if (user) {
+      try {
+        const row = await createStellarWithdrawStart({
+          userId: user.id,
+          account,
+          anchorTransactionId: withdraw.id,
+          corridor,
+          amountUsd: amount,
+          anchorId: anchor.id,
+        });
+        persisted = true;
+        remittanceId = row.id;
+      } catch (persistErr: unknown) {
+        // Do not fail SEP-24 start if sandbox DB write fails
+        const msg = persistErr instanceof Error ? persistErr.message : String(persistErr);
+        console.error('[Stellar Withdraw Start] persist skipped:', msg);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       rail: 'STELLAR',
@@ -120,6 +156,8 @@ export async function POST(req: NextRequest) {
       transaction_id: withdraw.id,
       interactive_url: withdraw.url,
       type: withdraw.type,
+      persisted,
+      ...(remittanceId ? { remittance_id: remittanceId } : {}),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Withdraw start failed';

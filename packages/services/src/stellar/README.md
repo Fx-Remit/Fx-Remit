@@ -4,13 +4,27 @@ This package implements the **Stellar settlement path** alongside the existing E
 
 ## Layout
 
-| Module | SEP | Purpose |
-| ------ | --- | ------- |
-| `sep10.client.ts` | SEP-10 | Anchor web authentication |
-| `sep38.client.ts` | SEP-38 | FX quotes (USDC → NGN/KES; testanchor uses USD) |
-| `sep24.client.ts` | SEP-24 | Interactive withdraw (cash-out start) |
-| `anchor-toml.ts` | — | Discover anchor endpoints |
-| `anchors.config.ts` | — | Corridor → anchor routing stubs |
+```text
+stellar/
+  index.ts                 # public barrel (apps import from @fx-remit/services)
+  types/                   # shared Stellar types
+  config/                  # anchors + stellar.toml discovery
+  sep10/                   # SEP-10 auth client + smoke
+  sep24/                   # SEP-24 withdraw client + smoke
+  sep38/                    # SEP-38 quotes client + smoke
+  persist/                 # sandbox rail=STELLAR DB writes (not live cash-out)
+```
+
+| Folder | Purpose |
+| ------ | ------- |
+| `types/` | Shared corridor, SEP, and quote types |
+| `config/` | Anchor routing + `stellar.toml` parsing |
+| `sep10/` | Web authentication client + `sep10-testnet` smoke |
+| `sep38/` | FX quote client + `sep38-testnet` smoke |
+| `sep24/` | Interactive withdraw client + `sep24-testnet` smoke |
+| `persist/` | Sandbox `createStellarWithdrawStart` (not EVM `createPending`) |
+
+Each SEP folder keeps its **client**, **unit tests**, and **testnet smoke** together. Apps still import via `@fx-remit/services` — only this package’s internal paths changed.
 
 ## Environment
 
@@ -76,6 +90,12 @@ Requires `STELLAR_TEST_SECRET`. Against SDF testanchor, `destination_asset` is f
 Friendbot + trustline expectations: fund the account with XLM via Friendbot, then add a trustline to testanchor USDC (`USDC_TESTNET_ISSUER`). Testanchor USDC withdraw limits are typically **1–10**. Starting interactive withdraw can succeed and return a hosted URL without a prior USDC balance; completing the flow later needs USDC on that trustline.
 
 API (dev): with `NEXT_PUBLIC_STELLAR_ENABLED=true`, either set `STELLAR_TEST_SECRET` and `POST { "corridor": "NGN", "amount": "1" }`, or pass Freighter `account` + `authToken` / `signedChallenge`.
+
+### Persist STELLAR remittance (sandbox)
+
+After SEP-24 withdraw start succeeds, `/api/stellar/withdraw/start` may write a `transactions` row with `rail=STELLAR` and `anchor_transaction_id` via `createStellarWithdrawStart` (under `stellar/`, not EVM `createPending` — no ledger debit).
+
+Persist only when a user is linked to the SEP-10 `account` (`users.stellar_public_key` match). Optional body `userId` must also have that same key — id alone is never trusted. Smoke without an app user still returns the interactive URL with `persisted: false`. Not wired into live cash-out UI.
 
 ## Incremental build
 

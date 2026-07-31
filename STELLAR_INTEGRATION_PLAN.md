@@ -404,19 +404,18 @@ After SEP-24 is stable:
 
 ```
 packages/services/src/stellar/
-  sep10.client.ts
-  sep12.client.ts
-  sep24.client.ts
-  sep38.client.ts
-  sep31.client.ts          # phase 2
-  anchor.router.ts
-  anchors.config.ts        # home domains, assets, corridors
-  stellar.wallet.ts
-  reconcile.stellar.ts
+  index.ts
+  types/
+  config/          # anchors + stellar.toml
+  sep10/           # client + tests + smoke
+  sep24/
+  sep38/
+  persist/         # sandbox rail=STELLAR DB writes
+  # later: sep12/, sep31/, reconcile/
 
 apps/pwa/src/
   lib/stellar/
-  app/cash-out/stellar/    # or extend existing cash-out routes
+  app/api/stellar/   # feature-flagged APIs
 ```
 
 Config example (illustrative):
@@ -556,33 +555,22 @@ Next partner steps: sandbox access with Link, ClickPesa, and Flutterwave; Freigh
 | Commit slice                      | Status | Location                                              |
 | --------------------------------- | ------ | ----------------------------------------------------- |
 | Scaffold (types, anchors, README) | Done   | `packages/services/src/stellar/`                      |
-| SEP-10 client + testnet script    | Done   | `sep10.client.ts`, `scripts/sep10-testnet.ts`         |
+| SEP-10 client + testnet script    | Done   | `stellar/sep10/`                                      |
 | Freighter + USDC balance helpers  | Done   | `apps/pwa/src/lib/stellar/`                           |
-| SEP-38 quote API                  | Done   | `GET /api/stellar/quote`                              |
-| SEP-24 withdraw start (sandbox)   | Done   | `sep24.client.ts`, `POST /api/stellar/withdraw/start` |
+| SEP-38 quote API                  | Done   | `GET /api/stellar/quote` · `stellar/sep38/`           |
+| SEP-24 withdraw start (sandbox)   | Done   | `stellar/sep24/` · `POST /api/stellar/withdraw/start` |
 | Freighter SEP-10 challenge/token  | Done   | `POST /api/stellar/auth/challenge`, `/auth/token`     |
+| Persist STELLAR on withdraw start | Done   | `stellar/persist/` (sandbox API only)                 |
 | Prisma rail fields (additive)     | Done   | `schema.prisma` — run `prisma migrate` before use     |
 
 
-**Enable locally:** `NEXT_PUBLIC_STELLAR_ENABLED=true` · optional `STELLAR_NETWORK=testnet` · `STELLAR_TEST_SECRET` for smoke scripts (Freighter path needs no server secret).
+**Enable locally:** `NEXT_PUBLIC_STELLAR_ENABLED=true` · optional `STELLAR_NETWORK=testnet` · `STELLAR_TEST_SECRET` for smoke scripts (Freighter path needs no server secret). Stellar DB writes stay behind that flag and are not hooked into live EVM cash-out.
 
 **Still ahead:** unified cash-out confirm, embedded wallet, history merge, mainnet.
 
 ---
 
-
-
-## 15. Open decisions
-
-- [ ] Confirm Flutterwave / Link / ClickPesa / ImpalaPay **sandbox** access and SEP-24 withdraw for USDC→fiat
-- [ ] Confirm MoneyGram Ramps **wallet partnership** requirements (SEP-24 allowlist)
-- [ ] Choose embedded Stellar key custody approach (Privy-compatible vs dedicated module)
-- [ ] Decide deposit story: SEP-24 on-ramp vs “receive USDC only” for MVP
-- [ ] Legal: which entity signs anchor agreements (TopCo vs OpCo)
-
-
-
-## 16. References
+## 15. References
 
 - [Stellar Anchor Directory](https://anchors.stellar.org/)
 - [SEP-24 — Hosted Deposit & Withdrawal](https://developers.stellar.org/docs/build/apps/wallet/sep24)
