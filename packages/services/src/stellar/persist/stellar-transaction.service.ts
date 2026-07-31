@@ -120,6 +120,18 @@ export async function resolveStellarPersistUser(params: {
   return byKey;
 }
 
+/** Lookup sandbox STELLAR remittance by SEP-24 anchor transaction id. */
+export async function findStellarRemittanceByAnchorTx(
+  anchorTransactionId: string,
+): Promise<Transaction | null> {
+  return prisma.transaction.findFirst({
+    where: {
+      anchorTransactionId,
+      rail: 'STELLAR',
+    },
+  });
+}
+
 /**
  * Attach Horizon payment hash to an existing rail=STELLAR remittance.
  * Idempotent when the same hash is already stored.
@@ -133,12 +145,7 @@ export async function setStellarPaymentHash(params: {
     throw new Error('stellarPaymentHash required');
   }
 
-  const row = await prisma.transaction.findFirst({
-    where: {
-      anchorTransactionId: params.anchorTransactionId,
-      rail: 'STELLAR',
-    },
-  });
+  const row = await findStellarRemittanceByAnchorTx(params.anchorTransactionId);
 
   if (!row) {
     throw new Error(

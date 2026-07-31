@@ -55,4 +55,34 @@ describe('POST /api/stellar/withdraw/pay — validation', () => {
     );
     assert.equal(res.status, 404);
   });
+
+  it('returns 400 when authToken without account', async () => {
+    process.env.STELLAR_TEST_SECRET = Keypair.random().secret();
+    const res = await POST(
+      postJson({
+        corridor: 'NGN',
+        transaction_id: 'tx-1',
+        authToken: 'jwt',
+      }),
+    );
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /account required/);
+  });
+
+  it('returns 400 when account does not match STELLAR_TEST_SECRET', async () => {
+    process.env.STELLAR_TEST_SECRET = Keypair.random().secret();
+    const other = Keypair.random().publicKey();
+    const res = await POST(
+      postJson({
+        corridor: 'NGN',
+        transaction_id: 'tx-1',
+        authToken: 'jwt',
+        account: other,
+      }),
+    );
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /must match STELLAR_TEST_SECRET/);
+  });
 });

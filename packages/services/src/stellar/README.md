@@ -116,7 +116,7 @@ Persist only when a user is linked to the SEP-10 `account` (`users.stellar_publi
 
 ### SEP-24 pay + status poll (`stellar:sep24-pay-test`)
 
-After interactive withdraw (and KYC if needed), poll until status is `pending_user_transfer_start` with `withdraw_memo` + `withdraw_anchor_account`, submit a Horizon USDC `Payment` signed with `STELLAR_TEST_SECRET`, then poll until a terminal SEP-24 status (timeout still returns the on-chain hash). Optionally stores `stellar_payment_hash` via `setStellarPaymentHash`. Retries after payment fail fast (`no longer awaiting user transfer`) so a second Payment is not submitted.
+After interactive withdraw (and KYC if needed), poll until status is `pending_user_transfer_start` with `withdraw_memo` + `withdraw_anchor_account`, submit a Horizon USDC `Payment` signed with `STELLAR_TEST_SECRET`, then poll until a terminal SEP-24 status (timeout still returns the on-chain hash). Optionally stores `stellar_payment_hash` via `setStellarPaymentHash`. Same-process lock + DB hash reuse + a final status re-check before submit reduce double Payment. Retries after payment fail fast (`no longer awaiting user transfer`).
 
 ```bash
 STELLAR_TEST_SECRET=S... pnpm --filter @fx-remit/services stellar:sep24-pay-test
@@ -124,7 +124,7 @@ STELLAR_TEST_SECRET=S... pnpm --filter @fx-remit/services stellar:sep24-pay-test
 STELLAR_TEST_SECRET=S... STELLAR_SEP24_TX_ID=<id> pnpm --filter @fx-remit/services stellar:sep24-pay-test
 ```
 
-API (dev): `POST /api/stellar/withdraw/pay` with `{ corridor, transaction_id }` and `STELLAR_TEST_SECRET` (sandbox server-signed Payment only).
+API (dev): `POST /api/stellar/withdraw/pay` with `{ corridor, transaction_id }` and `STELLAR_TEST_SECRET`. If you pass Freighter `authToken` / `signedChallenge`, `account` is required and **must** equal the test secret’s `G…` (server still signs Payment). When `waitForTerminal: false`, response `status` is `pending_anchor` (not the pre-pay `pending_user_transfer_start`).
 
 ## Incremental build
 

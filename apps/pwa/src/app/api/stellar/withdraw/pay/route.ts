@@ -11,8 +11,8 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Sandbox: after SEP-24 withdraw start, poll for memo → submit USDC Payment → poll status.
- * Server keypair path first (STELLAR_TEST_SECRET). Freighter authToken + account also accepted
- * only when STELLAR_TEST_SECRET is set (server still signs the Payment).
+ * Payment is always signed with STELLAR_TEST_SECRET. Freighter authToken / signedChallenge
+ * are only accepted when `account` matches that secret’s public key (server still pays).
  *
  * POST {
  *   corridor, transaction_id, amount?,
@@ -68,12 +68,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid Stellar account (G…)' }, { status: 400 });
   }
 
+  if ((authToken || signedChallenge) && !bodyAccount) {
+    return NextResponse.json(
+      { error: 'account required when using authToken or signedChallenge' },
+      { status: 400 },
+    );
+  }
+
   try {
     const { network, passphrase, anchor, webAuthEndpoint } =
       await resolveAnchorWebAuth(corridor);
     const sep10 = new Sep10Client(webAuthEndpoint, passphrase);
     const keypair = keypairFromSecret(secret);
-    const account = bodyAccount ?? keypair.publicKey();
+    const payerAccount = keypair.publicKey();
+    const account = bodyAccount ?? payerAccount;
+
+    // Server still signs Horizon Payment — reject Freighter G… that is not the test wallet.
+    if (account !== payerAccount) {
+      return NextResponse.json(
+        {
+          error:
+            'account must match STELLAR_TEST_SECRET public key (Freighter Payment signing not wired yet)',
+        },
+        { status: 400 },
+      );
+    }
 
     let token: string;
     if (authToken) {
@@ -102,16 +121,22 @@ export async function POST(req: NextRequest) {
       persistPaymentHash: body.persistPaymentHash !== false,
     });
 
+    // After Payment, transferReady is still pre-pay; do not surface that as unpaid.
+    const status =
+      result.finalStatus?.status ??
+      (result.payment.hash ? 'pending_anchor' : result.transferReady.status);
+
     return NextResponse.json({
       success: true,
       rail: 'STELLAR',
       transaction_id: transactionId,
-      status: result.finalStatus?.status ?? result.transferReady.status,
+      status,
       withdraw_anchor_account: result.payment.destination,
       withdraw_memo: result.payment.memo,
       withdraw_memo_type: result.payment.memoType,
       amount: result.payment.amount,
       stellar_payment_hash: result.payment.hash,
+      ...(result.paymentReused ? { payment_reused: true } : {}),
       ...(result.terminalTimedOut ? { terminal_timed_out: true } : {}),
       ...(result.remittanceId ? { remittance_id: result.remittanceId } : {}),
       ...(result.finalStatus?.stellar_transaction_id
