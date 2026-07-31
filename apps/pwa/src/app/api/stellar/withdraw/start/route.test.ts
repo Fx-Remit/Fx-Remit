@@ -42,7 +42,7 @@ beforeEach(() => {
     transferServerSep24: 'https://testanchor.stellar.org/sep24',
   });
   // Default: no app user → skip DB persist (smoke-safe)
-  prisma.user.findUnique = (async () => null) as typeof prisma.user.findUnique;
+  prisma.user.findUnique = (async () => null) as any;
 });
 
 function postJson(body: unknown) {
@@ -133,13 +133,13 @@ describe('POST /api/stellar/withdraw/start — sandbox persist', () => {
     prisma.user.findUnique = (async () => ({
       id: 'user-1',
       stellarPublicKey: ACCOUNT,
-    })) as typeof prisma.user.findUnique;
-    prisma.transaction.findFirst = (async () => null) as typeof prisma.transaction.findFirst;
+    })) as any;
+    prisma.transaction.findFirst = (async () => null) as any;
     prisma.transaction.create = (async (args: { data: Record<string, unknown> }) =>
       ({
         id: 'remittance-1',
         ...args.data,
-      }) as never) as typeof prisma.transaction.create;
+      }) as never) as any;
 
     const res = await POST(
       postJson({
@@ -163,11 +163,11 @@ describe('POST /api/stellar/withdraw/start — sandbox persist', () => {
     prisma.user.findUnique = (async () => ({
       id: 'victim',
       stellarPublicKey: Keypair.random().publicKey(),
-    })) as typeof prisma.user.findUnique;
+    })) as any;
     prisma.transaction.create = (async () => {
       createCalled = true;
       throw new Error('should not create');
-    }) as typeof prisma.transaction.create;
+    }) as any;
 
     const res = await POST(
       postJson({
