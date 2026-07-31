@@ -1,10 +1,13 @@
 process.env.NEXT_PUBLIC_STELLAR_ENABLED = 'true';
 process.env.STELLAR_NETWORK = 'testnet';
+process.env.DATABASE_URL ??=
+  'postgresql://postgres:postgres@localhost:5432/postgres';
 
 import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { NextRequest } from 'next/server';
 import { Keypair } from '@stellar/stellar-sdk';
+import { prisma } from '@fx-remit/database';
 import {
   Sep10Client,
   Sep24Client,
@@ -15,10 +18,19 @@ import { POST } from './route';
 
 const ACCOUNT = Keypair.random().publicKey();
 
+const prismaOriginals = {
+  userFindUnique: prisma.user.findUnique,
+  txFindFirst: prisma.transaction.findFirst,
+  txCreate: prisma.transaction.create,
+};
+
 afterEach(() => {
   mock.restoreAll();
   clearAnchorTomlCache();
   delete process.env.STELLAR_TEST_SECRET;
+  prisma.user.findUnique = prismaOriginals.userFindUnique;
+  prisma.transaction.findFirst = prismaOriginals.txFindFirst;
+  prisma.transaction.create = prismaOriginals.txCreate;
 });
 
 beforeEach(() => {
@@ -29,6 +41,8 @@ beforeEach(() => {
     webAuthEndpoint: 'https://testanchor.stellar.org/auth',
     transferServerSep24: 'https://testanchor.stellar.org/sep24',
   });
+  // Default: no app user → skip DB persist (smoke-safe)
+  prisma.user.findUnique = (async () => null) as typeof prisma.user.findUnique;
 });
 
 function postJson(body: unknown) {
@@ -67,6 +81,7 @@ describe('POST /api/stellar/withdraw/start — Freighter authToken', () => {
     assert.equal(body.transaction_id, 'tx-withdraw-1');
     assert.equal(body.interactive_url, 'https://anchor.test/interactive');
     assert.equal(body.account, ACCOUNT);
+    assert.equal(body.persisted, false);
     assert.equal(authSpy.mock.callCount(), 0);
   });
 });
@@ -90,6 +105,7 @@ describe('POST /api/stellar/withdraw/start — signedChallenge', () => {
     const body = await res.json();
     assert.equal(body.success, true);
     assert.equal(body.transaction_id, 'tx-withdraw-1');
+    assert.equal(body.persisted, false);
   });
 });
 
@@ -107,6 +123,66 @@ describe('POST /api/stellar/withdraw/start — STELLAR_TEST_SECRET smoke', () =>
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.transaction_id, 'tx-withdraw-1');
+    assert.equal(body.persisted, false);
+  });
+});
+
+describe('POST /api/stellar/withdraw/start — sandbox persist', () => {
+  it('persists rail=STELLAR when userId has matching stellarPublicKey', async () => {
+    mockWithdrawOk();
+    prisma.user.findUnique = (async () => ({
+      id: 'user-1',
+      stellarPublicKey: ACCOUNT,
+    })) as typeof prisma.user.findUnique;
+    prisma.transaction.findFirst = (async () => null) as typeof prisma.transaction.findFirst;
+    prisma.transaction.create = (async (args: { data: Record<string, unknown> }) =>
+      ({
+        id: 'remittance-1',
+        ...args.data,
+      }) as never) as typeof prisma.transaction.create;
+
+    const res = await POST(
+      postJson({
+        corridor: 'NGN',
+        amount: '1',
+        account: ACCOUNT,
+        authToken: 'client-jwt',
+        userId: 'user-1',
+      }),
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.persisted, true);
+    assert.equal(body.remittance_id, 'remittance-1');
+    assert.equal(body.transaction_id, 'tx-withdraw-1');
+  });
+
+  it('does not persist when userId stellarPublicKey mismatches account', async () => {
+    mockWithdrawOk();
+    let createCalled = false;
+    prisma.user.findUnique = (async () => ({
+      id: 'victim',
+      stellarPublicKey: Keypair.random().publicKey(),
+    })) as typeof prisma.user.findUnique;
+    prisma.transaction.create = (async () => {
+      createCalled = true;
+      throw new Error('should not create');
+    }) as typeof prisma.transaction.create;
+
+    const res = await POST(
+      postJson({
+        corridor: 'NGN',
+        amount: '1',
+        account: ACCOUNT,
+        authToken: 'client-jwt',
+        userId: 'victim',
+      }),
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.persisted, false);
+    assert.equal(body.remittance_id, undefined);
+    assert.equal(createCalled, false);
   });
 });
 
