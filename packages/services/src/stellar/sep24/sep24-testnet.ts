@@ -11,6 +11,9 @@
  *   STELLAR_TEST_SECRET=S... pnpm --filter @fx-remit/services stellar:sep24-test
  *   STELLAR_TEST_SECRET=S... STELLAR_TEST_AMOUNT=1 pnpm --filter @fx-remit/services stellar:sep24-test
  */
+import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import axios from 'axios';
 import { Sep10Client, keypairFromSecret } from '../sep10/sep10.client.js';
 import { Sep24Client, resolveSep24DestinationAsset } from './sep24.client.js';
@@ -75,6 +78,27 @@ async function main() {
   if (withdraw.type) {
     console.log(`Type: ${withdraw.type}`);
   }
+
+  // Long JWTs wrap in the terminal; Cmd+click truncates and the UI lands on
+  // /status?session_token=undefined. Write + open the full URL instead.
+  const urlFile = join(process.cwd(), '.sep24-interactive-url.txt');
+  writeFileSync(urlFile, `${withdraw.url}\n`, 'utf8');
+  console.log('');
+  console.log('Do NOT Cmd+click the URL above (terminal truncates the JWT).');
+  console.log(`Full URL written to: ${urlFile}`);
+  if (process.platform === 'darwin') {
+    const opened = spawnSync('open', [withdraw.url], { stdio: 'ignore' });
+    if (opened.status === 0) {
+      console.log('Opened interactive KYC form in your default browser.');
+    } else {
+      console.log(`Open manually: open "$(cat ${urlFile})"`);
+    }
+  } else {
+    console.log(`Open manually: xdg-open "$(cat ${urlFile})"  # or paste the file contents`);
+  }
+  console.log(
+    `After the form: STELLAR_SEP24_TX_ID=${withdraw.id} pnpm --filter @fx-remit/services stellar:sep24-pay-test`,
+  );
 }
 
 main().catch((err) => {

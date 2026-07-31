@@ -11,7 +11,8 @@ stellar/
   config/                  # anchors + stellar.toml discovery
   sep10/                   # SEP-10 auth client + smoke
   sep24/                   # SEP-24 withdraw client + smoke
-  sep38/                    # SEP-38 quotes client + smoke
+  sep38/                   # SEP-38 quotes client + smoke
+  payment/                 # Horizon USDC Payment + Flow B orchestration
   persist/                 # sandbox rail=STELLAR DB writes (not live cash-out)
 ```
 
@@ -22,7 +23,8 @@ stellar/
 | `sep10/` | Web authentication client + `sep10-testnet` smoke |
 | `sep38/` | FX quote client + `sep38-testnet` smoke |
 | `sep24/` | Interactive withdraw client + `sep24-testnet` smoke |
-| `persist/` | Sandbox `createStellarWithdrawStart` (not EVM `createPending`) |
+| `payment/` | Submit USDC Payment + poll SEP-24 status (`sep24-pay-test`) |
+| `persist/` | Sandbox `createStellarWithdrawStart` / `setStellarPaymentHash` |
 
 Each SEP folder keeps its **client**, **unit tests**, and **testnet smoke** together. Apps still import via `@fx-remit/services` — only this package’s internal paths changed.
 
@@ -85,7 +87,22 @@ SEP-38 against testanchor returns a **USD** stand-in rate (`demo_fiat`) — not 
 
 ### SEP-24 withdraw start (`stellar:sep24-test`)
 
-Requires `STELLAR_TEST_SECRET`. Against SDF testanchor, `destination_asset` is forced to `iso4217:USD` (not NGN/KES). The script prints `Transaction id` and `Interactive URL`.
+Requires `STELLAR_TEST_SECRET`. Against SDF testanchor, `destination_asset` is forced to `iso4217:USD` (not NGN/KES). The script prints `Transaction id` and `Interactive URL`, writes the full URL to `.sep24-interactive-url.txt`, and on macOS runs `open` so the KYC form loads in your browser. **Do not Cmd+click the URL in the terminal** — wrapping truncates the JWT and the UI redirects to `/status?session_token=undefined`.
+
+#### Interactive KYC: expected UI vs known SDF blocker
+
+When the hosted [SEP-24 Reference UI](https://anchor-ref-ui-testanchor.stellar.org) works, the flow is:
+
+1. `/start` exchanges the interactive JWT for a `session_token`
+2. If status is `incomplete` → **`/kyc` Withdrawal form** (amount, name, email, bank, account)
+3. After submit → `/status` with memo / amounts filled in
+4. Then run `stellar:sep24-pay-test` with `STELLAR_SEP24_TX_ID=<id>`
+
+**Observed blocker (2026-07-31):** after a successful `/start`, `https://anchor-reference-server-testanchor.stellar.org/transaction` (and `/submit`) return:
+
+`Illegal input: Fields [id, status, kind] are required for type ... Transaction`
+
+The UI then treats the response as “not incomplete” and lands on an **empty status page** (dashes only) — there is nowhere to type KYC. This is an **upstream SDF testanchor / reference-server** failure, not a bug in Fx Remit start/pay. Retry `stellar:sep24-test` later; unit tests still cover the pay path without live KYC.
 
 Friendbot + trustline expectations: fund the account with XLM via Friendbot, then add a trustline to testanchor USDC (`USDC_TESTNET_ISSUER`). Testanchor USDC withdraw limits are typically **1–10**. Starting interactive withdraw can succeed and return a hosted URL without a prior USDC balance; completing the flow later needs USDC on that trustline.
 
@@ -97,6 +114,18 @@ After SEP-24 withdraw start succeeds, `/api/stellar/withdraw/start` may write a 
 
 Persist only when a user is linked to the SEP-10 `account` (`users.stellar_public_key` match). Optional body `userId` must also have that same key — id alone is never trusted. Smoke without an app user still returns the interactive URL with `persisted: false`. Not wired into live cash-out UI.
 
+### SEP-24 pay + status poll (`stellar:sep24-pay-test`)
+
+After interactive withdraw (and KYC if needed), poll until status is `pending_user_transfer_start` with `withdraw_memo` + `withdraw_anchor_account`, submit a Horizon USDC `Payment` signed with `STELLAR_TEST_SECRET`, then poll until a terminal SEP-24 status (timeout still returns the on-chain hash). Optionally stores `stellar_payment_hash` via `setStellarPaymentHash`. Same-process lock + DB hash reuse + a final status re-check before submit reduce double Payment. Retries after payment fail fast (`no longer awaiting user transfer`).
+
+```bash
+STELLAR_TEST_SECRET=S... pnpm --filter @fx-remit/services stellar:sep24-pay-test
+# resume after completing interactive URL:
+STELLAR_TEST_SECRET=S... STELLAR_SEP24_TX_ID=<id> pnpm --filter @fx-remit/services stellar:sep24-pay-test
+```
+
+API (dev): `POST /api/stellar/withdraw/pay` with `{ corridor, transaction_id }` and `STELLAR_TEST_SECRET`. If you pass Freighter `authToken` / `signedChallenge`, `account` is required and **must** equal the test secret’s `G…` (server still signs Payment). When `waitForTerminal: false`, response `status` is `pending_anchor` (not the pre-pay `pending_user_transfer_start`).
+
 ## Incremental build
 
-Work tracks parent issue **Stellar testnet readiness** (SEP-10 → quote → SEP-24 withdraw start). No product cash-out UI in that epic. See repo root `STELLAR_INTEGRATION_PLAN.md`.
+Work tracks parent issue **Stellar testnet readiness** (SEP-10 → quote → SEP-24 withdraw → pay). No product cash-out UI in that epic. See repo root `STELLAR_INTEGRATION_PLAN.md`.

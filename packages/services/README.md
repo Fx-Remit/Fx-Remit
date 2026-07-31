@@ -14,7 +14,7 @@ src/
   identity/                # Privy / wallet identity
   reconciliation/          # cron reconciliation
   evm/                     # shared EVM RPC + ABI + smoke scripts
-  stellar/                 # Stellar SEP-10/24/38 + persist (see stellar/README.md)
+  stellar/                 # Stellar SEP-10/24/38 + payment + persist (see stellar/README.md)
 ```
 
 | Folder | Purpose |
