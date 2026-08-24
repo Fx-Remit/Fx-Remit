@@ -297,8 +297,9 @@ export class TransactionService {
 
     if (shouldRestoreLedger) {
       return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
-        // CAS on placeholder hash only — do not pin snapshot status, or a concurrent
-        // PENDING→PROCESSING update would skip restore for a still-unfunded remittance.
+        // Atomic claim (#91): only one concurrent FAILED/REFUNDING webhook restores.
+        // Do not pin snapshot status — a concurrent PENDING→PROCESSING must not skip
+        // restore for a still-unfunded remittance.
         const claimed = await client.transaction.updateMany({
           where: {
             id: tx.id,
