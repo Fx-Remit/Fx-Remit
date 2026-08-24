@@ -55,13 +55,14 @@ model Transaction {
   logIndex      Int             @map("log_index")
   updatedAt     DateTime        @updatedAt @map("updated_at")
   type          TransactionType @default(REMITTANCE)
-  /** On-chain Paycrest crypto refund hash linked for ops (#90). */
+  /** On-chain Paycrest crypto refund hash linked for ops (#90). Per-user unique. */
   refundTxHash  String?         @map("refund_tx_hash")
   user          User            @relation(fields: [userId], references: [id])
 
   @@unique([txHash, logIndex])
   @@unique([chainId, blockNumber, logIndex])
   @@unique([orderId, chainId])
+  @@unique([userId, refundTxHash])
   @@map("transactions")
 }
 
