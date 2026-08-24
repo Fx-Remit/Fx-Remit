@@ -9,12 +9,16 @@ import { TransactionService } from '../transactions/transaction.service.js';
 const originals = {
   userFindFirst: prisma.user.findFirst,
   txFindUnique: prisma.transaction.findUnique,
+  txFindFirst: prisma.transaction.findFirst,
+  txFindMany: prisma.transaction.findMany,
   dollarTransaction: prisma.$transaction,
 };
 
 afterEach(() => {
   prisma.user.findFirst = originals.userFindFirst;
   prisma.transaction.findUnique = originals.txFindUnique;
+  prisma.transaction.findFirst = originals.txFindFirst;
+  prisma.transaction.findMany = originals.txFindMany;
   prisma.$transaction = originals.dollarTransaction;
   mock.restoreAll();
 });
@@ -52,6 +56,104 @@ describe('TransactionService.creditInboundDeposit', () => {
     assert.equal(dollar.mock.callCount(), 0);
   });
 
+  it('skips credit when refundTxHash already linked on a remittance (#90)', async () => {
+    prisma.user.findFirst = mock.fn(async () => ({
+      id: 'u1',
+      walletAddress: '0xabc',
+    })) as any;
+    prisma.transaction.findUnique = mock.fn(async () => null) as any;
+    prisma.transaction.findFirst = mock.fn(async () => ({
+      id: 'remit-1',
+      type: 'REMITTANCE',
+      refundTxHash: '0xrefund',
+      status: 'FAILED',
+    })) as any;
+    const dollar = mock.fn(async () => {
+      throw new Error('should not create');
+    });
+    prisma.$transaction = dollar as any;
+
+    const result = await TransactionService.creditInboundDeposit({
+      walletAddress: '0xabc',
+      txHash: '0xrefund',
+      chainId: 8453,
+      blockNumber: 50n,
+      logIndex: 1,
+      sourceToken: 'USDC',
+      amountUsd: '25',
+    });
+
+    assert.equal(result.created, false);
+    assert.equal(result.transaction.id, 'remit-1');
+    assert.equal(dollar.mock.callCount(), 0);
+  });
+
+  it('links funded FAILED remittance and credits once on matching refund deposit (#90)', async () => {
+    prisma.user.findFirst = mock.fn(async () => ({
+      id: 'u1',
+      walletAddress: '0xabc',
+    })) as any;
+    prisma.transaction.findUnique = mock.fn(async () => null) as any;
+    prisma.transaction.findFirst = mock.fn(async () => null) as any;
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'remit-1',
+        externalId: 'ext-1',
+        type: 'REMITTANCE',
+        status: 'FAILED',
+        txHash: '0xsettlement',
+        amountUsd: 25,
+        refundTxHash: null,
+      },
+    ]) as any;
+
+    const capture: {
+      updateManyArgs?: any;
+      createArgs?: any;
+      userUpdateArgs?: any;
+    } = {};
+
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const client = {
+        transaction: {
+          findFirst: mock.fn(async () => null),
+          updateMany: mock.fn(async (args: any) => {
+            capture.updateManyArgs = args;
+            return { count: 1 };
+          }),
+          create: mock.fn(async (args: any) => {
+            capture.createArgs = args;
+            return { id: 'dep-1', ...args.data };
+          }),
+        },
+        user: {
+          update: mock.fn(async (args: any) => {
+            capture.userUpdateArgs = args;
+            return { id: args.where.id };
+          }),
+        },
+      };
+      return cb(client);
+    }) as any;
+
+    const result = await TransactionService.creditInboundDeposit({
+      walletAddress: '0xabc',
+      txHash: '0xrefund',
+      chainId: 8453,
+      blockNumber: 50n,
+      logIndex: 1,
+      sourceToken: 'USDC',
+      amountUsd: '25',
+    });
+
+    assert.equal(result.created, true);
+    assert.equal(result.transaction.id, 'dep-1');
+    assert.equal(capture.updateManyArgs.where.id, 'remit-1');
+    assert.equal(capture.updateManyArgs.data.refundTxHash, '0xrefund');
+    assert.equal(capture.userUpdateArgs.data.walletBalance.increment.toString(), '25');
+    assert.match(capture.createArgs.data.recipientName, /Paycrest refund/);
+  });
+
   it('treats P2002 race as idempotent success', async () => {
     prisma.user.findFirst = mock.fn(async () => ({
       id: 'u1',
@@ -60,10 +162,12 @@ describe('TransactionService.creditInboundDeposit', () => {
     let finds = 0;
     prisma.transaction.findUnique = mock.fn(async () => {
       finds += 1;
-      // First two lookups miss; after P2002 the race lookup hits
+      // Pre-txn lookups miss; after P2002 the race lookup hits
       if (finds <= 2) return null;
       return { id: 'raced', txHash: '0xhash', logIndex: 1 };
     }) as any;
+    prisma.transaction.findFirst = mock.fn(async () => null) as any;
+    prisma.transaction.findMany = mock.fn(async () => []) as any;
     prisma.$transaction = mock.fn(async () => {
       const err: any = new Error('Unique constraint');
       err.code = 'P2002';
@@ -95,10 +199,10 @@ describe('TransactionService.creditInboundDeposit', () => {
       if (finds <= 2) return null;
       return { id: 'raced', txHash: '0xhash', logIndex: 1 };
     }) as any;
+    prisma.transaction.findFirst = mock.fn(async () => null) as any;
+    prisma.transaction.findMany = mock.fn(async () => []) as any;
     let balanceIncrements = 0;
-    prisma.$transaction = mock.fn(async (cb: any) => {
-      // Simulate losing the race: create would throw P2002 before increment.
-      // Interactive txn never commits prove catch path does not increment.
+    prisma.$transaction = mock.fn(async () => {
       const err: any = new Error('Unique constraint');
       err.code = 'P2002';
       throw err;
@@ -106,7 +210,6 @@ describe('TransactionService.creditInboundDeposit', () => {
     const userUpdate = mock.fn(async () => {
       balanceIncrements += 1;
     });
-    // Ensure no stray user.update on prisma root either
     (prisma as any).user.update = userUpdate;
 
     const result = await TransactionService.creditInboundDeposit({

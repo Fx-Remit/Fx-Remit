@@ -242,7 +242,8 @@ export class TransactionService {
   /**
    * Update transaction status from Paycrest webhook events.
    * Gated by a state machine to prevent out-of-order webhooks from overwriting terminal states.
-   * FAILED / REFUNDING remittances restore spendable ledger reserved in createPending (once).
+   * FAILED / REFUNDING restore spendable ledger only for unfunded placeholder hashes
+   * (pending-* / abandoned-*). Funded remittances wait for the on-chain refund deposit (#90).
    */
   /**
    * Resolve a remittance by Paycrest order id, our reference (externalId), or pending-{orderId} hash.
@@ -283,10 +284,16 @@ export class TransactionService {
       return tx;
     }
 
+    const placeholderHash =
+      tx.txHash.startsWith("pending-") || tx.txHash.startsWith("abandoned-");
+
+    // Funded remittances (real on-chain hash) must not restore here — Alchemy will
+    // credit the Paycrest crypto refund once via creditInboundDeposit (#90).
     const shouldRestoreLedger =
       tx.type === "REMITTANCE" &&
       LEDGER_RESTORED_STATUSES.includes(status) &&
-      !LEDGER_RESTORED_STATUSES.includes(tx.status);
+      !LEDGER_RESTORED_STATUSES.includes(tx.status) &&
+      placeholderHash;
 
     if (shouldRestoreLedger) {
       return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
@@ -844,6 +851,11 @@ export class TransactionService {
    * Credit an inbound wallet deposit (ERC-20 Transfer to user).
    * Idempotent on (chainId, blockNumber, logIndex) and (txHash, logIndex).
    * Safe under concurrent webhook + poll (handles unique races).
+   *
+   * Paycrest crypto refunds (#90): when a funded FAILED/REFUNDING remittance
+   * matches this amount and has no refundTxHash yet, link the deposit hash on
+   * that remittance in the same txn as the ledger credit (single economic credit).
+   * Replays of a hash already stored as refundTxHash do not credit again.
    */
   static async creditInboundDeposit(data: {
     walletAddress: string;
@@ -889,14 +901,66 @@ export class TransactionService {
       return { created: false as const, transaction: byHashLog, user };
     }
 
+    // Same Paycrest refund hash already linked to a remittance — do not credit again.
+    const alreadyLinkedRefund = await prisma.transaction.findFirst({
+      where: {
+        type: "REMITTANCE",
+        refundTxHash: data.txHash,
+      },
+    });
+    if (alreadyLinkedRefund) {
+      return { created: false as const, transaction: alreadyLinkedRefund, user };
+    }
+
     const amount = new Prisma.Decimal(data.amountUsd);
     const orderId = data.blockNumber * 1000n + BigInt(data.logIndex);
 
+    // Match open funded remittance refund claim (webhook did not restore ledger).
+    const refundCandidates = await prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: "REMITTANCE",
+        status: { in: ["FAILED", "REFUNDING"] },
+        refundTxHash: null,
+        amountUsd: amount,
+        NOT: [
+          { txHash: { startsWith: "pending-" } },
+          { txHash: { startsWith: "abandoned-" } },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+    });
+    const refundClaim = refundCandidates[0] ?? null;
+
     try {
-      // Atomic: create + balance increment commit together. On P2002 the whole
-      // interactive transaction rolls back the catch path below must NEVER
+      // Atomic: optional refund link + create + balance increment commit together.
+      // On P2002 the whole interactive transaction rolls back — catch must NEVER
       // increment walletBalance (lookup-only idempotent return).
       const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const linkedAlready = await tx.transaction.findFirst({
+          where: { type: "REMITTANCE", refundTxHash: data.txHash },
+        });
+        if (linkedAlready) {
+          return { created: false as const, transaction: linkedAlready };
+        }
+
+        let linkedClaim = false;
+        if (refundClaim) {
+          const linked = await tx.transaction.updateMany({
+            where: {
+              id: refundClaim.id,
+              refundTxHash: null,
+              status: { in: ["FAILED", "REFUNDING"] },
+            },
+            data: {
+              refundTxHash: data.txHash,
+              updatedAt: new Date(),
+            },
+          });
+          linkedClaim = linked.count === 1;
+        }
+
         const dbTx = await tx.transaction.create({
           data: {
             userId: user.id,
@@ -910,7 +974,9 @@ export class TransactionService {
             payoutFiat: 0,
             status: data.status ?? "COMPLETED",
             type: "DEPOSIT",
-            recipientName: "Wallet deposit",
+            recipientName: linkedClaim
+              ? `Paycrest refund (${refundClaim!.externalId || refundClaim!.id})`
+              : "Wallet deposit",
           },
         });
 
@@ -922,10 +988,10 @@ export class TransactionService {
           },
         });
 
-        return dbTx;
+        return { created: true as const, transaction: dbTx };
       });
 
-      return { created: true as const, transaction: result, user };
+      return { ...result, user };
     } catch (err: any) {
       if (err?.code === "P2002") {
         // Concurrent writer won — return their row. Do not credit again.
@@ -946,6 +1012,9 @@ export class TransactionService {
                 logIndex: data.logIndex,
               },
             },
+          })) ||
+          (await prisma.transaction.findFirst({
+            where: { type: "REMITTANCE", refundTxHash: data.txHash },
           }));
         if (raced) {
           return { created: false as const, transaction: raced, user };

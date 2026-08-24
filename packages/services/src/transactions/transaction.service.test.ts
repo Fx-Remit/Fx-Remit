@@ -124,13 +124,17 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
   });
 
   it('refunds ledger when remittance transitions to FAILED', async () => {
-    const existing = sampleTx({ status: 'PENDING', amountUsd: 25 as any });
+    const existing = sampleTx({
+      status: 'PENDING',
+      amountUsd: 25 as any,
+      txHash: 'pending-ext-1',
+    });
     const capture: { userUpdateArgs?: any } = {};
     prisma.transaction.findUnique = mock.fn(async () => existing) as any;
     prisma.$transaction = mock.fn(async (cb: any) => {
       const client = {
         transaction: {
-          update: mock.fn(async () => sampleTx({ status: 'FAILED' })),
+          update: mock.fn(async () => sampleTx({ status: 'FAILED', txHash: 'pending-ext-1' })),
         },
         user: {
           update: mock.fn(async (args: any) => {
@@ -149,13 +153,19 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
   });
 
   it('refunds ledger once when remittance transitions to REFUNDING', async () => {
-    const existing = sampleTx({ status: 'PENDING', amountUsd: 25 as any });
+    const existing = sampleTx({
+      status: 'PENDING',
+      amountUsd: 25 as any,
+      txHash: 'pending-ext-1',
+    });
     const capture: { userUpdateArgs?: any } = {};
     prisma.transaction.findUnique = mock.fn(async () => existing) as any;
     prisma.$transaction = mock.fn(async (cb: any) => {
       const client = {
         transaction: {
-          update: mock.fn(async () => sampleTx({ status: 'REFUNDING' })),
+          update: mock.fn(async () =>
+            sampleTx({ status: 'REFUNDING', txHash: 'pending-ext-1' }),
+          ),
         },
         user: {
           update: mock.fn(async (args: any) => {
@@ -170,6 +180,50 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
     const result = await TransactionService.updateFromPaycrest('ext-1', 'REFUNDING');
     assert.equal(result?.status, 'REFUNDING');
     assert.equal(capture.userUpdateArgs.data.walletBalance.increment, 25);
+  });
+
+  it('does not restore ledger on FAILED for funded on-chain remittance (#90)', async () => {
+    const existing = sampleTx({
+      status: 'PROCESSING',
+      amountUsd: 25 as any,
+      txHash: '0xfundedabc',
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    const dollar = mock.fn(async () => {
+      throw new Error('should not open ledger restore tx');
+    });
+    prisma.$transaction = dollar as any;
+    const updateMock = mock.fn(async () =>
+      sampleTx({ status: 'FAILED', txHash: '0xfundedabc', amountUsd: 25 as any }),
+    );
+    prisma.transaction.update = updateMock as any;
+
+    const result = await TransactionService.updateFromPaycrest('ext-1', 'FAILED');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(dollar.mock.callCount(), 0);
+    assert.equal(updateMock.mock.callCount(), 1);
+  });
+
+  it('does not restore ledger on REFUNDING for funded on-chain remittance (#90)', async () => {
+    const existing = sampleTx({
+      status: 'PROCESSING',
+      amountUsd: 25 as any,
+      txHash: '0xfundedabc',
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    const dollar = mock.fn(async () => {
+      throw new Error('should not open ledger restore tx');
+    });
+    prisma.$transaction = dollar as any;
+    const updateMock = mock.fn(async () =>
+      sampleTx({ status: 'REFUNDING', txHash: '0xfundedabc', amountUsd: 25 as any }),
+    );
+    prisma.transaction.update = updateMock as any;
+
+    const result = await TransactionService.updateFromPaycrest('ext-1', 'REFUNDING');
+    assert.equal(result?.status, 'REFUNDING');
+    assert.equal(dollar.mock.callCount(), 0);
+    assert.equal(updateMock.mock.callCount(), 1);
   });
 
   it('treats REFUNDING as terminal — later FAILED does not re-touch ledger', async () => {
