@@ -159,7 +159,8 @@ exports.Prisma.TransactionScalarFieldEnum = {
   externalId: 'externalId',
   logIndex: 'logIndex',
   updatedAt: 'updatedAt',
-  type: 'type'
+  type: 'type',
+  refundTxHash: 'refundTxHash'
 };
 
 exports.Prisma.SortOrder = {
