@@ -61,6 +61,8 @@ export class PayoutService {
     }
 
     let claimedThisCall = false;
+    /** True when this call reclaimed a stale PROCESSING lease (prior create may have succeeded). */
+    let staleLeaseReclaim = false;
     try {
       // Claim PENDING → PROCESSING *before* createOrder so concurrent cancel
       // cannot restore ledger while Paycrest may already have a fundable order (#89).
@@ -94,7 +96,7 @@ export class PayoutService {
               placeholder === pendingRow.externalId);
 
           if (pendingRow.status === "PROCESSING" && appLocal) {
-            // Sibling create in flight, or prior 5xx left claim held.
+            // Sibling create in flight, or prior timeout/5xx left claim held.
             // Stale lease (>30s): allow one retry create. Fresh: do not create/refund.
             const staleMs = Date.now() - new Date(pendingRow.updatedAt).getTime();
             if (staleMs < 30_000) {
@@ -123,6 +125,7 @@ export class PayoutService {
               };
             }
             claimedThisCall = true;
+            staleLeaseReclaim = true;
           } else if (pendingRow.status === "PENDING") {
             const claimed = await prisma.transaction.updateMany({
               where: {
@@ -221,6 +224,7 @@ export class PayoutService {
           decimals: PAYCREST_SETTLEMENT.decimals,
         },
         claimedThisCall,
+        staleLeaseReclaim,
       };
     } catch (error: any) {
       console.error("[PayoutService] Paycrest Order Error:", error.message);
@@ -240,6 +244,7 @@ export class PayoutService {
         error: error.message,
         status,
         claimedThisCall,
+        staleLeaseReclaim,
       };
     }
   }

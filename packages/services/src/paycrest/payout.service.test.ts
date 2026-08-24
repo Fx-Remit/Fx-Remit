@@ -193,6 +193,40 @@ describe('PayoutService — unhappy paths', () => {
     assert.equal(result.success, false);
     assert.equal(result.status, undefined);
     assert.equal((result as { claimedThisCall?: boolean }).claimedThisCall, true);
+    assert.equal((result as { staleLeaseReclaim?: boolean }).staleLeaseReclaim, false);
+  });
+
+  it('createPaycrestOrder marks staleLeaseReclaim on stale PROCESSING retry 4xx', async () => {
+    mock.method(PaycrestClient.prototype, 'createOrder', async () => {
+      const err: any = new Error('duplicate reference');
+      err.status = 409;
+      throw err;
+    });
+    prisma.transaction.findFirst = mock.fn(async () => ({
+      status: 'PROCESSING',
+      txHash: 'pending-ext-stale',
+      externalId: 'ext-stale',
+      updatedAt: new Date(Date.now() - 60_000),
+    })) as any;
+    prisma.transaction.updateMany = mock.fn(async () => ({ count: 1 })) as any;
+
+    const result = await PayoutService.createPaycrestOrder({
+      amount: '100',
+      sourceToken: 'USDC',
+      destinationCurrency: 'NGN',
+      recipient: {
+        institution: '058',
+        accountIdentifier: '0123456789',
+        accountName: 'Jane Doe',
+      },
+      refundAddress: '0xrefund',
+      externalId: 'ext-stale',
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 409);
+    assert.equal((result as { claimedThisCall?: boolean }).claimedThisCall, true);
+    assert.equal((result as { staleLeaseReclaim?: boolean }).staleLeaseReclaim, true);
   });
 
   it('createPaycrestOrder returns ORDER_IN_FLIGHT for fresh PROCESSING app-local claim', async () => {

@@ -226,27 +226,36 @@ export async function POST(req: Request) {
       const providerStatus = paycrestResp.status;
       const claimedThisCall =
         "claimedThisCall" in paycrestResp && paycrestResp.claimedThisCall === true;
-      // Only definite HTTP 4xx (excl. 408) means Paycrest rejected before creating
-      // a fundable order. Do NOT releaseCreateClaim on 5xx — transport timeouts and
-      // ambiguous gateway errors must not flip back to PENDING (cancel would restore
-      // ledger without a provider lookup while an order may still be fundable).
-      // Stale PROCESSING lease (>30s) in createPaycrestOrder allows retry.
+      const staleLeaseReclaim =
+        "staleLeaseReclaim" in paycrestResp && paycrestResp.staleLeaseReclaim === true;
+      // Fresh PENDING→PROCESSING claim + definite HTTP 4xx (excl. 408/409): Paycrest
+      // rejected before creating a fundable order — safe to CAS-refund.
+      // Never refund on stale-lease retry: a prior timed-out createOrder may have
+      // succeeded; 409/duplicate then looks like "reject" but the original receive
+      // address can still be fundable (#89).
+      // Do NOT releaseCreateClaim on 5xx/timeout — leave PROCESSING for lease retry.
       const definiteClientReject =
         typeof providerStatus === "number" &&
         providerStatus >= 400 &&
         providerStatus < 500 &&
-        providerStatus !== 408;
+        providerStatus !== 408 &&
+        providerStatus !== 409;
 
-      if (claimedThisCall && definiteClientReject) {
-        // 4xx: Paycrest did not accept the order. CAS refund while still app-local.
+      if (claimedThisCall && !staleLeaseReclaim && definiteClientReject) {
         await TransactionService.refundAfterFailedProviderCreate(externalKey).catch((e) =>
           console.error("[CREATE_PENDING] refund after Paycrest 4xx failed:", e),
         );
       } else {
-        // 5xx / timeout / unknown / not our claim: leave ledger reserved (#89).
+        // Stale-lease 4xx / 409 / 5xx / timeout / not our claim: leave reserved (#89).
         console.error(
           "[CREATE_PENDING] Paycrest create failed; leaving ledger reserved",
-          { externalKey, status: providerStatus, code, claimedThisCall },
+          {
+            externalKey,
+            status: providerStatus,
+            code,
+            claimedThisCall,
+            staleLeaseReclaim,
+          },
         );
       }
       return NextResponse.json({
