@@ -44,12 +44,18 @@ describe('PayoutService — happy paths', () => {
     assert.equal((result as any).settlement.network, 'base');
     assert.equal(updateMany.mock.callCount(), 1);
     const args = updateMany.mock.calls[0].arguments[0] as {
-      where: { externalId: string };
-      data: { status: string };
+      where: {
+        externalId: string;
+        status: { in: string[] };
+        txHash: { startsWith: string };
+      };
+      data: { status: string; txHash: string };
     };
     assert.equal(args.where.externalId, 'ext-1');
     assert.deepEqual(args.where.status, { in: ['PENDING', 'PROCESSING'] });
+    assert.equal(args.where.txHash.startsWith, 'pending-');
     assert.equal(args.data.status, 'PROCESSING');
+    assert.equal(args.data.txHash, 'pending-ord_1');
   });
 
   it('createPaycrestOrder skips DB update when externalId omitted', async () => {

@@ -219,6 +219,7 @@ export async function POST(req: Request) {
     }
 
     // Link the Paycrest order id onto pending-* hash (keep externalId as reference).
+    // createPaycrestOrder usually already wrote pending-{orderId}; this is idempotent.
     // If the client abandoned while Paycrest was in flight, attach is a no-op.
     const linked = await TransactionService.attachPaycrestOrder(
       tx.id,
@@ -226,8 +227,10 @@ export async function POST(req: Request) {
     );
 
     if (!linked) {
-      await TransactionService.cancelAbandonedPending(externalKey).catch((e) =>
-        console.error("[CREATE_PENDING] cleanup after abandon race failed:", e),
+      // Do NOT restore ledger — a live Paycrest order may still accept funds (#89).
+      console.error(
+        "[CREATE_PENDING] attachPaycrestOrder no-op after order create; leaving ledger reserved",
+        { externalKey, orderId: paycrestResp.order.id },
       );
       return NextResponse.json(
         { error: "Remittance was cancelled before settlement was ready" },

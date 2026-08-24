@@ -3,6 +3,7 @@ import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
 import {
   TransactionService,
+  ProviderOrderStillLiveError,
   verifyAbandonToken,
 } from '@fx-remit/services';
 import { z } from 'zod';
@@ -115,6 +116,19 @@ export async function POST(req: Request) {
       if (message.includes('on-chain txHash already attached')) {
         return NextResponse.json(
           { error: message, code: 'ALREADY_ON_CHAIN' },
+          { status: 409 },
+        );
+      }
+      if (
+        err instanceof ProviderOrderStillLiveError ||
+        (err as { code?: string })?.code === 'PROVIDER_ORDER_STILL_LIVE'
+      ) {
+        return NextResponse.json(
+          {
+            error: message,
+            code: 'PROVIDER_ORDER_STILL_LIVE',
+            providerStatus: (err as ProviderOrderStillLiveError).providerStatus,
+          },
           { status: 409 },
         );
       }

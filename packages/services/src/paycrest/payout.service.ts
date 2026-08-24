@@ -84,7 +84,23 @@ export class PayoutService {
 
       // Only advance still-open reserves. If the client abandoned (FAILED) while
       // Paycrest was in flight, do not resurrect the row to PROCESSING.
-      if (params.externalId) {
+      // Link pending-{orderId} in the same write so cancel/expire can gate on
+      // provider status before the route's attachPaycrestOrder call (#89).
+      if (params.externalId && order?.id) {
+        await prisma.transaction.updateMany({
+          where: {
+            externalId: params.externalId,
+            status: { in: ["PENDING", "PROCESSING"] },
+            txHash: { startsWith: "pending-" },
+          },
+          data: {
+            status: "PROCESSING",
+            sourceToken: settlementToken,
+            txHash: `pending-${order.id}`,
+            updatedAt: new Date(),
+          },
+        });
+      } else if (params.externalId) {
         await prisma.transaction.updateMany({
           where: {
             externalId: params.externalId,

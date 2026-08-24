@@ -6,7 +6,11 @@ import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
-import { TransactionService, mintAbandonToken } from '@fx-remit/services';
+import {
+  TransactionService,
+  ProviderOrderStillLiveError,
+  mintAbandonToken,
+} from '@fx-remit/services';
 import { POST } from './route';
 
 afterEach(() => {
@@ -192,5 +196,26 @@ describe('POST /api/transaction/cancel-pending — unhappy paths', () => {
     assert.equal(res.status, 409);
     const json = await res.json();
     assert.equal(json.code, 'ALREADY_ON_CHAIN');
+  });
+
+  it('returns 409 when Paycrest order is still fundable', async () => {
+    mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
+      userId: 'did:privy:user-1',
+    }));
+    prisma.user.findUnique = mock.fn(async () => ({ id: 'user-1' })) as any;
+    mock.method(TransactionService, 'findByPaycrestKey', async () => ({
+      id: 'tx-1',
+      userId: 'user-1',
+      externalId: 'idem-1',
+    }));
+    mock.method(TransactionService, 'cancelAbandonedPending', async () => {
+      throw new ProviderOrderStillLiveError('idem-1', 'pending');
+    });
+
+    const res = await POST(authRequest({ externalId: 'idem-1' }));
+    assert.equal(res.status, 409);
+    const json = await res.json();
+    assert.equal(json.code, 'PROVIDER_ORDER_STILL_LIVE');
+    assert.equal(json.providerStatus, 'pending');
   });
 });
