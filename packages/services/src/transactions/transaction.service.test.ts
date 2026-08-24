@@ -7,6 +7,7 @@ import { prisma } from '@fx-remit/database';
 import {
   TransactionService,
   InsufficientBalanceError,
+  ProviderOrderStillLiveError,
 } from './transaction.service.js';
 import { PayoutService } from '../paycrest/payout.service.js';
 
@@ -14,20 +15,49 @@ const originals = {
   findUnique: prisma.transaction.findUnique,
   findFirst: prisma.transaction.findFirst,
   update: prisma.transaction.update,
+  updateMany: prisma.transaction.updateMany,
   create: prisma.transaction.create,
   findMany: prisma.transaction.findMany,
   dollarTransaction: prisma.$transaction,
+  userUpdate: prisma.user.update,
 };
 
 afterEach(() => {
   prisma.transaction.findUnique = originals.findUnique;
   prisma.transaction.findFirst = originals.findFirst;
   prisma.transaction.update = originals.update;
+  prisma.transaction.updateMany = originals.updateMany;
   prisma.transaction.create = originals.create;
   prisma.transaction.findMany = originals.findMany;
   prisma.$transaction = originals.dollarTransaction;
+  prisma.user.update = originals.userUpdate;
   mock.restoreAll();
 });
+
+/** Simulate CAS failAndReleasePlaceholderCas inside $transaction. */
+function mockCasRelease(existing: ReturnType<typeof sampleTx>) {
+  const updateMany = mock.fn(async (args: any) => {
+    assert.equal(args.where.id, existing.id);
+    assert.equal(args.where.status, existing.status);
+    assert.equal(args.where.txHash, existing.txHash);
+    return { count: 1 };
+  });
+  const userUpdate = mock.fn(async () => ({ id: existing.userId }));
+  const txUpdate = mock.fn(async () =>
+    sampleTx({
+      ...existing,
+      status: 'FAILED',
+      txHash: `abandoned-${existing.id}`,
+    }),
+  );
+  prisma.$transaction = mock.fn(async (fn: any) =>
+    fn({
+      transaction: { updateMany, update: txUpdate },
+      user: { update: userUpdate },
+    }),
+  ) as any;
+  return { updateMany, userUpdate, txUpdate };
+}
 
 function sampleTx(overrides: Record<string, unknown> = {}) {
   const now = new Date('2026-01-15T12:00:00.000Z');
@@ -469,28 +499,68 @@ describe('TransactionService.createPending — unhappy paths', () => {
 });
 
 describe('TransactionService.cancelAbandonedPending', () => {
-  it('fails and refunds when txHash is still pending-*', async () => {
+  it('fails and refunds when txHash is still pending-* app-local and PENDING', async () => {
     const existing = sampleTx({
       status: 'PENDING',
-      txHash: 'pending-ext-1',
+      txHash: 'pending-pnd_ext-1',
       amountUsd: 10 as any,
     });
     prisma.transaction.findUnique = mock.fn(async () => existing) as any;
-    const restore = mock.method(
-      TransactionService,
-      'updateFromPaycrest',
-      async () => sampleTx({ status: 'FAILED', id: 'tx-1', orderId: 42n }),
-    );
-    const updateMock = mock.fn(async (args: any) => {
-      assert.equal(args.data.txHash, 'abandoned-tx-1');
-      return { ...existing, status: 'FAILED', txHash: 'abandoned-tx-1' };
-    });
-    prisma.transaction.update = updateMock as any;
+    const cas = mockCasRelease(existing);
 
     const result = await TransactionService.cancelAbandonedPending('ext-1');
     assert.equal(result?.status, 'FAILED');
-    assert.equal(restore.mock.calls[0].arguments[1], 'FAILED');
-    assert.equal(updateMock.mock.callCount(), 1);
+    assert.equal(cas.updateMany.mock.callCount(), 1);
+    assert.equal(cas.userUpdate.mock.callCount(), 1);
+  });
+
+  it('fails and refunds when pending hash is the client externalId (not pnd_*)', async () => {
+    const existing = sampleTx({
+      status: 'PENDING',
+      externalId: 'idem-client-9',
+      txHash: 'pending-idem-client-9',
+      amountUsd: 10 as any,
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    const cas = mockCasRelease(existing);
+
+    const result = await TransactionService.cancelAbandonedPending('idem-client-9');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(cas.updateMany.mock.callCount(), 1);
+  });
+
+  it('refuses cancel when CAS loses to concurrent create claim', async () => {
+    const existing = sampleTx({
+      status: 'PENDING',
+      txHash: 'pending-pnd_race',
+      externalId: 'ext-cas',
+      amountUsd: 10 as any,
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    prisma.$transaction = mock.fn(async (fn: any) =>
+      fn({
+        transaction: {
+          updateMany: async () => ({ count: 0 }),
+          update: async () => {
+            throw new Error('should not update');
+          },
+        },
+        user: {
+          update: async () => {
+            throw new Error('should not credit');
+          },
+        },
+      }),
+    ) as any;
+
+    await assert.rejects(
+      () => TransactionService.cancelAbandonedPending('ext-cas'),
+      (err: unknown) => {
+        assert.ok(err instanceof ProviderOrderStillLiveError);
+        assert.equal(err.providerStatus, 'cas-lost');
+        return true;
+      },
+    );
   });
 
   it('refuses cancel when on-chain txHash already attached', async () => {
@@ -502,6 +572,130 @@ describe('TransactionService.cancelAbandonedPending', () => {
       () => TransactionService.cancelAbandonedPending('ext-1'),
       /on-chain txHash already attached/,
     );
+  });
+
+  it('refuses ledger restore when Paycrest order is still fundable', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({
+        status: 'PROCESSING',
+        txHash: 'pending-paycrest-ord-live',
+        externalId: 'ext-live',
+      }),
+    ) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async (id: string) => {
+      assert.equal(id, 'paycrest-ord-live');
+      return { success: true, order: { id, status: 'pending' } };
+    });
+
+    await assert.rejects(
+      () => TransactionService.cancelAbandonedPending('ext-live'),
+      (err: unknown) => {
+        assert.ok(err instanceof ProviderOrderStillLiveError);
+        assert.equal(err.code, 'PROVIDER_ORDER_STILL_LIVE');
+        assert.equal(err.providerStatus, 'pending');
+        return true;
+      },
+    );
+  });
+
+  it('refuses restore for PROCESSING + app-local hash (order before attach)', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({
+        status: 'PROCESSING',
+        txHash: 'pending-pnd_race',
+        externalId: 'ext-race',
+      }),
+    ) as any;
+
+    await assert.rejects(
+      () => TransactionService.cancelAbandonedPending('ext-race'),
+      (err: unknown) => {
+        assert.ok(err instanceof ProviderOrderStillLiveError);
+        assert.equal(err.providerStatus, 'processing-unattached');
+        return true;
+      },
+    );
+  });
+
+  it('restores when Paycrest order is already expired', async () => {
+    const existing = sampleTx({
+      status: 'PROCESSING',
+      txHash: 'pending-paycrest-ord-dead',
+      externalId: 'ext-dead',
+      amountUsd: 10 as any,
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: { id: 'paycrest-ord-dead', status: 'expired' },
+    }));
+
+    const cas = mockCasRelease(existing);
+    const result = await TransactionService.cancelAbandonedPending('ext-dead');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(cas.updateMany.mock.callCount(), 1);
+  });
+
+  it('refundAfterFailedProviderCreate restores PROCESSING app-local hash', async () => {
+    const existing = sampleTx({
+      status: 'PROCESSING',
+      externalId: 'idem-client-9',
+      txHash: 'pending-idem-client-9',
+      amountUsd: 10 as any,
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    const cas = mockCasRelease(existing);
+
+    const result =
+      await TransactionService.refundAfterFailedProviderCreate('idem-client-9');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(cas.updateMany.mock.callCount(), 1);
+  });
+
+  it('refundAfterFailedProviderCreate refuses once Paycrest order id is on the hash', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({
+        status: 'PROCESSING',
+        externalId: 'idem-client-9',
+        txHash: 'pending-paycrest-ord-live',
+      }),
+    ) as any;
+
+    await assert.rejects(
+      () => TransactionService.refundAfterFailedProviderCreate('idem-client-9'),
+      (err: unknown) => {
+        assert.ok(err instanceof ProviderOrderStillLiveError);
+        assert.equal(err.providerStatus, 'linked-order');
+        return true;
+      },
+    );
+  });
+
+  it('releaseCreateClaim reverts PROCESSING → PENDING for app-local hash', async () => {
+    const existing = sampleTx({
+      status: 'PROCESSING',
+      externalId: 'idem-1',
+      txHash: 'pending-idem-1',
+    });
+    let findCalls = 0;
+    prisma.transaction.findUnique = mock.fn(async () => {
+      findCalls += 1;
+      return findCalls === 1
+        ? existing
+        : sampleTx({ ...existing, status: 'PENDING' });
+    }) as any;
+    const updateMany = mock.fn(async (args: any) => {
+      assert.equal(args.where.status, 'PROCESSING');
+      assert.equal(args.data.status, 'PENDING');
+      return { count: 1 };
+    });
+    prisma.transaction.updateMany = updateMany as any;
+
+    const result = await TransactionService.releaseCreateClaim('idem-1');
+    assert.equal(result?.status, 'PENDING');
+    assert.equal(updateMany.mock.callCount(), 1);
   });
 });
 
@@ -585,16 +779,11 @@ describe('TransactionService.expireStalePendingRemittances', () => {
     });
     prisma.transaction.update = touch as any;
 
-    mock.method(PayoutService, 'getSettlementOrder', async (id: string) => {
-      assert.equal(id, 'paycrest-ord-1');
-      return { success: true, order: { id, status: 'pending' } };
-    });
-
     const cancel = mock.method(
       TransactionService,
       'cancelAbandonedPending',
       async () => {
-        throw new Error('should not cancel');
+        throw new ProviderOrderStillLiveError('ext-live', 'pending');
       },
     );
 
@@ -603,10 +792,10 @@ describe('TransactionService.expireStalePendingRemittances', () => {
     });
     assert.deepEqual(result, { scanned: 1, expired: 0, failed: 0, deferred: 1 });
     assert.equal(touch.mock.callCount(), 1);
-    assert.equal(cancel.mock.callCount(), 0);
+    assert.equal(cancel.mock.callCount(), 1);
   });
 
-  it('defers expire when Paycrest lookup fails (do not refund)', async () => {
+  it('defers expire when provider status cannot be confirmed safe', async () => {
     prisma.transaction.findMany = mock.fn(async () => [
       {
         id: 'tx-ambig',
@@ -619,17 +808,11 @@ describe('TransactionService.expireStalePendingRemittances', () => {
     const touch = mock.fn(async () => ({ id: 'tx-ambig' }));
     prisma.transaction.update = touch as any;
 
-    mock.method(PayoutService, 'getSettlementOrder', async () => ({
-      success: false,
-      error: 'timeout',
-      status: 504,
-    }));
-
     const cancel = mock.method(
       TransactionService,
       'cancelAbandonedPending',
       async () => {
-        throw new Error('should not cancel on lookup failure');
+        throw new ProviderOrderStillLiveError('ext-ambig');
       },
     );
 
@@ -638,7 +821,36 @@ describe('TransactionService.expireStalePendingRemittances', () => {
     });
     assert.deepEqual(result, { scanned: 1, expired: 0, failed: 0, deferred: 1 });
     assert.equal(touch.mock.callCount(), 1);
-    assert.equal(cancel.mock.callCount(), 0);
+    assert.equal(cancel.mock.callCount(), 1);
+  });
+
+  it('defers expire for PROCESSING + pending-pnd_* (order before attach)', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-pnd',
+        externalId: 'ext-pnd',
+        txHash: 'pending-pnd_still',
+        recipientBank: '058',
+      },
+    ]) as any;
+
+    const touch = mock.fn(async () => ({ id: 'tx-pnd' }));
+    prisma.transaction.update = touch as any;
+
+    const cancel = mock.method(
+      TransactionService,
+      'cancelAbandonedPending',
+      async () => {
+        throw new ProviderOrderStillLiveError('ext-pnd', 'processing-unattached');
+      },
+    );
+
+    const result = await TransactionService.expireStalePendingRemittances({
+      olderThanMs: 60_000,
+    });
+    assert.deepEqual(result, { scanned: 1, expired: 0, failed: 0, deferred: 1 });
+    assert.equal(cancel.mock.callCount(), 1);
+    assert.equal(touch.mock.callCount(), 1);
   });
 
   it('expires when Paycrest order is already expired/failed', async () => {
@@ -650,11 +862,6 @@ describe('TransactionService.expireStalePendingRemittances', () => {
         recipientBank: '058',
       },
     ]) as any;
-
-    mock.method(PayoutService, 'getSettlementOrder', async () => ({
-      success: true,
-      order: { id: 'paycrest-ord-dead', status: 'expired' },
-    }));
 
     const cancel = mock.method(
       TransactionService,

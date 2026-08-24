@@ -13,6 +13,25 @@ export class InsufficientBalanceError extends Error {
   }
 }
 
+/**
+ * Thrown when cancel/expire would restore ledger while a Paycrest order is
+ * still fundable or provider status cannot be confirmed safe.
+ */
+export class ProviderOrderStillLiveError extends Error {
+  readonly code = "PROVIDER_ORDER_STILL_LIVE" as const;
+  constructor(
+    readonly externalId: string,
+    readonly providerStatus?: string,
+  ) {
+    super(
+      providerStatus
+        ? `Cannot restore ledger for ${externalId}: Paycrest order status is ${providerStatus}`
+        : `Cannot restore ledger for ${externalId}: Paycrest order may still be live`,
+    );
+    this.name = "ProviderOrderStillLiveError";
+  }
+}
+
 const LEDGER_RESTORED_STATUSES: Status[] = ["FAILED", "REFUNDING"];
 // Once a remittance reaches any of these it is settled/reversed — never transition out.
 const TERMINAL_STATUSES: Status[] = ["COMPLETED", "FAILED", "REFUNDING"];
@@ -302,6 +321,8 @@ export class TransactionService {
   /**
    * Mark an abandoned remittance FAILED and restore ledger when no on-chain hash was attached.
    * Use when the user rejects the wallet send or post-createPending steps fail before Paycrest settles.
+   *
+   * Never restores ledger while a linked / likely-live Paycrest order is still fundable.
    */
   static async cancelAbandonedPending(externalId: string) {
     const tx = await this.findByPaycrestKey(externalId);
@@ -325,26 +346,128 @@ export class TransactionService {
       );
     }
 
-    const failed = await this.updateFromPaycrest(tx.externalId ?? externalId, "FAILED");
-    if (!failed) return null;
+    await this.assertProviderSafeToRestoreLedger(tx);
 
-    // Free placeholder unique keys so retries / new pendings don't collide
-    return await prisma.transaction.update({
-      where: { id: failed.id },
+    // CAS on the snapshot we just validated loses to concurrent PENDING→PROCESSING claim.
+    return this.failAndReleasePlaceholderCas(tx);
+  }
+
+  /**
+   * Restore ledger after *this* request's Paycrest create returned a client 4xx
+   * (no order). CAS requires the hash still be app-local so a sibling live order
+   * cannot be refunded out from under us.
+   */
+  static async refundAfterFailedProviderCreate(externalId: string) {
+    const tx = await this.findByPaycrestKey(externalId);
+    if (!tx || tx.type !== "REMITTANCE") {
+      return tx;
+    }
+    if (TERMINAL_STATUSES.includes(tx.status) || LEDGER_RESTORED_STATUSES.includes(tx.status)) {
+      return tx;
+    }
+    if (!tx.txHash.startsWith("pending-")) {
+      throw new Error(
+        `Cannot refund remittance ${externalId}: on-chain txHash already attached`,
+      );
+    }
+    const placeholder = this.paycrestOrderIdFromTxHash(tx.txHash);
+    if (!placeholder || !this.isAppLocalPendingKey(placeholder, tx.externalId)) {
+      throw new ProviderOrderStillLiveError(tx.externalId ?? externalId, "linked-order");
+    }
+    return this.failAndReleasePlaceholderCas(tx);
+  }
+
+  /**
+   * Revert PROCESSING → PENDING when the hash is still app-local (no ledger restore).
+   * Prefer leaving the claim held on ambiguous provider failures; createPaycrestOrder
+   * stale lease (>30s) already allows retry without flipping to PENDING.
+   */
+  static async releaseCreateClaim(externalId: string) {
+    const tx = await this.findByPaycrestKey(externalId);
+    if (!tx || tx.type !== "REMITTANCE") return tx;
+    if (tx.status !== "PROCESSING" || !tx.txHash.startsWith("pending-")) return tx;
+    const placeholder = this.paycrestOrderIdFromTxHash(tx.txHash);
+    if (!placeholder || !this.isAppLocalPendingKey(placeholder, tx.externalId)) {
+      return tx;
+    }
+    await prisma.transaction.updateMany({
+      where: {
+        id: tx.id,
+        status: "PROCESSING",
+        txHash: tx.txHash,
+      },
       data: {
-        txHash: `abandoned-${failed.id}`,
-        blockNumber: failed.orderId,
+        status: "PENDING",
         updatedAt: new Date(),
       },
+    });
+    return await prisma.transaction.findUnique({ where: { id: tx.id } });
+  }
+
+  /**
+   * Atomically mark FAILED + restore ledger only if status/txHash still match the
+   * provider-safe snapshot (closes cancel vs claim TOCTOU).
+   */
+  private static async failAndReleasePlaceholderCas(tx: {
+    id: string;
+    userId: string;
+    orderId: bigint;
+    amountUsd: Prisma.Decimal | number | string;
+    status: Status;
+    txHash: string;
+    externalId: string | null;
+  }) {
+    return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
+      const claimed = await client.transaction.updateMany({
+        where: {
+          id: tx.id,
+          status: tx.status,
+          txHash: tx.txHash,
+          type: "REMITTANCE",
+        },
+        data: {
+          status: "FAILED",
+          updatedAt: new Date(),
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new ProviderOrderStillLiveError(
+          tx.externalId ?? tx.id,
+          "cas-lost",
+        );
+      }
+
+      await client.user.update({
+        where: { id: tx.userId },
+        data: {
+          walletBalance: { increment: tx.amountUsd },
+          totalSentUsd: { decrement: tx.amountUsd },
+        },
+      });
+
+      return await client.transaction.update({
+        where: { id: tx.id },
+        data: {
+          txHash: `abandoned-${tx.id}`,
+          blockNumber: tx.orderId,
+          updatedAt: new Date(),
+        },
+      });
     });
   }
 
   /**
    * App-local pending keys (not Paycrest order ids).
    * Prefetch uses `pnd_*`; crypto withdraw uses `crypto_*`.
+   * Client idempotency keys are stored as `pending-{externalId}` and must match
+   * `externalId` — calling Paycrest getOrder on those 404s and would fail closed.
    */
-  static isAppLocalPendingKey(key: string): boolean {
-    return key.startsWith('pnd_') || key.startsWith('crypto_');
+  static isAppLocalPendingKey(
+    key: string,
+    externalId?: string | null,
+  ): boolean {
+    if (key.startsWith("pnd_") || key.startsWith("crypto_")) return true;
+    return Boolean(externalId) && key === externalId;
   }
 
   static isCryptoWithdraw(recipientBank: string | null | undefined): boolean {
@@ -363,6 +486,58 @@ export class TransactionService {
     'refunded',
   ]);
 
+  /**
+   * Gate ledger restore on provider state (#89).
+   * - Paycrest order id in pending-* hash → must be in PAYCREST_EXPIRE_SAFE
+   * - App-local pending key + PROCESSING → order may exist before attach; refuse restore
+   * - App-local + PENDING → no provider order yet; allow
+   * - Lookup failure → refuse (fail closed)
+   */
+  private static async assertProviderSafeToRestoreLedger(tx: {
+    externalId: string | null;
+    txHash: string;
+    status: Status;
+    recipientBank: string | null;
+  }) {
+    if (this.isCryptoWithdraw(tx.recipientBank)) {
+      // Crypto path has no Paycrest order; callers that must not auto-refund
+      // (expire cron) should skip before calling cancel.
+      return;
+    }
+
+    const placeholder = this.paycrestOrderIdFromTxHash(tx.txHash);
+    if (!placeholder) {
+      return;
+    }
+
+    if (this.isAppLocalPendingKey(placeholder, tx.externalId)) {
+      // Claim flips PENDING → PROCESSING before createOrder. Refuse restore
+      // while that window is open (order id not on the hash yet).
+      if (tx.status === "PROCESSING") {
+        throw new ProviderOrderStillLiveError(
+          tx.externalId ?? placeholder,
+          "processing-unattached",
+        );
+      }
+      return;
+    }
+
+    const { PayoutService } = await import("../paycrest/payout.service.js");
+    const live = await PayoutService.getSettlementOrder(placeholder);
+    if (!live.success || !live.order) {
+      throw new ProviderOrderStillLiveError(tx.externalId ?? placeholder);
+    }
+    const status = String(
+      (live.order as { status?: string }).status || "",
+    ).toLowerCase();
+    if (!this.PAYCREST_EXPIRE_SAFE.has(status)) {
+      throw new ProviderOrderStillLiveError(
+        tx.externalId ?? placeholder,
+        status || "unknown",
+      );
+    }
+  }
+
   private static async touchPendingUpdatedAt(id: string) {
     await prisma.transaction.update({
       where: { id },
@@ -375,8 +550,7 @@ export class TransactionService {
    * Safe for cron: only touches pending-* placeholder hashes.
    *
    * Never auto-refund crypto withdraws (broadcast may have succeeded without sync-hash).
-   * For Paycrest-attached hashes: only refund when Paycrest confirms a terminal-safe status;
-   * lookup failures defer (do not refund).
+   * Provider-safe checks live in cancelAbandonedPending (shared with cancel API).
    */
   static async expireStalePendingRemittances(opts?: {
     olderThanMs?: number;
@@ -416,29 +590,14 @@ export class TransactionService {
           continue;
         }
 
-        const placeholder = this.paycrestOrderIdFromTxHash(row.txHash);
-        if (placeholder && !this.isAppLocalPendingKey(placeholder)) {
-          const { PayoutService } = await import('../paycrest/payout.service.js');
-          const live = await PayoutService.getSettlementOrder(placeholder);
-          if (!live.success || !live.order) {
-            // Ambiguous: order may still be live — do not refund on lookup failure.
-            await this.touchPendingUpdatedAt(row.id);
-            deferred += 1;
-            continue;
-          }
-          const status = String(
-            (live.order as { status?: string }).status || '',
-          ).toLowerCase();
-          if (!this.PAYCREST_EXPIRE_SAFE.has(status)) {
-            await this.touchPendingUpdatedAt(row.id);
-            deferred += 1;
-            continue;
-          }
-        }
-
         await this.cancelAbandonedPending(key);
         expired += 1;
       } catch (err) {
+        if (err instanceof ProviderOrderStillLiveError) {
+          await this.touchPendingUpdatedAt(row.id);
+          deferred += 1;
+          continue;
+        }
         failed += 1;
         console.error(
           `[TransactionService] expireStalePendingRemittances failed for ${key}:`,

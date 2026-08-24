@@ -165,37 +165,36 @@ export async function POST(req: Request) {
     const externalKey = tx.externalId || appExternalId;
     const abandonToken = mintAbandonToken(externalKey, user.id);
 
-    // Resume in-flight PROCESSING (funds reserved + Paycrest order already created).
-    // Happens when the client never received the prior create-pending response.
+    // Resume only when Paycrest order id is already on the hash.
+    // PROCESSING + app-local hash means create claimed but order not linked yet —
+    // fall through to createPaycrestOrder (lease / IN_FLIGHT / retry).
     if (tx.status === "PROCESSING") {
-      const paycrestOrderId =
-        TransactionService.paycrestOrderIdFromTxHash(tx.txHash) || tx.externalId;
-      if (!paycrestOrderId) {
-        return NextResponse.json(
-          { error: "In-flight remittance is missing Paycrest order id" },
-          { status: 409 },
-        );
-      }
+      const hashKey = TransactionService.paycrestOrderIdFromTxHash(tx.txHash);
+      const linkedOrder =
+        !!hashKey &&
+        !TransactionService.isAppLocalPendingKey(hashKey, tx.externalId);
 
-      const resumed = await PayoutService.getSettlementOrder(paycrestOrderId);
-      if (!resumed.success || !resumed.order || !resumed.settlement) {
-        return NextResponse.json(
-          { error: resumed.error || "Failed to resume Paycrest order" },
-          { status: 400 },
-        );
-      }
+      if (linkedOrder) {
+        const resumed = await PayoutService.getSettlementOrder(hashKey!);
+        if (!resumed.success || !resumed.order || !resumed.settlement) {
+          return NextResponse.json(
+            { error: resumed.error || "Failed to resume Paycrest order" },
+            { status: 400 },
+          );
+        }
 
-      return NextResponse.json({
-        success: true,
-        resumed: true,
-        abandonToken,
-        transaction: serializeTransaction(tx),
-        paycrest: paycrestPayload(resumed.order, resumed.settlement),
-      });
+        return NextResponse.json({
+          success: true,
+          resumed: true,
+          abandonToken,
+          transaction: serializeTransaction(tx),
+          paycrest: paycrestPayload(resumed.order, resumed.settlement),
+        });
+      }
     }
 
-    // Create the Paycrest order. On failure, refund the reserved ledger.
-    // PayoutService remaps to the active Paycrest settlement rail when needed.
+    // Create the Paycrest order. On failure, refund only when *this* call held
+    // the create claim and Paycrest returned a definite 4xx (no fundable order).
     const paycrestResp = await PayoutService.createPaycrestOrder({
       amount: amountUsd.toString(),
       sourceToken,
@@ -210,15 +209,62 @@ export async function POST(req: Request) {
     });
 
     if (!paycrestResp.success || !paycrestResp.order || !paycrestResp.settlement) {
-      await TransactionService.cancelAbandonedPending(externalKey).catch((e) =>
-        console.error("[CREATE_PENDING] refund after Paycrest failure failed:", e),
-      );
+      const code = "code" in paycrestResp ? paycrestResp.code : undefined;
+      if (code === "ORDER_IN_FLIGHT" || code === "ORDER_LINKED") {
+        return NextResponse.json(
+          { error: paycrestResp.error, code },
+          { status: 409 },
+        );
+      }
+      if (code === "RESERVE_GONE") {
+        return NextResponse.json(
+          { error: paycrestResp.error, code },
+          { status: 409 },
+        );
+      }
+
+      const providerStatus = paycrestResp.status;
+      const claimedThisCall =
+        "claimedThisCall" in paycrestResp && paycrestResp.claimedThisCall === true;
+      const staleLeaseReclaim =
+        "staleLeaseReclaim" in paycrestResp && paycrestResp.staleLeaseReclaim === true;
+      // Fresh PENDING→PROCESSING claim + definite HTTP 4xx (excl. 408/409): Paycrest
+      // rejected before creating a fundable order — safe to CAS-refund.
+      // Never refund on stale-lease retry: a prior timed-out createOrder may have
+      // succeeded; 409/duplicate then looks like "reject" but the original receive
+      // address can still be fundable (#89).
+      // Do NOT releaseCreateClaim on 5xx/timeout — leave PROCESSING for lease retry.
+      const definiteClientReject =
+        typeof providerStatus === "number" &&
+        providerStatus >= 400 &&
+        providerStatus < 500 &&
+        providerStatus !== 408 &&
+        providerStatus !== 409;
+
+      if (claimedThisCall && !staleLeaseReclaim && definiteClientReject) {
+        await TransactionService.refundAfterFailedProviderCreate(externalKey).catch((e) =>
+          console.error("[CREATE_PENDING] refund after Paycrest 4xx failed:", e),
+        );
+      } else {
+        // Stale-lease 4xx / 409 / 5xx / timeout / not our claim: leave reserved (#89).
+        console.error(
+          "[CREATE_PENDING] Paycrest create failed; leaving ledger reserved",
+          {
+            externalKey,
+            status: providerStatus,
+            code,
+            claimedThisCall,
+            staleLeaseReclaim,
+          },
+        );
+      }
       return NextResponse.json({
         error: paycrestResp.error || "Failed to create Paycrest order"
       }, { status: 400 });
     }
 
     // Link the Paycrest order id onto pending-* hash (keep externalId as reference).
+    // createPaycrestOrder usually already wrote pending-{orderId}; this is idempotent.
     // If the client abandoned while Paycrest was in flight, attach is a no-op.
     const linked = await TransactionService.attachPaycrestOrder(
       tx.id,
@@ -226,8 +272,10 @@ export async function POST(req: Request) {
     );
 
     if (!linked) {
-      await TransactionService.cancelAbandonedPending(externalKey).catch((e) =>
-        console.error("[CREATE_PENDING] cleanup after abandon race failed:", e),
+      // Do NOT restore ledger — a live Paycrest order may still accept funds (#89).
+      console.error(
+        "[CREATE_PENDING] attachPaycrestOrder no-op after order create; leaving ledger reserved",
+        { externalKey, orderId: paycrestResp.order.id },
       );
       return NextResponse.json(
         { error: "Remittance was cancelled before settlement was ready" },
