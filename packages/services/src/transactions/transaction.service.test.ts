@@ -311,6 +311,106 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
     assert.equal(capture.userUpdateArgs.data.walletBalance.increment, 25);
   });
 
+  it('restores ledger at most once under concurrent FAILED webhooks (#91)', async () => {
+    const existing = sampleTx({
+      status: 'PENDING',
+      amountUsd: 25 as any,
+      txHash: 'pending-ext-1',
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+
+    let claimAttempts = 0;
+    let balanceIncrements = 0;
+
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const client = {
+        transaction: {
+          updateMany: mock.fn(async () => {
+            claimAttempts += 1;
+            return { count: claimAttempts === 1 ? 1 : 0 };
+          }),
+          findUnique: mock.fn(async () =>
+            sampleTx({
+              status: 'FAILED',
+              amountUsd: 25 as any,
+              txHash: 'pending-ext-1',
+            }),
+          ),
+          update: mock.fn(async () => {
+            throw new Error('loser must not status-update after terminal claim');
+          }),
+        },
+        user: {
+          update: mock.fn(async () => {
+            balanceIncrements += 1;
+            return { id: 'user-1' };
+          }),
+        },
+      };
+      return cb(client);
+    }) as any;
+
+    const [a, b] = await Promise.all([
+      TransactionService.updateFromPaycrest('ext-1', 'FAILED'),
+      TransactionService.updateFromPaycrest('ext-1', 'FAILED'),
+    ]);
+
+    assert.equal(a?.status, 'FAILED');
+    assert.equal(b?.status, 'FAILED');
+    assert.equal(claimAttempts, 2);
+    assert.equal(balanceIncrements, 1);
+  });
+
+  it('restores ledger at most once under concurrent FAILED then REFUNDING (#91)', async () => {
+    const existing = sampleTx({
+      status: 'PENDING',
+      amountUsd: 40 as any,
+      txHash: 'pending-ext-1',
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+
+    let claimAttempts = 0;
+    let balanceIncrements = 0;
+
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const client = {
+        transaction: {
+          updateMany: mock.fn(async () => {
+            claimAttempts += 1;
+            return { count: claimAttempts === 1 ? 1 : 0 };
+          }),
+          findUnique: mock.fn(async () =>
+            sampleTx({
+              status: 'FAILED',
+              amountUsd: 40 as any,
+              txHash: 'pending-ext-1',
+            }),
+          ),
+          update: mock.fn(async () => {
+            throw new Error('loser must not status-update after terminal claim');
+          }),
+        },
+        user: {
+          update: mock.fn(async () => {
+            balanceIncrements += 1;
+            return { id: 'user-1' };
+          }),
+        },
+      };
+      return cb(client);
+    }) as any;
+
+    const [a, b] = await Promise.all([
+      TransactionService.updateFromPaycrest('ext-1', 'FAILED'),
+      TransactionService.updateFromPaycrest('ext-1', 'REFUNDING'),
+    ]);
+
+    assert.ok(a?.status === 'FAILED' || a?.status === 'REFUNDING');
+    assert.ok(b?.status === 'FAILED' || b?.status === 'REFUNDING');
+    assert.equal(claimAttempts, 2);
+    assert.equal(balanceIncrements, 1);
+  });
+
   it('treats REFUNDING as terminal — later FAILED does not re-touch ledger', async () => {
     prisma.transaction.findUnique = mock.fn(async () =>
       sampleTx({ status: 'REFUNDING', amountUsd: 25 as any }),
