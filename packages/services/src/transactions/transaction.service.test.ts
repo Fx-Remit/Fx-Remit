@@ -134,7 +134,10 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
     prisma.$transaction = mock.fn(async (cb: any) => {
       const client = {
         transaction: {
-          update: mock.fn(async () => sampleTx({ status: 'FAILED', txHash: 'pending-ext-1' })),
+          updateMany: mock.fn(async () => ({ count: 1 })),
+          findUnique: mock.fn(async () =>
+            sampleTx({ status: 'FAILED', txHash: 'pending-ext-1' }),
+          ),
         },
         user: {
           update: mock.fn(async (args: any) => {
@@ -163,7 +166,8 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
     prisma.$transaction = mock.fn(async (cb: any) => {
       const client = {
         transaction: {
-          update: mock.fn(async () =>
+          updateMany: mock.fn(async () => ({ count: 1 })),
+          findUnique: mock.fn(async () =>
             sampleTx({ status: 'REFUNDING', txHash: 'pending-ext-1' }),
           ),
         },
@@ -224,6 +228,50 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
     assert.equal(result?.status, 'REFUNDING');
     assert.equal(dollar.mock.callCount(), 0);
     assert.equal(updateMock.mock.callCount(), 1);
+  });
+
+  it('does not restore ledger when attachOnChainHash races after placeholder snapshot (#90)', async () => {
+    const existing = sampleTx({
+      status: 'PENDING',
+      amountUsd: 25 as any,
+      txHash: 'pending-ext-1',
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    let balanceIncrements = 0;
+    const capture: { statusOnlyUpdate?: any } = {};
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const client = {
+        transaction: {
+          updateMany: mock.fn(async () => ({ count: 0 })),
+          findUnique: mock.fn(async () =>
+            sampleTx({
+              status: 'PENDING',
+              amountUsd: 25 as any,
+              txHash: '0xattachednow',
+            }),
+          ),
+          update: mock.fn(async (args: any) => {
+            capture.statusOnlyUpdate = args;
+            return sampleTx({
+              status: 'FAILED',
+              amountUsd: 25 as any,
+              txHash: '0xattachednow',
+            });
+          }),
+        },
+        user: {
+          update: mock.fn(async () => {
+            balanceIncrements += 1;
+          }),
+        },
+      };
+      return cb(client);
+    }) as any;
+
+    const result = await TransactionService.updateFromPaycrest('ext-1', 'FAILED');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(balanceIncrements, 0);
+    assert.equal(capture.statusOnlyUpdate?.data.status, 'FAILED');
   });
 
   it('treats REFUNDING as terminal — later FAILED does not re-touch ledger', async () => {

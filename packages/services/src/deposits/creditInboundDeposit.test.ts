@@ -62,9 +62,10 @@ describe('TransactionService.creditInboundDeposit', () => {
       walletAddress: '0xabc',
     })) as any;
     prisma.transaction.findUnique = mock.fn(async (args: any) => {
-      if (args.where?.refundTxHash === '0xrefund') {
+      if (args.where?.userId_refundTxHash?.refundTxHash === '0xrefund') {
         return {
           id: 'remit-1',
+          userId: 'u1',
           type: 'REMITTANCE',
           refundTxHash: '0xrefund',
           status: 'FAILED',
@@ -90,6 +91,51 @@ describe('TransactionService.creditInboundDeposit', () => {
     assert.equal(result.created, false);
     assert.equal(result.transaction.id, 'remit-1');
     assert.equal(dollar.mock.callCount(), 0);
+  });
+
+  it('still credits when another user already linked the same refund hash', async () => {
+    prisma.user.findFirst = mock.fn(async () => ({
+      id: 'u2',
+      walletAddress: '0xdef',
+    })) as any;
+    prisma.transaction.findUnique = mock.fn(async () => null) as any;
+    prisma.transaction.findMany = mock.fn(async () => []) as any;
+
+    const capture: { createArgs?: any; userUpdateArgs?: any } = {};
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const client = {
+        transaction: {
+          findUnique: mock.fn(async () => null),
+          updateMany: mock.fn(async () => ({ count: 0 })),
+          create: mock.fn(async (args: any) => {
+            capture.createArgs = args;
+            return { id: 'dep-other', ...args.data };
+          }),
+        },
+        user: {
+          update: mock.fn(async (args: any) => {
+            capture.userUpdateArgs = args;
+            return { id: args.where.id };
+          }),
+        },
+      };
+      return cb(client);
+    }) as any;
+
+    const result = await TransactionService.creditInboundDeposit({
+      walletAddress: '0xdef',
+      txHash: '0xrefund',
+      chainId: 8453,
+      blockNumber: 50n,
+      logIndex: 7,
+      sourceToken: 'USDC',
+      amountUsd: '10',
+    });
+
+    assert.equal(result.created, true);
+    assert.equal(result.transaction.id, 'dep-other');
+    assert.equal(capture.createArgs.data.userId, 'u2');
+    assert.equal(capture.userUpdateArgs.data.walletBalance.increment.toString(), '10');
   });
 
   it('links funded FAILED remittance and credits once on matching refund deposit (#90)', async () => {
@@ -152,6 +198,7 @@ describe('TransactionService.creditInboundDeposit', () => {
     assert.equal(result.created, true);
     assert.equal(result.transaction.id, 'dep-1');
     assert.equal(capture.updateManyArgs.where.id, 'remit-1');
+    assert.equal(capture.updateManyArgs.where.userId, 'u1');
     assert.equal(capture.updateManyArgs.data.refundTxHash, '0xrefund');
     assert.equal(capture.userUpdateArgs.data.walletBalance.increment.toString(), '25');
     assert.match(capture.createArgs.data.recipientName, /Paycrest refund/);
@@ -182,9 +229,10 @@ describe('TransactionService.creditInboundDeposit', () => {
       const client = {
         transaction: {
           findUnique: mock.fn(async (args: any) => {
-            if (args.where?.refundTxHash === '0xrefund') {
+            if (args.where?.userId_refundTxHash?.refundTxHash === '0xrefund') {
               return {
                 id: 'remit-1',
+                userId: 'u1',
                 type: 'REMITTANCE',
                 refundTxHash: '0xrefund',
               };
