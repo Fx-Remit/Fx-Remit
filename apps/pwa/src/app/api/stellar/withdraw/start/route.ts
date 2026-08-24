@@ -9,13 +9,15 @@ import {
   resolveStellarPersistUser,
   type StellarCorridor,
 } from '@fx-remit/services';
-import { isStellarApiEnabled, parseCorridor, resolveAnchorWebAuth } from '../../_lib';
+import { isStellarApiEnabled, parseCorridor, requirePrivyAuth, resolveAnchorWebAuth } from '../../_lib';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Start SEP-24 interactive withdraw (sandbox/dev).
  * Not wired to production cash-out confirm yet.
+ *
+ * Requires Privy Bearer JWT (#92) before any SEP-10 / STELLAR_TEST_SECRET path.
  *
  * Auth (first match):
  * 1. authToken + account — Freighter SEP-10 JWT already obtained
@@ -33,6 +35,9 @@ export async function POST(req: NextRequest) {
   if (!isStellarApiEnabled()) {
     return NextResponse.json({ error: 'Stellar rail disabled' }, { status: 404 });
   }
+
+  const auth = await requirePrivyAuth(req);
+  if (auth instanceof NextResponse) return auth;
 
   let body: {
     corridor?: string;

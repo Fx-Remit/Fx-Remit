@@ -2,11 +2,14 @@ process.env.NEXT_PUBLIC_STELLAR_ENABLED = 'true';
 process.env.STELLAR_NETWORK = 'testnet';
 process.env.DATABASE_URL ??=
   'postgresql://postgres:postgres@localhost:5432/postgres';
+process.env.NEXT_PUBLIC_PRIVY_APP_ID ??= 'test-privy-app';
+process.env.PRIVY_APP_SECRET ??= 'test-privy-secret';
 
 import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { NextRequest } from 'next/server';
 import { Keypair } from '@stellar/stellar-sdk';
+import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
 import {
   Sep10Client,
@@ -43,12 +46,19 @@ beforeEach(() => {
   });
   // Default: no app user → skip DB persist (smoke-safe)
   prisma.user.findUnique = (async () => null) as any;
+  mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
+    userId: 'did:privy:test',
+  }));
 });
 
-function postJson(body: unknown) {
+function postJson(body: unknown, opts?: { authorization?: string | null }) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (opts?.authorization !== null) {
+    headers.Authorization = opts?.authorization ?? 'Bearer test-token';
+  }
   return new NextRequest('http://localhost/api/stellar/withdraw/start', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
 }
@@ -60,6 +70,31 @@ function mockWithdrawOk() {
     type: 'interactive_customer_info_needed',
   }));
 }
+
+describe('POST /api/stellar/withdraw/start — auth (#92)', () => {
+  it('returns 401 without Authorization', async () => {
+    const res = await POST(
+      postJson({ corridor: 'NGN', amount: '1', account: ACCOUNT, authToken: 'jwt' }, {
+        authorization: null,
+      }),
+    );
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.error, 'Unauthorized');
+  });
+
+  it('returns 401 when Privy token is invalid', async () => {
+    mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => {
+      throw new Error('bad token');
+    });
+    const res = await POST(
+      postJson({ corridor: 'NGN', amount: '1', account: ACCOUNT, authToken: 'jwt' }),
+    );
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.match(body.error, /Invalid authentication/);
+  });
+});
 
 describe('POST /api/stellar/withdraw/start — Freighter authToken', () => {
   it('starts withdraw with authToken and no server secret', async () => {
