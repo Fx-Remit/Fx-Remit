@@ -163,6 +163,38 @@ describe('PayoutService — unhappy paths', () => {
     assert.equal((result as { claimedThisCall?: boolean }).claimedThisCall, true);
   });
 
+  it('createPaycrestOrder does not invent status 500 on transport timeout', async () => {
+    mock.method(PaycrestClient.prototype, 'createOrder', async () => {
+      const err: any = new Error('timeout of 10000ms exceeded');
+      err.code = 'ECONNABORTED';
+      throw err;
+    });
+    prisma.transaction.findFirst = mock.fn(async () => ({
+      status: 'PENDING',
+      txHash: 'pending-ext-timeout',
+      externalId: 'ext-timeout',
+      updatedAt: new Date(),
+    })) as any;
+    prisma.transaction.updateMany = mock.fn(async () => ({ count: 1 })) as any;
+
+    const result = await PayoutService.createPaycrestOrder({
+      amount: '100',
+      sourceToken: 'USDC',
+      destinationCurrency: 'NGN',
+      recipient: {
+        institution: '058',
+        accountIdentifier: '0123456789',
+        accountName: 'Jane Doe',
+      },
+      refundAddress: '0xrefund',
+      externalId: 'ext-timeout',
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, undefined);
+    assert.equal((result as { claimedThisCall?: boolean }).claimedThisCall, true);
+  });
+
   it('createPaycrestOrder returns ORDER_IN_FLIGHT for fresh PROCESSING app-local claim', async () => {
     const createOrder = mock.method(PaycrestClient.prototype, 'createOrder', async () => {
       throw new Error('should not create');

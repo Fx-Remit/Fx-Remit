@@ -226,28 +226,24 @@ export async function POST(req: Request) {
       const providerStatus = paycrestResp.status;
       const claimedThisCall =
         "claimedThisCall" in paycrestResp && paycrestResp.claimedThisCall === true;
+      // Only definite HTTP 4xx (excl. 408) means Paycrest rejected before creating
+      // a fundable order. Do NOT releaseCreateClaim on 5xx — transport timeouts and
+      // ambiguous gateway errors must not flip back to PENDING (cancel would restore
+      // ledger without a provider lookup while an order may still be fundable).
+      // Stale PROCESSING lease (>30s) in createPaycrestOrder allows retry.
       const definiteClientReject =
         typeof providerStatus === "number" &&
         providerStatus >= 400 &&
         providerStatus < 500 &&
         providerStatus !== 408;
-      const definiteServerReject =
-        typeof providerStatus === "number" &&
-        providerStatus >= 500 &&
-        providerStatus < 600;
 
       if (claimedThisCall && definiteClientReject) {
         // 4xx: Paycrest did not accept the order. CAS refund while still app-local.
         await TransactionService.refundAfterFailedProviderCreate(externalKey).catch((e) =>
           console.error("[CREATE_PENDING] refund after Paycrest 4xx failed:", e),
         );
-      } else if (claimedThisCall && definiteServerReject) {
-        // 5xx with response: no order expected — release claim so retry can reclaim.
-        await TransactionService.releaseCreateClaim(externalKey).catch((e) =>
-          console.error("[CREATE_PENDING] release claim after Paycrest 5xx failed:", e),
-        );
       } else {
-        // Timeout / unknown / not our claim: leave ledger reserved (#89).
+        // 5xx / timeout / unknown / not our claim: leave ledger reserved (#89).
         console.error(
           "[CREATE_PENDING] Paycrest create failed; leaving ledger reserved",
           { externalKey, status: providerStatus, code, claimedThisCall },

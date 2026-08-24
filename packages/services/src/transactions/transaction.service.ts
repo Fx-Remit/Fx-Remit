@@ -378,8 +378,9 @@ export class TransactionService {
   }
 
   /**
-   * Revert PROCESSING → PENDING after a definite provider reject (5xx body) when
-   * the hash is still app-local. Lets create-pending retry reclaim; no ledger restore.
+   * Revert PROCESSING → PENDING when the hash is still app-local (no ledger restore).
+   * Prefer leaving the claim held on ambiguous provider failures; createPaycrestOrder
+   * stale lease (>30s) already allows retry without flipping to PENDING.
    */
   static async releaseCreateClaim(externalId: string) {
     const tx = await this.findByPaycrestKey(externalId);

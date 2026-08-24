@@ -230,7 +230,11 @@ export class PayoutService {
           JSON.stringify(error.paycrestData),
         );
       }
-      const status = error.status || 500;
+      // Only forward a status when PaycrestClient set one from an HTTP response.
+      // Transport timeouts / network errors have no status — do not invent 500
+      // (callers must not treat that as a definite reject and release the claim).
+      const status =
+        typeof error.status === "number" ? error.status : undefined;
       return {
         success: false as const,
         error: error.message,
