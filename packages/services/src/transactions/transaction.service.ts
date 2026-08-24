@@ -297,13 +297,41 @@ export class TransactionService {
 
     if (shouldRestoreLedger) {
       return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
-        const updated = await client.transaction.update({
-          where: { id: tx.id },
+        // CAS on placeholder hash only — do not pin snapshot status, or a concurrent
+        // PENDING→PROCESSING update would skip restore for a still-unfunded remittance.
+        const claimed = await client.transaction.updateMany({
+          where: {
+            id: tx.id,
+            type: "REMITTANCE",
+            status: { notIn: TERMINAL_STATUSES },
+            OR: [
+              { txHash: { startsWith: "pending-" } },
+              { txHash: { startsWith: "abandoned-" } },
+            ],
+          },
           data: {
             status,
             updatedAt: new Date(),
           },
         });
+
+        if (claimed.count !== 1) {
+          const current = await client.transaction.findUnique({
+            where: { id: tx.id },
+          });
+          if (!current) return null;
+          if (TERMINAL_STATUSES.includes(current.status)) return current;
+          // Non-terminal + CAS lost ⇒ hash is no longer a placeholder (attachOnChainHash).
+          // Status only; Alchemy credits the on-chain refund.
+          return await client.transaction.update({
+            where: { id: tx.id },
+            data: {
+              status,
+              updatedAt: new Date(),
+            },
+          });
+        }
+
         await client.user.update({
           where: { id: tx.userId },
           data: {
@@ -312,7 +340,8 @@ export class TransactionService {
             // Keep transactionCount — the attempt still happened
           },
         });
-        return updated;
+
+        return await client.transaction.findUnique({ where: { id: tx.id } });
       });
     }
 
@@ -901,11 +930,14 @@ export class TransactionService {
       return { created: false as const, transaction: byHashLog, user };
     }
 
-    // Same Paycrest refund hash already linked to a remittance — do not credit again.
-    const alreadyLinkedRefund = await prisma.transaction.findFirst({
+    // This user's remittance already claimed this refund hash — do not credit again.
+    // Scoped by userId so another recipient's Transfer in the same tx still credits.
+    const alreadyLinkedRefund = await prisma.transaction.findUnique({
       where: {
-        type: "REMITTANCE",
-        refundTxHash: data.txHash,
+        userId_refundTxHash: {
+          userId: user.id,
+          refundTxHash: data.txHash,
+        },
       },
     });
     if (alreadyLinkedRefund) {
@@ -938,8 +970,13 @@ export class TransactionService {
       // On P2002 the whole interactive transaction rolls back — catch must NEVER
       // increment walletBalance (lookup-only idempotent return).
       const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const linkedAlready = await tx.transaction.findFirst({
-          where: { type: "REMITTANCE", refundTxHash: data.txHash },
+        const linkedAlready = await tx.transaction.findUnique({
+          where: {
+            userId_refundTxHash: {
+              userId: user.id,
+              refundTxHash: data.txHash,
+            },
+          },
         });
         if (linkedAlready) {
           return { created: false as const, transaction: linkedAlready };
@@ -950,6 +987,7 @@ export class TransactionService {
           const linked = await tx.transaction.updateMany({
             where: {
               id: refundClaim.id,
+              userId: user.id,
               refundTxHash: null,
               status: { in: ["FAILED", "REFUNDING"] },
             },
@@ -958,7 +996,23 @@ export class TransactionService {
               updatedAt: new Date(),
             },
           });
-          linkedClaim = linked.count === 1;
+          if (linked.count !== 1) {
+            // Lost CAS or concurrent writer linked this hash for this user.
+            const claimed = await tx.transaction.findUnique({
+              where: {
+                userId_refundTxHash: {
+                  userId: user.id,
+                  refundTxHash: data.txHash,
+                },
+              },
+            });
+            if (claimed) {
+              return { created: false as const, transaction: claimed };
+            }
+            // Remittance was claimed by a different refund hash; continue as normal deposit.
+          } else {
+            linkedClaim = true;
+          }
         }
 
         const dbTx = await tx.transaction.create({
@@ -994,7 +1048,7 @@ export class TransactionService {
       return { ...result, user };
     } catch (err: any) {
       if (err?.code === "P2002") {
-        // Concurrent writer won — return their row. Do not credit again.
+        // Concurrent writer won (deposit keys or per-user refundTxHash) — do not credit again.
         const raced =
           (await prisma.transaction.findUnique({
             where: {
@@ -1013,8 +1067,13 @@ export class TransactionService {
               },
             },
           })) ||
-          (await prisma.transaction.findFirst({
-            where: { type: "REMITTANCE", refundTxHash: data.txHash },
+          (await prisma.transaction.findUnique({
+            where: {
+              userId_refundTxHash: {
+                userId: user.id,
+                refundTxHash: data.txHash,
+              },
+            },
           }));
         if (raced) {
           return { created: false as const, transaction: raced, user };
