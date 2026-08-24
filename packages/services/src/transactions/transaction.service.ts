@@ -348,12 +348,14 @@ export class TransactionService {
 
     await this.assertProviderSafeToRestoreLedger(tx);
 
-    return this.failAndReleasePlaceholder(tx.externalId ?? externalId, tx);
+    // CAS on the snapshot we just validated loses to concurrent PENDING→PROCESSING claim.
+    return this.failAndReleasePlaceholderCas(tx);
   }
 
   /**
-   * Restore ledger after Paycrest create returned a client error (no order id).
-   * Only valid while the hash is still app-local — never after pending-{orderId}.
+   * Restore ledger after *this* request's Paycrest create returned a client 4xx
+   * (no order). CAS requires the hash still be app-local so a sibling live order
+   * cannot be refunded out from under us.
    */
   static async refundAfterFailedProviderCreate(externalId: string) {
     const tx = await this.findByPaycrestKey(externalId);
@@ -372,24 +374,84 @@ export class TransactionService {
     if (!placeholder || !this.isAppLocalPendingKey(placeholder, tx.externalId)) {
       throw new ProviderOrderStillLiveError(tx.externalId ?? externalId, "linked-order");
     }
-    return this.failAndReleasePlaceholder(tx.externalId ?? externalId, tx);
+    return this.failAndReleasePlaceholderCas(tx);
   }
 
-  private static async failAndReleasePlaceholder(
-    lookupKey: string,
-    tx: { id: string; externalId: string | null },
-  ) {
-    const failed = await this.updateFromPaycrest(tx.externalId ?? lookupKey, "FAILED");
-    if (!failed) return null;
-
-    // Free placeholder unique keys so retries / new pendings don't collide
-    return await prisma.transaction.update({
-      where: { id: failed.id },
+  /**
+   * Revert PROCESSING → PENDING after a definite provider reject (5xx body) when
+   * the hash is still app-local. Lets create-pending retry reclaim; no ledger restore.
+   */
+  static async releaseCreateClaim(externalId: string) {
+    const tx = await this.findByPaycrestKey(externalId);
+    if (!tx || tx.type !== "REMITTANCE") return tx;
+    if (tx.status !== "PROCESSING" || !tx.txHash.startsWith("pending-")) return tx;
+    const placeholder = this.paycrestOrderIdFromTxHash(tx.txHash);
+    if (!placeholder || !this.isAppLocalPendingKey(placeholder, tx.externalId)) {
+      return tx;
+    }
+    await prisma.transaction.updateMany({
+      where: {
+        id: tx.id,
+        status: "PROCESSING",
+        txHash: tx.txHash,
+      },
       data: {
-        txHash: `abandoned-${failed.id}`,
-        blockNumber: failed.orderId,
+        status: "PENDING",
         updatedAt: new Date(),
       },
+    });
+    return await prisma.transaction.findUnique({ where: { id: tx.id } });
+  }
+
+  /**
+   * Atomically mark FAILED + restore ledger only if status/txHash still match the
+   * provider-safe snapshot (closes cancel vs claim TOCTOU).
+   */
+  private static async failAndReleasePlaceholderCas(tx: {
+    id: string;
+    userId: string;
+    orderId: bigint;
+    amountUsd: Prisma.Decimal | number | string;
+    status: Status;
+    txHash: string;
+    externalId: string | null;
+  }) {
+    return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
+      const claimed = await client.transaction.updateMany({
+        where: {
+          id: tx.id,
+          status: tx.status,
+          txHash: tx.txHash,
+          type: "REMITTANCE",
+        },
+        data: {
+          status: "FAILED",
+          updatedAt: new Date(),
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new ProviderOrderStillLiveError(
+          tx.externalId ?? tx.id,
+          "cas-lost",
+        );
+      }
+
+      await client.user.update({
+        where: { id: tx.userId },
+        data: {
+          walletBalance: { increment: tx.amountUsd },
+          totalSentUsd: { decrement: tx.amountUsd },
+        },
+      });
+
+      return await client.transaction.update({
+        where: { id: tx.id },
+        data: {
+          txHash: `abandoned-${tx.id}`,
+          blockNumber: tx.orderId,
+          updatedAt: new Date(),
+        },
+      });
     });
   }
 

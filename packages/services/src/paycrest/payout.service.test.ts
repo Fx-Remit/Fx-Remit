@@ -26,6 +26,9 @@ describe('PayoutService — happy paths', () => {
     }));
     prisma.transaction.findFirst = mock.fn(async () => ({
       status: 'PENDING',
+      txHash: 'pending-ext-1',
+      externalId: 'ext-1',
+      updatedAt: new Date(),
     })) as any;
     const updateMany = mock.fn(async () => ({ count: 1 }));
     prisma.transaction.updateMany = updateMany as any;
@@ -135,6 +138,9 @@ describe('PayoutService — unhappy paths', () => {
     });
     prisma.transaction.findFirst = mock.fn(async () => ({
       status: 'PENDING',
+      txHash: 'pending-ext-fail',
+      externalId: 'ext-fail',
+      updatedAt: new Date(),
     })) as any;
     prisma.transaction.updateMany = mock.fn(async () => ({ count: 1 })) as any;
 
@@ -154,6 +160,37 @@ describe('PayoutService — unhappy paths', () => {
     assert.equal(result.success, false);
     assert.match(result.error || '', /Liquidity Provider Unavailable/);
     assert.equal(result.status, 503);
+    assert.equal((result as { claimedThisCall?: boolean }).claimedThisCall, true);
+  });
+
+  it('createPaycrestOrder returns ORDER_IN_FLIGHT for fresh PROCESSING app-local claim', async () => {
+    const createOrder = mock.method(PaycrestClient.prototype, 'createOrder', async () => {
+      throw new Error('should not create');
+    });
+    prisma.transaction.findFirst = mock.fn(async () => ({
+      status: 'PROCESSING',
+      txHash: 'pending-ext-busy',
+      externalId: 'ext-busy',
+      updatedAt: new Date(),
+    })) as any;
+
+    const result = await PayoutService.createPaycrestOrder({
+      amount: '100',
+      sourceToken: 'USDC',
+      destinationCurrency: 'NGN',
+      recipient: {
+        institution: '058',
+        accountIdentifier: '0123456789',
+        accountName: 'Jane Doe',
+      },
+      refundAddress: '0xrefund',
+      externalId: 'ext-busy',
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 409);
+    assert.equal((result as { code?: string }).code, 'ORDER_IN_FLIGHT');
+    assert.equal(createOrder.mock.callCount(), 0);
   });
 
   it('createPaycrestOrder does not call Paycrest after cancel won the reserve', async () => {
@@ -162,6 +199,9 @@ describe('PayoutService — unhappy paths', () => {
     });
     prisma.transaction.findFirst = mock.fn(async () => ({
       status: 'FAILED',
+      txHash: 'pending-ext-gone',
+      externalId: 'ext-gone',
+      updatedAt: new Date(),
     })) as any;
 
     const result = await PayoutService.createPaycrestOrder({

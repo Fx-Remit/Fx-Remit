@@ -60,9 +60,11 @@ export class PayoutService {
       };
     }
 
+    let claimedThisCall = false;
     try {
       // Claim PENDING → PROCESSING *before* createOrder so concurrent cancel
       // cannot restore ledger while Paycrest may already have a fundable order (#89).
+      // Only the claim winner (or a stale app-local retry lease) may call createOrder.
       // Recovery (on-chain hash, already PROCESSING) skips this claim.
       if (params.externalId) {
         const pendingRow = await prisma.transaction.findFirst({
@@ -70,7 +72,7 @@ export class PayoutService {
             externalId: params.externalId,
             txHash: { startsWith: "pending-" },
           },
-          select: { status: true },
+          select: { status: true, txHash: true, externalId: true, updatedAt: true },
         });
         if (pendingRow) {
           if (pendingRow.status === "FAILED" || pendingRow.status === "REFUNDING") {
@@ -81,7 +83,47 @@ export class PayoutService {
               code: "RESERVE_GONE" as const,
             };
           }
-          if (pendingRow.status === "PENDING") {
+
+          const placeholder = pendingRow.txHash.startsWith("pending-")
+            ? pendingRow.txHash.slice("pending-".length)
+            : null;
+          const appLocal =
+            !!placeholder &&
+            (placeholder.startsWith("pnd_") ||
+              placeholder.startsWith("crypto_") ||
+              placeholder === pendingRow.externalId);
+
+          if (pendingRow.status === "PROCESSING" && appLocal) {
+            // Sibling create in flight, or prior 5xx left claim held.
+            // Stale lease (>30s): allow one retry create. Fresh: do not create/refund.
+            const staleMs = Date.now() - new Date(pendingRow.updatedAt).getTime();
+            if (staleMs < 30_000) {
+              return {
+                success: false as const,
+                error: "Paycrest order create already in progress",
+                status: 409,
+                code: "ORDER_IN_FLIGHT" as const,
+              };
+            }
+            const leased = await prisma.transaction.updateMany({
+              where: {
+                externalId: params.externalId,
+                status: "PROCESSING",
+                txHash: pendingRow.txHash,
+                updatedAt: { lte: new Date(Date.now() - 30_000) },
+              },
+              data: { updatedAt: new Date() },
+            });
+            if (leased.count !== 1) {
+              return {
+                success: false as const,
+                error: "Paycrest order create already in progress",
+                status: 409,
+                code: "ORDER_IN_FLIGHT" as const,
+              };
+            }
+            claimedThisCall = true;
+          } else if (pendingRow.status === "PENDING") {
             const claimed = await prisma.transaction.updateMany({
               where: {
                 externalId: params.externalId,
@@ -101,6 +143,16 @@ export class PayoutService {
                 code: "RESERVE_GONE" as const,
               };
             }
+            claimedThisCall = true;
+          }
+          // PROCESSING + linked Paycrest order id: leave for route resume; no new create.
+          else if (pendingRow.status === "PROCESSING" && !appLocal) {
+            return {
+              success: false as const,
+              error: "Paycrest order already linked; resume settlement",
+              status: 409,
+              code: "ORDER_LINKED" as const,
+            };
           }
         }
       }
@@ -168,6 +220,7 @@ export class PayoutService {
           tokenAddress: PAYCREST_SETTLEMENT.tokenAddress,
           decimals: PAYCREST_SETTLEMENT.decimals,
         },
+        claimedThisCall,
       };
     } catch (error: any) {
       console.error("[PayoutService] Paycrest Order Error:", error.message);
@@ -177,10 +230,12 @@ export class PayoutService {
           JSON.stringify(error.paycrestData),
         );
       }
-      return { 
-        success: false as const, 
+      const status = error.status || 500;
+      return {
+        success: false as const,
         error: error.message,
-        status: error.status || 500
+        status,
+        claimedThisCall,
       };
     }
   }
