@@ -2752,7 +2752,7 @@ export namespace Prisma {
       updatedAt: Date
       type: $Enums.TransactionType
       /**
-       * * On-chain Paycrest crypto refund hash linked for ops (#90).
+       * * On-chain Paycrest crypto refund hash linked for ops (#90). Unique so one hash cannot credit twice.
        */
       refundTxHash: string | null
     }, ExtArgs["result"]["transaction"]>
@@ -4005,6 +4005,7 @@ export namespace Prisma {
     id?: string
     stellarPaymentHash?: string
     externalId?: string
+    refundTxHash?: string
     txHash_logIndex?: TransactionTxHashLogIndexCompoundUniqueInput
     chainId_blockNumber_logIndex?: TransactionChainIdBlockNumberLogIndexCompoundUniqueInput
     orderId_chainId?: TransactionOrderIdChainIdCompoundUniqueInput
@@ -4030,9 +4031,8 @@ export namespace Prisma {
     logIndex?: IntFilter<"Transaction"> | number
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
     type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
-    refundTxHash?: StringNullableFilter<"Transaction"> | string | null
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
-  }, "id" | "stellarPaymentHash" | "externalId" | "txHash_logIndex" | "chainId_blockNumber_logIndex" | "orderId_chainId">
+  }, "id" | "stellarPaymentHash" | "externalId" | "refundTxHash" | "txHash_logIndex" | "chainId_blockNumber_logIndex" | "orderId_chainId">
 
   export type TransactionOrderByWithAggregationInput = {
     id?: SortOrder

@@ -902,11 +902,8 @@ export class TransactionService {
     }
 
     // Same Paycrest refund hash already linked to a remittance — do not credit again.
-    const alreadyLinkedRefund = await prisma.transaction.findFirst({
-      where: {
-        type: "REMITTANCE",
-        refundTxHash: data.txHash,
-      },
+    const alreadyLinkedRefund = await prisma.transaction.findUnique({
+      where: { refundTxHash: data.txHash },
     });
     if (alreadyLinkedRefund) {
       return { created: false as const, transaction: alreadyLinkedRefund, user };
@@ -938,8 +935,8 @@ export class TransactionService {
       // On P2002 the whole interactive transaction rolls back — catch must NEVER
       // increment walletBalance (lookup-only idempotent return).
       const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const linkedAlready = await tx.transaction.findFirst({
-          where: { type: "REMITTANCE", refundTxHash: data.txHash },
+        const linkedAlready = await tx.transaction.findUnique({
+          where: { refundTxHash: data.txHash },
         });
         if (linkedAlready) {
           return { created: false as const, transaction: linkedAlready };
@@ -958,7 +955,18 @@ export class TransactionService {
               updatedAt: new Date(),
             },
           });
-          linkedClaim = linked.count === 1;
+          if (linked.count !== 1) {
+            // Lost CAS or concurrent writer linked this hash — never create+credit again.
+            const claimed = await tx.transaction.findUnique({
+              where: { refundTxHash: data.txHash },
+            });
+            if (claimed) {
+              return { created: false as const, transaction: claimed };
+            }
+            // Remittance was claimed by a different refund hash; continue as normal deposit.
+          } else {
+            linkedClaim = true;
+          }
         }
 
         const dbTx = await tx.transaction.create({
@@ -994,7 +1002,7 @@ export class TransactionService {
       return { ...result, user };
     } catch (err: any) {
       if (err?.code === "P2002") {
-        // Concurrent writer won — return their row. Do not credit again.
+        // Concurrent writer won (deposit keys or refundTxHash unique) — do not credit again.
         const raced =
           (await prisma.transaction.findUnique({
             where: {
@@ -1013,8 +1021,8 @@ export class TransactionService {
               },
             },
           })) ||
-          (await prisma.transaction.findFirst({
-            where: { type: "REMITTANCE", refundTxHash: data.txHash },
+          (await prisma.transaction.findUnique({
+            where: { refundTxHash: data.txHash },
           }));
         if (raced) {
           return { created: false as const, transaction: raced, user };

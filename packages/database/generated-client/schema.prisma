@@ -56,9 +56,9 @@ model Transaction {
   updatedAt           DateTime        @updatedAt @map("updated_at")
   type                TransactionType @default(REMITTANCE)
   /**
-   * On-chain Paycrest crypto refund hash linked for ops (#90).
+   * On-chain Paycrest crypto refund hash linked for ops (#90). Unique so one hash cannot credit twice.
    */
-  refundTxHash        String?         @map("refund_tx_hash")
+  refundTxHash        String?         @unique @map("refund_tx_hash")
   user                User            @relation(fields: [userId], references: [id])
 
   @@unique([txHash, logIndex])
