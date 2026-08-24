@@ -297,12 +297,13 @@ export class TransactionService {
 
     if (shouldRestoreLedger) {
       return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
-        // CAS: only restore while hash is still a placeholder — loses to attachOnChainHash.
+        // CAS on placeholder hash only — do not pin snapshot status, or a concurrent
+        // PENDING→PROCESSING update would skip restore for a still-unfunded remittance.
         const claimed = await client.transaction.updateMany({
           where: {
             id: tx.id,
             type: "REMITTANCE",
-            status: tx.status,
+            status: { notIn: TERMINAL_STATUSES },
             OR: [
               { txHash: { startsWith: "pending-" } },
               { txHash: { startsWith: "abandoned-" } },
@@ -320,8 +321,8 @@ export class TransactionService {
           });
           if (!current) return null;
           if (TERMINAL_STATUSES.includes(current.status)) return current;
-          if (LEDGER_RESTORED_STATUSES.includes(current.status)) return current;
-          // Funded after snapshot — status only; Alchemy credits the on-chain refund.
+          // Non-terminal + CAS lost ⇒ hash is no longer a placeholder (attachOnChainHash).
+          // Status only; Alchemy credits the on-chain refund.
           return await client.transaction.update({
             where: { id: tx.id },
             data: {
