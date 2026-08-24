@@ -210,9 +210,29 @@ export async function POST(req: Request) {
     });
 
     if (!paycrestResp.success || !paycrestResp.order || !paycrestResp.settlement) {
-      await TransactionService.cancelAbandonedPending(externalKey).catch((e) =>
-        console.error("[CREATE_PENDING] refund after Paycrest failure failed:", e),
-      );
+      const providerStatus = paycrestResp.status;
+      const canRefundReserve =
+        !("code" in paycrestResp && paycrestResp.code === "RESERVE_GONE") &&
+        typeof providerStatus === "number" &&
+        providerStatus >= 400 &&
+        providerStatus < 500 &&
+        providerStatus !== 408;
+      if (canRefundReserve) {
+        // 4xx: Paycrest did not accept the order. Safe to restore.
+        await TransactionService.refundAfterFailedProviderCreate(externalKey).catch((e) =>
+          console.error("[CREATE_PENDING] refund after Paycrest 4xx failed:", e),
+        );
+      } else {
+        // Timeout / 5xx / lost claim: a live order may exist — leave ledger reserved (#89).
+        console.error(
+          "[CREATE_PENDING] Paycrest create failed; leaving ledger reserved",
+          {
+            externalKey,
+            status: providerStatus,
+            code: "code" in paycrestResp ? paycrestResp.code : undefined,
+          },
+        );
+      }
       return NextResponse.json({
         error: paycrestResp.error || "Failed to create Paycrest order"
       }, { status: 400 });

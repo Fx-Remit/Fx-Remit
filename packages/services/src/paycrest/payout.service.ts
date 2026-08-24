@@ -61,6 +61,50 @@ export class PayoutService {
     }
 
     try {
+      // Claim PENDING → PROCESSING *before* createOrder so concurrent cancel
+      // cannot restore ledger while Paycrest may already have a fundable order (#89).
+      // Recovery (on-chain hash, already PROCESSING) skips this claim.
+      if (params.externalId) {
+        const pendingRow = await prisma.transaction.findFirst({
+          where: {
+            externalId: params.externalId,
+            txHash: { startsWith: "pending-" },
+          },
+          select: { status: true },
+        });
+        if (pendingRow) {
+          if (pendingRow.status === "FAILED" || pendingRow.status === "REFUNDING") {
+            return {
+              success: false as const,
+              error: "Remittance was cancelled before settlement was ready",
+              status: 409,
+              code: "RESERVE_GONE" as const,
+            };
+          }
+          if (pendingRow.status === "PENDING") {
+            const claimed = await prisma.transaction.updateMany({
+              where: {
+                externalId: params.externalId,
+                status: "PENDING",
+                txHash: { startsWith: "pending-" },
+              },
+              data: {
+                status: "PROCESSING",
+                updatedAt: new Date(),
+              },
+            });
+            if (claimed.count !== 1) {
+              return {
+                success: false as const,
+                error: "Remittance was cancelled before settlement was ready",
+                status: 409,
+                code: "RESERVE_GONE" as const,
+              };
+            }
+          }
+        }
+      }
+
       const order = await this.client.createOrder({
         amount: params.amount,
         source: {

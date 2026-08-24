@@ -9,9 +9,11 @@ import { PaycrestClient } from './paycrest.client.js';
 import { PayoutService } from './payout.service.js';
 
 const originalUpdateMany = prisma.transaction.updateMany;
+const originalFindFirst = prisma.transaction.findFirst;
 
 afterEach(() => {
   prisma.transaction.updateMany = originalUpdateMany;
+  prisma.transaction.findFirst = originalFindFirst;
   mock.restoreAll();
 });
 
@@ -22,6 +24,9 @@ describe('PayoutService — happy paths', () => {
       status: 'pending',
       providerAccount: { receiveAddress: '0xabc' },
     }));
+    prisma.transaction.findFirst = mock.fn(async () => ({
+      status: 'PENDING',
+    })) as any;
     const updateMany = mock.fn(async () => ({ count: 1 }));
     prisma.transaction.updateMany = updateMany as any;
 
@@ -42,8 +47,14 @@ describe('PayoutService — happy paths', () => {
     assert.equal((result as any).order.id, 'ord_1');
     assert.equal((result as any).settlement.token, 'USDC');
     assert.equal((result as any).settlement.network, 'base');
-    assert.equal(updateMany.mock.callCount(), 1);
-    const args = updateMany.mock.calls[0].arguments[0] as {
+    assert.equal(updateMany.mock.callCount(), 2);
+    const claim = updateMany.mock.calls[0].arguments[0] as {
+      where: { status: string };
+      data: { status: string };
+    };
+    assert.equal(claim.where.status, 'PENDING');
+    assert.equal(claim.data.status, 'PROCESSING');
+    const args = updateMany.mock.calls[1].arguments[0] as {
       where: {
         externalId: string;
         status: { in: string[] };
@@ -122,6 +133,10 @@ describe('PayoutService — unhappy paths', () => {
       err.status = 503;
       throw err;
     });
+    prisma.transaction.findFirst = mock.fn(async () => ({
+      status: 'PENDING',
+    })) as any;
+    prisma.transaction.updateMany = mock.fn(async () => ({ count: 1 })) as any;
 
     const result = await PayoutService.createPaycrestOrder({
       amount: '100',
@@ -139,6 +154,33 @@ describe('PayoutService — unhappy paths', () => {
     assert.equal(result.success, false);
     assert.match(result.error || '', /Liquidity Provider Unavailable/);
     assert.equal(result.status, 503);
+  });
+
+  it('createPaycrestOrder does not call Paycrest after cancel won the reserve', async () => {
+    const createOrder = mock.method(PaycrestClient.prototype, 'createOrder', async () => {
+      throw new Error('should not create order');
+    });
+    prisma.transaction.findFirst = mock.fn(async () => ({
+      status: 'FAILED',
+    })) as any;
+
+    const result = await PayoutService.createPaycrestOrder({
+      amount: '100',
+      sourceToken: 'USDC',
+      destinationCurrency: 'NGN',
+      recipient: {
+        institution: '058',
+        accountIdentifier: '0123456789',
+        accountName: 'Jane Doe',
+      },
+      refundAddress: '0xrefund',
+      externalId: 'ext-gone',
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 409);
+    assert.equal((result as { code?: string }).code, 'RESERVE_GONE');
+    assert.equal(createOrder.mock.callCount(), 0);
   });
 
   it('verifyBeneficiary returns failure payload on provider error', async () => {

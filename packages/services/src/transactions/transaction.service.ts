@@ -348,7 +348,38 @@ export class TransactionService {
 
     await this.assertProviderSafeToRestoreLedger(tx);
 
-    const failed = await this.updateFromPaycrest(tx.externalId ?? externalId, "FAILED");
+    return this.failAndReleasePlaceholder(tx.externalId ?? externalId, tx);
+  }
+
+  /**
+   * Restore ledger after Paycrest create returned a client error (no order id).
+   * Only valid while the hash is still app-local — never after pending-{orderId}.
+   */
+  static async refundAfterFailedProviderCreate(externalId: string) {
+    const tx = await this.findByPaycrestKey(externalId);
+    if (!tx || tx.type !== "REMITTANCE") {
+      return tx;
+    }
+    if (TERMINAL_STATUSES.includes(tx.status) || LEDGER_RESTORED_STATUSES.includes(tx.status)) {
+      return tx;
+    }
+    if (!tx.txHash.startsWith("pending-")) {
+      throw new Error(
+        `Cannot refund remittance ${externalId}: on-chain txHash already attached`,
+      );
+    }
+    const placeholder = this.paycrestOrderIdFromTxHash(tx.txHash);
+    if (!placeholder || !this.isAppLocalPendingKey(placeholder, tx.externalId)) {
+      throw new ProviderOrderStillLiveError(tx.externalId ?? externalId, "linked-order");
+    }
+    return this.failAndReleasePlaceholder(tx.externalId ?? externalId, tx);
+  }
+
+  private static async failAndReleasePlaceholder(
+    lookupKey: string,
+    tx: { id: string; externalId: string | null },
+  ) {
+    const failed = await this.updateFromPaycrest(tx.externalId ?? lookupKey, "FAILED");
     if (!failed) return null;
 
     // Free placeholder unique keys so retries / new pendings don't collide
@@ -365,9 +396,15 @@ export class TransactionService {
   /**
    * App-local pending keys (not Paycrest order ids).
    * Prefetch uses `pnd_*`; crypto withdraw uses `crypto_*`.
+   * Client idempotency keys are stored as `pending-{externalId}` and must match
+   * `externalId` — calling Paycrest getOrder on those 404s and would fail closed.
    */
-  static isAppLocalPendingKey(key: string): boolean {
-    return key.startsWith('pnd_') || key.startsWith('crypto_');
+  static isAppLocalPendingKey(
+    key: string,
+    externalId?: string | null,
+  ): boolean {
+    if (key.startsWith("pnd_") || key.startsWith("crypto_")) return true;
+    return Boolean(externalId) && key === externalId;
   }
 
   static isCryptoWithdraw(recipientBank: string | null | undefined): boolean {
@@ -410,9 +447,9 @@ export class TransactionService {
       return;
     }
 
-    if (this.isAppLocalPendingKey(placeholder)) {
-      // createPaycrestOrder sets PROCESSING before attachPaycrestOrder links the
-      // real order id — refuse restore while that race window is open.
+    if (this.isAppLocalPendingKey(placeholder, tx.externalId)) {
+      // Claim flips PENDING → PROCESSING before createOrder. Refuse restore
+      // while that window is open (order id not on the hash yet).
       if (tx.status === "PROCESSING") {
         throw new ProviderOrderStillLiveError(
           tx.externalId ?? placeholder,
