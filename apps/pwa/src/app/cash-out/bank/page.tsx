@@ -31,6 +31,9 @@ const CURRENCIES = [
   { code: 'TZS', flag: '🇹🇿', name: 'Tanzanian Shilling' },
 ];
 
+/** Paycrest rejects smaller bank orders after fee — enforce before payment method. */
+const MIN_SEND_USD = 1;
+
 type QuoteResult = {
   comingSoon?: boolean;
   retail_rate?: number;
@@ -137,6 +140,11 @@ export default function BankCashOutPage() {
         ? new Decimal(amountInput).mul(rate).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString()
         : '';
 
+  const sendUsd = Number(sendAmount);
+  const hasSendAmount = Number.isFinite(sendUsd) && sendUsd > 0;
+  const belowMinimum = hasSendAmount && sendUsd < MIN_SEND_USD;
+  const canChoosePayment = !comingSoon && hasSendAmount && !belowMinimum;
+
   return (
     <div className="min-h-screen bg-[#FDFDFD] flex flex-col">
       {/* Header */}
@@ -189,6 +197,11 @@ export default function BankCashOutPage() {
               <p className="text-[#888888] text-[14px] font-medium">
                 Available: ${availableBalance}
               </p>
+              {belowMinimum && (
+                <p className="text-[#E11D48] text-[13px] font-medium">
+                  Minimum send is ${MIN_SEND_USD}
+                </p>
+              )}
             </div>
 
             {/* Dashed Separator */}
@@ -259,20 +272,26 @@ export default function BankCashOutPage() {
         <div className="mt-12 w-full flex justify-center px-[20px]">
           <button
             onClick={() => {
-              if (comingSoon) return;
+              if (!canChoosePayment) return;
               setIsPaymentMethodSheetOpen(true);
             }}
-            disabled={comingSoon}
+            disabled={!canChoosePayment}
             className="w-full max-w-[390px] rounded-[15px] border-2 border-dashed border-[#89C1FF] bg-white flex flex-col items-center justify-center gap-1 hover:bg-[#F8FBFF] transition-colors group active:scale-[0.99] duration-200 disabled:opacity-50 disabled:pointer-events-none"
             style={{ height: '126px' }}
           >
             <span className="text-[#1C1C1C] text-[18px] font-bold group-hover:text-[#2261FE]">
-              {comingSoon ? 'Coming soon' : 'Choose payment method'}
+              {comingSoon
+                ? 'Coming soon'
+                : belowMinimum
+                  ? `Minimum send is $${MIN_SEND_USD}`
+                  : 'Choose payment method'}
             </span>
             <span className="text-[#888888] text-[14px] font-medium">
               {comingSoon
                 ? `${currency} payouts are not available yet`
-                : 'Bank account or mobile money'}
+                : belowMinimum
+                  ? 'Enter at least $1 to continue'
+                  : 'Bank account or mobile money'}
             </span>
           </button>
         </div>
