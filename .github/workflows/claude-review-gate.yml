@@ -1,16 +1,21 @@
-# Blocks merge when the latest allowlisted formal Claude CI review on the
-# current PR head is not APPROVE.
-# Identity is binding: only claude[bot]/claude, or github-actions[bot] with the
-# CI sentinel. A public sentinel alone is never enough.
-# Reviews attached to older commits are ignored (same idea as dismiss-stale).
-# - CHANGES_REQUESTED / COMMENTED / incomplete on HEAD → fail + disable auto-merge
-# - APPROVED / DISMISSED / no allowlisted formal review on HEAD → pass
+# Blocks merge when Claude has an unresolved blocking formal review, or when
+# the CI fail-closed label is present.
+#
+# Approvals: only claude[bot]/claude, and only for the current head SHA
+# (stale approvals do not pass — same spirit as dismiss-stale approvals).
+#
+# Request-changes: claude[bot]/claude CHANGES_REQUESTED persists across pushes
+# until dismissed or superseded by a newer Claude APPROVE on HEAD.
+#
+# github-actions[bot] is never an approver. CI fail-closed uses the label
+# `claude-changes-requested` instead of REQUEST_CHANGES reviews.
+#
 # After merge: Settings → Branches → require status check "claude-review-gate".
 name: Claude review gate
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   pull_request_review:
     types: [submitted, dismissed, edited]
 
@@ -31,71 +36,92 @@ jobs:
             const repo = context.repo.repo;
             const pull_number = context.payload.pull_request.number;
             const headSha = context.payload.pull_request.head.sha;
-            const SENTINEL = '<!-- fx-remit-claude-formal-review -->';
+            const BLOCK_LABEL = 'claude-changes-requested';
+
+            const disableAutoMerge = async () => {
+              try {
+                await github.graphql(
+                  `mutation($id: ID!) {
+                    disablePullRequestAutoMerge(input: { pullRequestId: $id }) {
+                      pullRequest { number }
+                    }
+                  }`,
+                  { id: context.payload.pull_request.node_id },
+                );
+                core.info('Disabled pull request auto-merge.');
+              } catch (err) {
+                core.warning(`Could not disable auto-merge: ${err.message}`);
+              }
+            };
+
+            const labels = (context.payload.pull_request.labels || []).map(
+              (l) => l.name,
+            );
+            if (labels.includes(BLOCK_LABEL)) {
+              await disableAutoMerge();
+              core.setFailed(
+                `Label "${BLOCK_LABEL}" is present. Clear it via a successful Claude APPROVE or a human, then re-run the gate.`,
+              );
+              return;
+            }
 
             const reviews = await github.paginate(
               github.rest.pulls.listReviews,
               { owner, repo, pull_number, per_page: 100 },
             );
 
-            const isFormalClaudeReview = (r) => {
-              const login = (r.user?.login || '').toLowerCase();
-              const body = r.body || '';
-              const hasSentinel = body.includes(SENTINEL);
-
-              // Claude OAuth identity — actor is authoritative.
-              if (login === 'claude[bot]' || login === 'claude') {
-                return true;
-              }
-
-              // GITHUB_TOKEN submits as github-actions[bot]; require sentinel so
-              // unrelated Actions reviews are not treated as Claude formal reviews.
-              if (login === 'github-actions[bot]' && hasSentinel) {
-                return true;
-              }
-
-              return false;
+            const isClaudeActor = (login) => {
+              const name = (login || '').toLowerCase();
+              return name === 'claude[bot]' || name === 'claude';
             };
 
-            // Only reviews for the current head count — a push invalidates older ones.
-            const claudeReviews = reviews.filter(
-              (r) => isFormalClaudeReview(r) && r.commit_id === headSha,
+            // Only Claude OAuth reviews count. Ignore github-actions entirely
+            // (APPROVE impersonation / native merge deadlocks).
+            const claudeReviews = reviews.filter((r) =>
+              isClaudeActor(r.user?.login),
             );
+
             const latest = claudeReviews.at(-1);
-            const state = (latest?.state || 'NONE').toUpperCase();
-            const login = latest?.user?.login || '(none)';
-
-            core.info(
-              `Latest formal Claude review on ${headSha.slice(0, 7)}: state=${state} user=${login}`,
-            );
-
-            const passStates = new Set(['NONE', 'APPROVED', 'DISMISSED']);
-            if (passStates.has(state)) {
-              core.info('Gate passes.');
+            if (!latest) {
+              core.info('No Claude OAuth formal review — gate passes.');
               return;
             }
 
-            try {
-              await github.graphql(
-                `mutation($id: ID!) {
-                  disablePullRequestAutoMerge(input: { pullRequestId: $id }) {
-                    pullRequest { number }
-                  }
-                }`,
-                { id: context.payload.pull_request.node_id },
-              );
-              core.info('Disabled pull request auto-merge.');
-            } catch (err) {
-              core.warning(`Could not disable auto-merge: ${err.message}`);
+            const state = (latest.state || 'NONE').toUpperCase();
+            const login = latest.user?.login || '(none)';
+            const onHead = latest.commit_id === headSha;
+
+            core.info(
+              `Latest Claude review: state=${state} user=${login} onHead=${onHead} commit=${(latest.commit_id || '').slice(0, 7)}`,
+            );
+
+            if (state === 'DISMISSED') {
+              core.info('Latest Claude review dismissed — gate passes.');
+              return;
             }
 
             if (state === 'CHANGES_REQUESTED') {
+              // Blocking reviews persist across pushes until dismissed or superseded.
+              await disableAutoMerge();
               core.setFailed(
                 'Claude requested changes. Fix the findings and re-run @claude (or dismiss that review as a human).',
               );
               return;
             }
 
+            if (state === 'APPROVED') {
+              if (onHead) {
+                core.info('Claude APPROVE on current head — gate passes.');
+                return;
+              }
+              await disableAutoMerge();
+              core.setFailed(
+                'Claude APPROVE is stale (not on current head). Re-run @claude after the latest push.',
+              );
+              return;
+            }
+
+            await disableAutoMerge();
             core.setFailed(
-              `Claude's latest formal review is "${state}" (not APPROVE). Re-run @claude so CI can submit APPROVE or REQUEST_CHANGES.`,
+              `Claude's latest formal review is "${state}" (not APPROVE). Re-run @claude.`,
             );
