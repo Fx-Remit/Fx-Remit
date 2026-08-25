@@ -647,6 +647,14 @@ export class TransactionService {
   }
 
   /**
+   * True when `txHash` is a real EVM transaction hash (gateway / indexer funded).
+   * Placeholder hashes use `pending-` / `abandoned-` prefixes instead.
+   */
+  static isOnChainTxHash(txHash: string | null | undefined): boolean {
+    return !!txHash && /^0x[a-fA-F0-9]{64}$/.test(txHash);
+  }
+
+  /**
    * Attach a real on-chain hash to a pending remittance owned by `userId`.
    * Crypto withdraws (`recipientBank` starts with `crypto:`) mark COMPLETED.
    */
@@ -656,7 +664,7 @@ export class TransactionService {
     txHash: string;
   }) {
     const hash = params.txHash.trim();
-    if (!/^0x[a-fA-F0-9]{64}$/.test(hash)) {
+    if (!this.isOnChainTxHash(hash)) {
       throw new Error('Invalid txHash');
     }
 
