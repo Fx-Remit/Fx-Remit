@@ -1,0 +1,77 @@
+# Blocks merge when Claude's latest formal review is not APPROVE.
+# - CHANGES_REQUESTED / COMMENTED → fail + disable auto-merge
+# - APPROVED / DISMISSED / no Claude review → pass
+# (No Claude review = @claude was never asked; do not block those PRs.)
+# After merge: Settings → Branches → require status check "claude-review-gate".
+name: Claude review gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+
+jobs:
+  claude-review-gate:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Enforce Claude formal review state
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pull_number = context.payload.pull_request.number;
+
+            const reviews = await github.paginate(
+              github.rest.pulls.listReviews,
+              { owner, repo, pull_number, per_page: 100 },
+            );
+
+            const isClaude = (login) => {
+              const name = (login || '').toLowerCase();
+              return name === 'claude[bot]' || name === 'claude';
+            };
+
+            const claudeReviews = reviews.filter((r) => isClaude(r.user?.login));
+            const latest = claudeReviews.at(-1);
+            const state = (latest?.state || 'NONE').toUpperCase();
+
+            core.info(`Latest Claude review state: ${state}`);
+
+            const passStates = new Set(['NONE', 'APPROVED', 'DISMISSED']);
+            if (passStates.has(state)) {
+              core.info('Gate passes.');
+              return;
+            }
+
+            // CHANGES_REQUESTED, COMMENTED, PENDING, or anything else incomplete.
+            try {
+              await github.graphql(
+                `mutation($id: ID!) {
+                  disablePullRequestAutoMerge(input: { pullRequestId: $id }) {
+                    pullRequest { number }
+                  }
+                }`,
+                { id: context.payload.pull_request.node_id },
+              );
+              core.info('Disabled pull request auto-merge.');
+            } catch (err) {
+              core.warning(`Could not disable auto-merge: ${err.message}`);
+            }
+
+            if (state === 'CHANGES_REQUESTED') {
+              core.setFailed(
+                'Claude requested changes. Fix the findings and re-run @claude (or dismiss/approve as a human).',
+              );
+              return;
+            }
+
+            core.setFailed(
+              `Claude's latest review is "${state}" (not a formal APPROVE). Comment-only reviews do not count. Re-run @claude so CI can submit APPROVE or REQUEST_CHANGES.`,
+            );
