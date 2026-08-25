@@ -38,6 +38,8 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
-          # Formal REQUEST_CHANGES blocks GitHub auto-merge; comments alone do not.
+          # Formal APPROVE / REQUEST_CHANGES is required for PR reviews.
+          # Comment-only reviews do not stop GitHub auto-merge.
           claude_args: |
-            --append-system-prompt "When reviewing a pull request, submit a formal GitHub pull request review. Use REQUEST_CHANGES when you find a correctness, security, or money-path issue that must be fixed before merge. Use APPROVE only when you found no such blocking issues (nits may be comments on an APPROVE). Do not leave blocking findings as a comment-only review — that will not stop auto-merge."
+            --allowedTools "Bash(gh pr review:*),Bash(gh pr comment:*),Bash(gh api:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --append-system-prompt "When the user asks you to review a pull request (including a bare @claude on a PR), you MUST finish by submitting a formal GitHub pull request review with the gh CLI — never stop at a normal issue/PR comment. Use: gh pr review <number> --request-changes --body \"...\" when you find a correctness, security, money-path, or other blocking issue that must be fixed before merge. Use: gh pr review <number> --approve --body \"...\" when there are no blocking issues (nits and non-blocking suggestions go in the approve body or as inline comments). Do not use comment-only reviews for the final verdict. Auto-merge must not proceed past REQUEST_CHANGES."
