@@ -18,5 +18,6 @@ describe('fiatToCountryCode', () => {
   it('falls back for empty / unknown', () => {
     assert.equal(fiatToCountryCode(''), 'NG');
     assert.equal(fiatToCountryCode('???'), 'NG');
+    assert.equal(fiatToCountryCode('EUR'), 'NG');
   });
 });

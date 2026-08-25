@@ -75,6 +75,22 @@ export type TransactionApiRow = Prisma.TransactionGetPayload<{
   select: typeof TRANSACTION_API_SELECT;
 }>;
 
+/** True when Prisma failed because the live DB schema lags the client schema. */
+function isHistorySchemaDriftError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code?: unknown }).code ?? "")
+      : "";
+  return (
+    code === "P2022" ||
+    /column .* does not exist/i.test(message) ||
+    /does not exist in the current database/i.test(message) ||
+    /type .* does not exist/i.test(message) ||
+    /invalid input value for enum/i.test(message)
+  );
+}
+
 export interface TransactionResponse {
   id: string;
   userId: string;
@@ -126,17 +142,23 @@ export class TransactionService {
 
   /**
    * Fetch transaction history for a specific user with pagination.
-   * Prefer Prisma select (skips rail/stellar/refund). If that still fails
-   * (e.g. enum drift / unexpected column issues), fall back to raw SQL that
-   * only touches the legacy column set so the home feed cannot stay dark.
+   * Prefer Prisma select (skips rail/stellar/refund). On schema-drift errors
+   * only, fall back to raw SQL over the legacy column set so the home feed
+   * cannot stay dark — other DB errors still fail closed.
    */
   static async getHistory(
     userId: string,
     limit: number = 20,
     offset: number = 0,
   ): Promise<TransactionResponse[]> {
-    const take = Math.min(Math.max(1, Number(limit) || 20), 100);
-    const skip = Math.max(0, Number(offset) || 0);
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(0, Math.trunc(parsedLimit)), 100)
+      : 20;
+    const parsedOffset = Number(offset);
+    const skip = Number.isFinite(parsedOffset)
+      ? Math.max(0, Math.trunc(parsedOffset))
+      : 0;
 
     try {
       const transactions = await prisma.transaction.findMany({
@@ -148,9 +170,18 @@ export class TransactionService {
       });
       return transactions.map((row) => TransactionService.serialize(row));
     } catch (err) {
-      console.warn(
-        "[TransactionService.getHistory] Prisma select failed; falling back to raw SQL",
-        err instanceof Error ? err.message : err,
+      if (!isHistorySchemaDriftError(err)) {
+        throw err;
+      }
+
+      console.error(
+        JSON.stringify({
+          alert: "HISTORY_SCHEMA_DRIFT_FALLBACK",
+          userId,
+          take,
+          skip,
+          message: err instanceof Error ? err.message : String(err),
+        }),
       );
 
       const rows = await prisma.$queryRaw<TransactionApiRow[]>`
