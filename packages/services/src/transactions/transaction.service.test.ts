@@ -1154,8 +1154,9 @@ describe('TransactionService.attachOnChainHash', () => {
     prisma.transaction.findUnique = mock.fn(async () => existing) as any;
     const updateMock = mock.fn(async (args: any) => {
       assert.equal(args.data.txHash, HASH);
+      assert.equal(args.data.chainId, 8453);
       assert.equal(args.data.status, undefined);
-      return { ...existing, txHash: HASH };
+      return { ...existing, txHash: HASH, chainId: 8453 };
     });
     prisma.transaction.update = updateMock as any;
 
@@ -1195,6 +1196,7 @@ describe('TransactionService.attachOnChainHash', () => {
     prisma.transaction.update = mock.fn(async (args: any) => {
       assert.equal(args.data.status, 'COMPLETED');
       assert.equal(args.data.txHash, HASH);
+      assert.equal(args.data.chainId, 8453);
       return { ...existing, ...args.data };
     }) as any;
 

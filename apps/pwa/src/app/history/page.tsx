@@ -7,7 +7,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
-import { networkLabelFromChainId } from '@/lib/network';
+import { networkLabelForTransaction, formatTxHashLabel } from '@/lib/network';
 
 export default function HistoryPage() {
   const { authenticated, getAccessToken } = usePrivy();
@@ -63,7 +63,11 @@ export default function HistoryPage() {
           : undefined,
       orderId: tx.orderId,
       chainId: tx.chainId,
-      network: networkLabelFromChainId(tx.chainId),
+      network: networkLabelForTransaction({
+        chainId: tx.chainId,
+        type: tx.type,
+        txHash: tx.txHash,
+      }),
       provider: tx.type === 'DEPOSIT' ? 'Wallet deposit' : 'Paycrest',
       txHash: tx.txHash,
     };
@@ -144,7 +148,7 @@ export default function HistoryPage() {
                          {tx.status}
                        </span>
                        <p className="text-gray-400 text-xs truncate">
-                         {tx.txHash ? `${tx.txHash.slice(0, 10)}...` : 'Pending broadcast'}
+                         {formatTxHashLabel(tx.txHash)}
                        </p>
                     </div>
                   </div>
