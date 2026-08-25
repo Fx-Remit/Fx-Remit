@@ -4,6 +4,9 @@ import { prisma } from '@fx-remit/database';
 import {
   TransactionService,
   PayoutService,
+  QuoteBindService,
+  QuoteExpiredError,
+  QuoteUnavailableError,
   mintAbandonToken,
   InsufficientBalanceError,
 } from '@fx-remit/services';
@@ -19,7 +22,11 @@ import { z } from 'zod';
 
 const createPendingSchema = z.object({
   amountUsd: z.coerce.number().positive("amountUsd must be a positive number").max(10_000, "Transaction amount exceeds maximum of $10,000"),
-  payoutFiat: z.coerce.number().positive("payoutFiat must be a positive number"),
+  /** Ignored when present — server recomputes from live retail quote (#98). */
+  payoutFiat: z.coerce.number().positive().optional(),
+  /** Client quote TTL (ms epoch) from /api/quote; must still be fresh. */
+  quoteValidUntil: z.coerce.number().positive("quoteValidUntil is required"),
+  destinationCurrency: z.string().trim().min(1).optional().default("NGN"),
   recipientName: z.string().trim().min(1, "recipientName is required"),
   recipientBank: z.string().trim().min(1, "recipientBank is required"),
   recipientAcc: z.string().trim().min(1, "recipientAcc is required"),
@@ -115,7 +122,8 @@ export async function POST(req: Request) {
       recipientName,
       recipientBank,
       recipientAcc,
-      payoutFiat,
+      quoteValidUntil,
+      destinationCurrency,
       token: sourceToken,
       bankCode,
       externalId: frontendId,
@@ -131,7 +139,61 @@ export async function POST(req: Request) {
     }
 
     const orderId = BigInt(Date.now());
-    const appExternalId = frontendId || `pnd_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const appExternalId =
+      frontendId ||
+      `pnd_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+    // Idempotent retries reuse the same externalId after the 60s quote window.
+    // Skip bind when funds are already reserved — stale valid_until must not 422 resume.
+    const existingForResume = frontendId
+      ? await prisma.transaction.findUnique({
+          where: { externalId: frontendId },
+          select: {
+            userId: true,
+            type: true,
+            status: true,
+            payoutFiat: true,
+          },
+        })
+      : null;
+
+    const resumeReserved = QuoteBindService.isReservedRemittanceResume(
+      existingForResume,
+      user.id,
+    );
+
+    let boundQuote: Awaited<
+      ReturnType<typeof QuoteBindService.resolveForCreatePending>
+    > | null = null;
+    let payoutFiat: number;
+
+    if (resumeReserved && existingForResume) {
+      payoutFiat = Number(existingForResume.payoutFiat);
+    } else {
+      try {
+        boundQuote = await QuoteBindService.resolveForCreatePending({
+          amountUsd,
+          sourceToken,
+          destinationCurrency,
+          quoteValidUntil,
+        });
+      } catch (err) {
+        if (err instanceof QuoteExpiredError) {
+          return NextResponse.json(
+            { error: err.message, code: err.code },
+            { status: 422 },
+          );
+        }
+        if (err instanceof QuoteUnavailableError) {
+          return NextResponse.json(
+            { error: err.message, code: err.code },
+            { status: 502 },
+          );
+        }
+        throw err;
+      }
+      payoutFiat = boundQuote.payoutFiat;
+    }
 
     // Reserve funds + create the pending row FIRST (atomic, guarded).
     // Doing this before Paycrest avoids orphan provider orders on insufficient balance.
@@ -164,6 +226,14 @@ export async function POST(req: Request) {
 
     const externalKey = tx.externalId || appExternalId;
     const abandonToken = mintAbandonToken(externalKey, user.id);
+    // Authoritative fiat is always the persisted row (resume keeps original bind).
+    const quoteMeta = {
+      wholesaleRate: boundQuote?.wholesaleRate,
+      retailRate: boundQuote?.retailRate,
+      markupBps: boundQuote?.markupBps,
+      validUntil: boundQuote?.validUntil,
+      payoutFiat: Number(tx.payoutFiat),
+    };
 
     // Resume only when Paycrest order id is already on the hash.
     // PROCESSING + app-local hash means create claimed but order not linked yet —
@@ -187,6 +257,7 @@ export async function POST(req: Request) {
           success: true,
           resumed: true,
           abandonToken,
+          quote: quoteMeta,
           transaction: serializeTransaction(tx),
           paycrest: paycrestPayload(resumed.order, resumed.settlement),
         });
@@ -198,7 +269,7 @@ export async function POST(req: Request) {
     const paycrestResp = await PayoutService.createPaycrestOrder({
       amount: amountUsd.toString(),
       sourceToken,
-      destinationCurrency: "NGN", // Defaulting to NGN for now
+      destinationCurrency: destinationCurrency || "NGN",
       recipient: {
         institution: bankCode || recipientBank,
         accountIdentifier: recipientAcc,
@@ -288,6 +359,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       abandonToken,
+      quote: quoteMeta,
       transaction: serializeTransaction(linked),
       paycrest: paycrestPayload(paycrestResp.order, settlement),
     });

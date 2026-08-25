@@ -8,6 +8,7 @@ export * from './transactions/remittance.indexer';
 export * from './identity/identity.service';
 export * from './paycrest/payout.service';
 export * from './paycrest/pricing.service';
+export * from './paycrest/quote-bind.service';
 export * from './transactions/transaction.service';
 export * from './reconciliation/reconciliation.service';
 export * from './stellar/index.js';

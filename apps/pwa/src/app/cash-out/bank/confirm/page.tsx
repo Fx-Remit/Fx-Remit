@@ -26,6 +26,8 @@ function CashOutConfirmContent() {
   const [session, setSession] = useState<SettlementPrefetchSession | null>(null);
   const [prefetchPhase, setPrefetchPhase] = useState<PrefetchPhase>('preparing');
   const [prefetchError, setPrefetchError] = useState<string | null>(null);
+  /** Server-bound fiat from create-pending; overrides URL estimate for display. */
+  const [boundPayoutFiat, setBoundPayoutFiat] = useState<number | null>(null);
   /** Shown on the confirm page when open fails before the sheet mounts. */
   const [openError, setOpenError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
@@ -94,6 +96,8 @@ function CashOutConfirmContent() {
       ?.walletBalance,
   });
   const availableBalance = spendable.amount;
+  const displayReceiveAmount =
+    boundPayoutFiat != null ? boundPayoutFiat : Number(receiveAmount);
 
   const isBank = type === 'bank';
   const feePercentText = `${(Number(spread) / 100).toFixed(2)}%`;
@@ -131,6 +135,7 @@ function CashOutConfirmContent() {
       setSession(null);
       setPrefetchPhase('preparing');
       setPrefetchError(null);
+      setBoundPayoutFiat(null);
     }
 
     unbindUnloadHandlers();
@@ -224,10 +229,29 @@ function CashOutConfirmContent() {
     // Bridge only until abandonToken is minted by create-pending.
     bridgeAccessTokenRef.current = accessToken;
 
+    let quoteValidUntil: number;
+    try {
+      const quoteRes = await fetch(
+        `/api/quote?source=${encodeURIComponent(token)}&destination=${encodeURIComponent(currency)}&amount=1`,
+      );
+      const quoteJson = await quoteRes.json();
+      if (!quoteJson?.success || !quoteJson.quote?.valid_until) {
+        throw new Error(quoteJson?.error || 'Failed to refresh quote');
+      }
+      quoteValidUntil = Number(quoteJson.quote.valid_until);
+      if (!Number.isFinite(quoteValidUntil) || quoteValidUntil <= Date.now()) {
+        throw new Error('Quote expired go back and refresh the rate');
+      }
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : 'Failed to refresh quote');
+      return;
+    }
+
     const generation = ++generationRef.current;
     const next = new SettlementPrefetchSession({
       amountUsd: sendAmount,
-      payoutFiat: Number(receiveAmount),
+      quoteValidUntil,
+      destinationCurrency: currency,
       recipientName: accountName,
       recipientBank: bankName,
       recipientAcc: accountNumber,
@@ -238,6 +262,7 @@ function CashOutConfirmContent() {
 
     setPrefetchPhase('preparing');
     setPrefetchError(null);
+    setBoundPayoutFiat(null);
     sessionRef.current = next;
     setSession(next);
     bindUnloadHandlers();
@@ -252,10 +277,13 @@ function CashOutConfirmContent() {
 
     void next
       .awaitPrepared()
-      .then(() => {
+      .then((prepared) => {
         if (generationRef.current !== generation) return;
-        // Capability token is enough for unload cancel — drop the Privy bridge.
+        // Capability token is enough for unload cancel drop the Privy bridge.
         bridgeAccessTokenRef.current = null;
+        if (prepared.payoutFiat != null && Number.isFinite(prepared.payoutFiat)) {
+          setBoundPayoutFiat(prepared.payoutFiat);
+        }
         setPrefetchPhase('ready');
       })
       .catch((err: unknown) => {
@@ -331,7 +359,7 @@ function CashOutConfirmContent() {
               </p>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 text-[32px] font-bold text-[#1C1C1C]">
-                  {Number(receiveAmount).toLocaleString()}
+                  {displayReceiveAmount.toLocaleString()}
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 bg-[#E1EFFF] rounded-full text-[#2261FE] font-bold text-[13px] whitespace-nowrap border border-[#2261FE]/10 min-w-[120px] justify-center">
                   {currency}
@@ -411,7 +439,7 @@ function CashOutConfirmContent() {
             if (sending) unbindUnloadHandlers();
           }}
           sendAmount={sendAmount}
-          receiveAmount={Number(receiveAmount)}
+          receiveAmount={displayReceiveAmount}
           currency={currency}
           accNum={accountNumber}
           accName={accountName}

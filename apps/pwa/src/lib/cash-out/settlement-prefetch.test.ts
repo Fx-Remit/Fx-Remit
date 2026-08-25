@@ -10,7 +10,8 @@ describe('buildCreatePendingBody', () => {
   it('passes through cash-out fields for create-pending', () => {
     const body = buildCreatePendingBody({
       amountUsd: '10',
-      payoutFiat: 15000,
+      quoteValidUntil: 1_700_000_060_000,
+      destinationCurrency: 'NGN',
       recipientName: 'Jane Doe',
       recipientBank: 'PalmPay',
       recipientAcc: '0123456789',
@@ -21,7 +22,8 @@ describe('buildCreatePendingBody', () => {
 
     assert.deepEqual(body, {
       amountUsd: '10',
-      payoutFiat: 15000,
+      quoteValidUntil: 1_700_000_060_000,
+      destinationCurrency: 'NGN',
       recipientName: 'Jane Doe',
       recipientBank: 'PalmPay',
       recipientAcc: '0123456789',
@@ -61,6 +63,41 @@ describe('parseCreatePendingSuccess', () => {
     assert.equal(prepared.transaction.orderId, '99');
     assert.equal(prepared.paycrest.receiveAddress, '0xReceive');
     assert.equal(prepared.paycrest.decimals, 6);
+  });
+
+  it('prefers server quote.payoutFiat over URL estimates', () => {
+    const prepared = parseCreatePendingSuccess(
+      {
+        success: true,
+        transaction: {
+          orderId: '1',
+          payoutFiat: '999',
+        },
+        quote: {
+          payoutFiat: 15880,
+          retailRate: 1588,
+        },
+        paycrest: { receiveAddress: '0xAbc' },
+      },
+      'fallback-key',
+    );
+    assert.equal(prepared.payoutFiat, 15880);
+    assert.equal(prepared.transaction.payoutFiat, '999');
+  });
+
+  it('falls back to transaction.payoutFiat when quote omitted', () => {
+    const prepared = parseCreatePendingSuccess(
+      {
+        success: true,
+        transaction: {
+          orderId: '1',
+          payoutFiat: '15000.5',
+        },
+        paycrest: { receiveAddress: '0xAbc' },
+      },
+      'fallback-key',
+    );
+    assert.equal(prepared.payoutFiat, 15000.5);
   });
 
   it('uses fallback externalId when transaction omits it', () => {
@@ -120,7 +157,7 @@ describe('SettlementPrefetchSession', () => {
     let calls = 0;
     const session = new SettlementPrefetchSession({
       amountUsd: 1,
-      payoutFiat: 1000,
+      quoteValidUntil: Date.now() + 60_000,
       recipientName: 'A',
       recipientBank: 'B',
       recipientAcc: '1',
@@ -150,7 +187,7 @@ describe('SettlementPrefetchSession', () => {
   it('does not abandon after markConsumed', async () => {
     const session = new SettlementPrefetchSession({
       amountUsd: 1,
-      payoutFiat: 1000,
+      quoteValidUntil: Date.now() + 60_000,
       recipientName: 'A',
       recipientBank: 'B',
       recipientAcc: '1',
@@ -173,7 +210,7 @@ describe('SettlementPrefetchSession', () => {
   it('resolveAbandonExternalId returns externalId when reserved and unused', async () => {
     const session = new SettlementPrefetchSession({
       amountUsd: 1,
-      payoutFiat: 1000,
+      quoteValidUntil: Date.now() + 60_000,
       recipientName: 'A',
       recipientBank: 'B',
       recipientAcc: '1',
@@ -196,7 +233,7 @@ describe('SettlementPrefetchSession', () => {
     let calls = 0;
     const session = new SettlementPrefetchSession({
       amountUsd: 1,
-      payoutFiat: 1000,
+      quoteValidUntil: Date.now() + 60_000,
       recipientName: 'A',
       recipientBank: 'B',
       recipientAcc: '1',
@@ -228,7 +265,7 @@ describe('SettlementPrefetchSession', () => {
   it('resolveAbandonExternalId still returns key when prefetch failed', async () => {
     const session = new SettlementPrefetchSession({
       amountUsd: 1,
-      payoutFiat: 1000,
+      quoteValidUntil: Date.now() + 60_000,
       recipientName: 'A',
       recipientBank: 'B',
       recipientAcc: '1',
@@ -247,7 +284,7 @@ describe('SettlementPrefetchSession', () => {
   it('aborts in-flight fetcher before resolving abandon id', async () => {
     const session = new SettlementPrefetchSession({
       amountUsd: 1,
-      payoutFiat: 1000,
+      quoteValidUntil: Date.now() + 60_000,
       recipientName: 'A',
       recipientBank: 'B',
       recipientAcc: '1',
@@ -281,7 +318,7 @@ describe('SettlementPrefetchSession', () => {
     const session = new SettlementPrefetchSession(
       {
         amountUsd: 1,
-        payoutFiat: 1000,
+        quoteValidUntil: Date.now() + 60_000,
         recipientName: 'A',
         recipientBank: 'B',
         recipientAcc: '1',
@@ -307,7 +344,7 @@ describe('SettlementPrefetchSession', () => {
   it('assigns a stable externalId when caller omits one', async () => {
     const session = new SettlementPrefetchSession({
       amountUsd: 1,
-      payoutFiat: 1000,
+      quoteValidUntil: Date.now() + 60_000,
       recipientName: 'A',
       recipientBank: 'B',
       recipientAcc: '1',

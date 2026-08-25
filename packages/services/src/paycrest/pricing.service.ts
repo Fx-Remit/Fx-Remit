@@ -46,6 +46,17 @@ export class PricingService {
   }
 
   /**
+   * Retail fiat payout for a USD notional (cash-out / history display).
+   * Truncates to 2 decimal places (ROUND_DOWN) to match the PWA calculator.
+   */
+  static computePayoutFiat(amountUsd: number, retailRate: number): number {
+    return new Decimal(amountUsd)
+      .mul(retailRate)
+      .toDecimalPlaces(2, Decimal.ROUND_DOWN)
+      .toNumber();
+  }
+
+  /**
    * Calculates the surplus (profit) from a transaction in destination currency.
    */
   static calculateSurplus(amount: number, wholesaleRate: number, retailRate: number): number {
