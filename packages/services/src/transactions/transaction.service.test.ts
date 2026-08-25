@@ -1290,7 +1290,70 @@ describe('TransactionService REFUND_REQUIRED ops paths (#96)', () => {
     const result = await TransactionService.expireStaleRefundRequired();
     assert.equal(result.disabled, true);
     assert.equal(result.restored, 0);
+    assert.equal(result.escalated, 0);
     delete process.env.REFUND_REQUIRED_TTL_MS;
+  });
+
+  it('expireStaleRefundRequired escalates on-chain holds without ledger restore', async () => {
+    const ON_CHAIN =
+      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-rr',
+        txHash: ON_CHAIN,
+        refundTxHash: null,
+        amountUsd: { toString: () => '25' },
+        orderId: 1n,
+      },
+    ]) as any;
+    const restore = mock.method(
+      TransactionService,
+      'restoreRefundRequired',
+      async () => {
+        throw new Error('must not restore on-chain TTL');
+      },
+    );
+
+    const result = await TransactionService.expireStaleRefundRequired({
+      olderThanMs: 1,
+    });
+    assert.equal(result.escalated, 1);
+    assert.equal(result.restored, 0);
+    assert.equal(restore.mock.callCount(), 0);
+  });
+
+  it('expireStaleRefundRequired closes when refundTxHash already set', async () => {
+    const ON_CHAIN =
+      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-rr',
+        txHash: ON_CHAIN,
+        refundTxHash: '0xrefund',
+        amountUsd: { toString: () => '25' },
+        orderId: 1n,
+      },
+    ]) as any;
+    const complete = mock.method(
+      TransactionService,
+      'completeRefundRequiredAfterOnChainCredit',
+      async () => sampleTx({ status: 'FAILED', id: 'tx-rr' }),
+    );
+    const restore = mock.method(
+      TransactionService,
+      'restoreRefundRequired',
+      async () => {
+        throw new Error('must not restore when refund linked');
+      },
+    );
+
+    const result = await TransactionService.expireStaleRefundRequired({
+      olderThanMs: 1,
+    });
+    assert.equal(result.closedAfterCredit, 1);
+    assert.equal(result.restored, 0);
+    assert.equal(complete.mock.callCount(), 1);
+    assert.equal(restore.mock.callCount(), 0);
   });
 });
 

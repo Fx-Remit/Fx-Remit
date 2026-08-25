@@ -666,9 +666,9 @@ export class TransactionService {
    *
    * - Placeholder hash: restore spendable immediately and mark FAILED (never left on-chain).
    * - On-chain hash: set REFUND_REQUIRED without restore (funds at gateway; Alchemy may
-   *   later creditInboundDeposit). Ops must call restoreRefundRequired (write-off) or
-   *   completeRefundRequiredAfterOnChainCredit (refund already landed) — or wait for TTL.
-   */
+   *   later creditInboundDeposit). Ops must call restoreRefundRequired (write-off only if
+   *   no refund will credit) or wait for refund deposit / completeRefundRequiredAfterOnChainCredit.
+   *   TTL escalates on-chain holds without restoring spendable.
   static async flagOrphanRefundRequired(tx: {
     id: string;
     userId: string;
@@ -723,7 +723,7 @@ export class TransactionService {
         txHash: tx.txHash,
         externalId: tx.externalId,
         message:
-          "Orphan gateway-funded remittance missing recipient metadata; spendable reserved until ops restore, on-chain refund credit, or REFUND_REQUIRED_TTL_MS auto-restore",
+          "Orphan gateway-funded remittance missing recipient metadata; spendable reserved until on-chain refund credits via creditInboundDeposit or ops write-off via restoreRefundRequired",
       }),
     );
 
@@ -732,10 +732,10 @@ export class TransactionService {
   }
 
   /**
-   * Ops / TTL write-off (#96): REFUND_REQUIRED → FAILED and restore spendable.
-   * Only use when no on-chain Paycrest refund will also credit via creditInboundDeposit
-   * (otherwise the user is double-credited). Prefer completeRefundRequiredAfterOnChainCredit
-   * when the refund deposit already landed.
+   * Ops write-off (#96): REFUND_REQUIRED → FAILED and restore spendable.
+   * Refuses if refundTxHash is already set (refund deposit owns the credit).
+   * Only use when no on-chain Paycrest refund will also credit via creditInboundDeposit.
+   * Prefer completeRefundRequiredAfterOnChainCredit when the refund deposit already landed.
    */
   static async restoreRefundRequired(transactionId: string) {
     const tx = await prisma.transaction.findUnique({ where: { id: transactionId } });
@@ -744,6 +744,9 @@ export class TransactionService {
     }
     if (tx.status !== "REFUND_REQUIRED") {
       return tx;
+    }
+    if (tx.refundTxHash) {
+      return this.completeRefundRequiredAfterOnChainCredit(transactionId);
     }
 
     return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
@@ -832,8 +835,13 @@ export class TransactionService {
   }
 
   /**
-   * After REFUND_REQUIRED_TTL_MS (default 7d; set 0 to disable), auto write-off
-   * via restoreRefundRequired with an audit log (#96).
+   * After REFUND_REQUIRED_TTL_MS (default 7d; set 0 to disable), close stale holds (#96).
+   *
+   * Never auto-increments walletBalance for gateway-funded (on-chain) rows — that would
+   * double-credit when creditInboundDeposit later links the Paycrest refund. On-chain:
+   * if refundTxHash is already set, close with completeRefundRequiredAfterOnChainCredit;
+   * otherwise re-alert and leave REFUND_REQUIRED for ops. Placeholder rows may still
+   * restore via restoreRefundRequired.
    */
   static async expireStaleRefundRequired(opts?: {
     olderThanMs?: number;
@@ -843,7 +851,14 @@ export class TransactionService {
       opts?.olderThanMs ??
       Number(process.env.REFUND_REQUIRED_TTL_MS ?? 7 * 24 * 60 * 60 * 1000);
     if (!Number.isFinite(olderThanMs) || olderThanMs <= 0) {
-      return { scanned: 0, restored: 0, failed: 0, disabled: true as const };
+      return {
+        scanned: 0,
+        restored: 0,
+        closedAfterCredit: 0,
+        escalated: 0,
+        failed: 0,
+        disabled: true as const,
+      };
     }
 
     const limit = opts?.limit ?? 100;
@@ -854,15 +869,59 @@ export class TransactionService {
         status: "REFUND_REQUIRED",
         updatedAt: { lte: cutoff },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        txHash: true,
+        refundTxHash: true,
+        amountUsd: true,
+        orderId: true,
+      },
       take: limit,
       orderBy: { updatedAt: "asc" },
     });
 
     let restored = 0;
+    let closedAfterCredit = 0;
+    let escalated = 0;
     let failed = 0;
     for (const row of stale) {
       try {
+        if (row.refundTxHash) {
+          const updated = await this.completeRefundRequiredAfterOnChainCredit(row.id);
+          if (updated?.status === "FAILED") {
+            closedAfterCredit += 1;
+            console.warn(
+              JSON.stringify({
+                audit: "REFUND_REQUIRED_TTL_CLOSED_AFTER_CREDIT",
+                transactionId: row.id,
+                olderThanMs,
+              }),
+            );
+          } else {
+            failed += 1;
+          }
+          continue;
+        }
+
+        if (this.isOnChainTxHash(row.txHash)) {
+          // Do not restoreRefundRequired — inbound refund deposit would double-credit.
+          escalated += 1;
+          console.error(
+            JSON.stringify({
+              alert: "REFUND_REQUIRED_TTL_ESCALATION",
+              severity: "high",
+              transactionId: row.id,
+              orderId: row.orderId.toString(),
+              amountUsd: row.amountUsd.toString(),
+              txHash: row.txHash,
+              olderThanMs,
+              message:
+                "Stale gateway-funded REFUND_REQUIRED with no refundTxHash; ops must confirm on-chain refund then completeRefundRequiredAfterOnChainCredit, or write-off via restoreRefundRequired only if no refund will credit",
+            }),
+          );
+          continue;
+        }
+
         const updated = await this.restoreRefundRequired(row.id);
         if (updated?.status === "FAILED") {
           restored += 1;
@@ -885,7 +944,14 @@ export class TransactionService {
       }
     }
 
-    return { scanned: stale.length, restored, failed, disabled: false as const };
+    return {
+      scanned: stale.length,
+      restored,
+      closedAfterCredit,
+      escalated,
+      failed,
+      disabled: false as const,
+    };
   }
 
   /**
@@ -1108,9 +1174,10 @@ export class TransactionService {
    * Idempotent on (chainId, blockNumber, logIndex) and (txHash, logIndex).
    * Safe under concurrent webhook + poll (handles unique races).
    *
-   * Paycrest crypto refunds (#90): when a funded FAILED/REFUNDING remittance
-   * matches this amount and has no refundTxHash yet, link the deposit hash on
+   * Paycrest crypto refunds (#90 / #96): when a funded FAILED/REFUNDING/REFUND_REQUIRED
+   * remittance matches this amount and has no refundTxHash yet, link the deposit hash on
    * that remittance in the same txn as the ledger credit (single economic credit).
+   * REFUND_REQUIRED rows are closed to FAILED when linked so TTL cannot later restore.
    * Replays of a hash already stored as refundTxHash do not credit again.
    */
   static async creditInboundDeposit(data: {
@@ -1175,11 +1242,12 @@ export class TransactionService {
     const orderId = data.blockNumber * 1000n + BigInt(data.logIndex);
 
     // Match open funded remittance refund claim (webhook did not restore ledger).
+    const refundClaimStatuses: Status[] = ["FAILED", "REFUNDING", "REFUND_REQUIRED"];
     const refundCandidates = await prisma.transaction.findMany({
       where: {
         userId: user.id,
         type: "REMITTANCE",
-        status: { in: ["FAILED", "REFUNDING"] },
+        status: { in: refundClaimStatuses },
         refundTxHash: null,
         amountUsd: amount,
         NOT: [
@@ -1216,10 +1284,14 @@ export class TransactionService {
               id: refundClaim.id,
               userId: user.id,
               refundTxHash: null,
-              status: { in: ["FAILED", "REFUNDING"] },
+              status: { in: refundClaimStatuses },
             },
             data: {
               refundTxHash: data.txHash,
+              // Close ops hold so TTL never restoreRefundRequired after this credit.
+              ...(refundClaim.status === "REFUND_REQUIRED"
+                ? { status: "FAILED" as Status }
+                : {}),
               updatedAt: new Date(),
             },
           });
