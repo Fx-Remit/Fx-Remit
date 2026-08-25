@@ -1,4 +1,4 @@
-import { prisma, Status, Transaction, Prisma } from "@fx-remit/database";
+import { prisma, Status, Transaction, TransactionType, Prisma } from "@fx-remit/database";
 import { RpcClient } from "../evm/rpc.client";
 
 /** Thrown when createPending cannot reserve spendable ledger. */
@@ -43,6 +43,38 @@ const TERMINAL_STATUSES: Status[] = [
   "REFUND_REQUIRED",
 ];
 
+/**
+ * Base columns for API responses / create-pending returns.
+ * Omits rail / stellar / refund columns so reads still work if those migrations lag.
+ * Money-path writers that *need* those columns (refund linking, Stellar) still require
+ * `prisma migrate deploy` on prod — do not paper over that with selects alone.
+ */
+const TRANSACTION_API_SELECT = {
+  id: true,
+  userId: true,
+  orderId: true,
+  txHash: true,
+  chainId: true,
+  blockNumber: true,
+  logIndex: true,
+  sourceToken: true,
+  amountUsd: true,
+  payoutFiat: true,
+  status: true,
+  type: true,
+  externalId: true,
+  recipientName: true,
+  recipientBank: true,
+  recipientAcc: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+/** Row shape returned by TRANSACTION_API_SELECT — not a full Prisma Transaction. */
+export type TransactionApiRow = Prisma.TransactionGetPayload<{
+  select: typeof TRANSACTION_API_SELECT;
+}>;
+
 export interface TransactionResponse {
   id: string;
   userId: string;
@@ -55,6 +87,7 @@ export interface TransactionResponse {
   amountUsd: number;
   payoutFiat: number;
   status: Status;
+  type: TransactionType;
   externalId: string | null;
   recipientName: string | null;
   recipientBank: string | null;
@@ -66,15 +99,26 @@ export interface TransactionResponse {
 export class TransactionService {
   /**
    * Serialize a Prisma Transaction model to a JSON-safe response object.
-   * Handles BigInt to string and Decimal to number conversion.
+   * Explicit field pick — never spread Prisma rows (BigInt/`Decimal` break JSON.stringify).
    */
-  static serialize(tx: Transaction): TransactionResponse {
+  static serialize(tx: TransactionApiRow): TransactionResponse {
     return {
-      ...tx,
+      id: tx.id,
+      userId: tx.userId,
       orderId: tx.orderId.toString(),
+      txHash: tx.txHash,
+      chainId: tx.chainId,
       blockNumber: tx.blockNumber.toString(),
-      amountUsd: Number(tx.amountUsd),
-      payoutFiat: Number(tx.payoutFiat),
+      logIndex: tx.logIndex,
+      sourceToken: tx.sourceToken,
+      amountUsd: Number(tx.amountUsd.toString()),
+      payoutFiat: Number(tx.payoutFiat.toString()),
+      status: tx.status,
+      type: tx.type,
+      externalId: tx.externalId,
+      recipientName: tx.recipientName,
+      recipientBank: tx.recipientBank,
+      recipientAcc: tx.recipientAcc,
       createdAt: tx.createdAt.toISOString(),
       updatedAt: tx.updatedAt.toISOString(),
     };
@@ -82,6 +126,8 @@ export class TransactionService {
 
   /**
    * Fetch transaction history for a specific user with pagination.
+   * Explicit select avoids querying rail/stellar/refund columns that may be
+   * missing when production migrations lag the Prisma schema.
    */
   static async getHistory(
     userId: string,
@@ -93,9 +139,10 @@ export class TransactionService {
       orderBy: { createdAt: "desc" },
       take: limit,
       skip: offset,
+      select: TRANSACTION_API_SELECT,
     });
 
-    return transactions.map(this.serialize);
+    return transactions.map((row) => TransactionService.serialize(row));
   }
 
   /**
@@ -1054,7 +1101,10 @@ export class TransactionService {
    * Keeps `externalId` as the frontend idempotency / Paycrest reference so retries still match.
    * Webhooks resolve via reference, order id, or `pending-{orderId}` (see findByPaycrestKey).
    */
-  static async attachPaycrestOrder(id: string, paycrestOrderId: string) {
+  static async attachPaycrestOrder(
+    id: string,
+    paycrestOrderId: string,
+  ): Promise<TransactionApiRow | null> {
     // Refuse to attach onto an abandoned/cancelled row (client abandon race).
     const attached = await prisma.transaction.updateMany({
       where: {
@@ -1070,7 +1120,10 @@ export class TransactionService {
     if (attached.count !== 1) {
       return null;
     }
-    return await prisma.transaction.findUnique({ where: { id } });
+    return await prisma.transaction.findUnique({
+      where: { id },
+      select: TRANSACTION_API_SELECT,
+    });
   }
 
   /** Extract Paycrest order id from a pending-* / abandoned-* placeholder hash. */
@@ -1101,12 +1154,13 @@ export class TransactionService {
     recipientName: string;
     recipientBank: string;
     recipientAcc: string;
-  }) {
+  }): Promise<TransactionApiRow> {
     const amount = new Prisma.Decimal(data.amountUsd);
     const payoutFiat = new Prisma.Decimal(data.payoutFiat);
 
     const existing = await prisma.transaction.findUnique({
       where: { externalId: data.externalId },
+      select: TRANSACTION_API_SELECT,
     });
 
     if (existing) {
@@ -1162,6 +1216,7 @@ export class TransactionService {
               logIndex: 0,
               updatedAt: new Date(),
             },
+            select: TRANSACTION_API_SELECT,
           });
         });
       }
@@ -1208,6 +1263,7 @@ export class TransactionService {
           blockNumber: data.orderId,
           logIndex: 0,
         },
+        select: TRANSACTION_API_SELECT,
       });
     });
   }

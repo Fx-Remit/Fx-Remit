@@ -100,6 +100,9 @@ describe('TransactionService.serialize — happy paths', () => {
     assert.equal(serialized.createdAt, '2026-01-15T12:00:00.000Z');
     assert.equal(serialized.updatedAt, '2026-01-15T12:00:00.000Z');
     assert.equal(serialized.status, 'PENDING');
+    assert.equal(serialized.type, 'REMITTANCE');
+    assert.equal(typeof JSON.stringify(serialized), 'string');
+    assert.equal((serialized as any).orderId === 42n, false);
   });
 });
 
