@@ -59,11 +59,13 @@ jobs:
 
       # Snapshot planted verdict from the PR head (not default-branch checkout),
       # and mint a session nonce Claude must echo back (cannot be forged from git).
+      # Nonce is injected into the system prompt — do NOT allow unconstrained Read
+      # (that would expose /proc/self/environ and job credentials to prompt injection).
       - name: Snapshot PR-head planted verdict and mint session nonce
+        id: session
         if: steps.pr.outputs.number != ''
         env:
           VERDICT_FILE: claude-review-verdict.json
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -82,8 +84,9 @@ jobs:
             echo "No planted verdict on PR head ${HEAD_SHA:0:7}."
           fi
 
-          openssl rand -hex 32 > "$NONCE_FILE"
-          echo "Session nonce minted at $NONCE_FILE"
+          nonce=$(openssl rand -hex 32)
+          printf '%s\n' "$nonce" > "$NONCE_FILE"
+          echo "nonce=$nonce" >> "$GITHUB_OUTPUT"
 
       - name: Run Claude Code
         id: claude
@@ -92,10 +95,10 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
-          # No gh api / gh pr review — only CI submits formal Claude OAuth reviews.
+          # No Read / gh api / gh pr review — nonce is in the prompt; only CI submits formal reviews.
           claude_args: |
-            --allowedTools "Read,Write,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
-            --append-system-prompt "When reviewing a pull request (including a bare @claude on a PR), you MUST write exactly one JSON file at path claude-review-verdict.json in the repository root before finishing. Schema: {\"verdict\":\"APPROVE\"|\"REQUEST_CHANGES\",\"body\":\"markdown review summary\",\"nonce\":\"<session-nonce>\"}. Read the session nonce from the absolute path ${{ runner.temp }}/claude-review-nonce.txt and copy it exactly into the JSON nonce field — a planted or stale verdict without this job's nonce is rejected. Use REQUEST_CHANGES for correctness, security, money-path, or other blocking issues. Use APPROVE when there are no blocking issues (nits may go in body). You may post explanatory comments with gh pr comment only. Do NOT run gh pr review or gh api — a CI step submits the formal review from your verdict file. If this is not a PR review request, do not write the verdict file."
+            --allowedTools "Write,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --append-system-prompt "When reviewing a pull request (including a bare @claude on a PR), you MUST write exactly one JSON file at path claude-review-verdict.json in the repository root before finishing. Schema: {\"verdict\":\"APPROVE\"|\"REQUEST_CHANGES\",\"body\":\"markdown review summary\",\"nonce\":\"${{ steps.session.outputs.nonce }}\"}. The nonce field MUST be exactly the value shown in this schema (this job's session nonce). A planted or stale verdict without this job's nonce is rejected. Use REQUEST_CHANGES for correctness, security, money-path, or other blocking issues. Use APPROVE when there are no blocking issues (nits may go in body). You may post explanatory comments with gh pr comment only. Do NOT run gh pr review or gh api — a CI step submits the formal review from your verdict file. If this is not a PR review request, do not write the verdict file."
 
       - name: Submit formal PR review from verdict
         id: submit
