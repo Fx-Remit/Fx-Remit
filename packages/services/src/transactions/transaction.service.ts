@@ -669,6 +669,7 @@ export class TransactionService {
    *   later creditInboundDeposit). Ops must call restoreRefundRequired (write-off only if
    *   no refund will credit) or wait for refund deposit / completeRefundRequiredAfterOnChainCredit.
    *   TTL escalates on-chain holds without restoring spendable.
+   */
   static async flagOrphanRefundRequired(tx: {
     id: string;
     userId: string;
