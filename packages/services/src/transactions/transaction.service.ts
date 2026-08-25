@@ -662,13 +662,24 @@ export class TransactionService {
   }
 
   /**
+   * App-local unfunded placeholders only. Indexer `unknown-${orderId}-${chainId}`
+   * stubs are gateway-funded rows missing a hash — must NOT restore spendable.
+   */
+  static isAppLocalPlaceholderHash(txHash: string | null | undefined): boolean {
+    return (
+      !!txHash &&
+      (txHash.startsWith("pending-") || txHash.startsWith("abandoned-"))
+    );
+  }
+
+  /**
    * Orphan VERIFIED remittance missing recipient metadata (#96).
    *
-   * - Placeholder hash: restore spendable immediately and mark FAILED (never left on-chain).
-   * - On-chain hash: set REFUND_REQUIRED without restore (funds at gateway; Alchemy may
-   *   later creditInboundDeposit). Ops must call restoreRefundRequired (write-off only if
-   *   no refund will credit) or wait for refund deposit / completeRefundRequiredAfterOnChainCredit.
-   *   TTL escalates on-chain holds without restoring spendable.
+   * - App-local placeholder (pending- or abandoned- prefix): restore spendable and mark FAILED.
+   * - On-chain 0x or indexer unknown- stubs: REFUND_REQUIRED without restore (funds may
+   *   be at gateway; Alchemy may later creditInboundDeposit). Ops write-off only via
+   *   restoreRefundRequired when no refund will credit; otherwise wait for refund deposit.
+   *   TTL escalates these holds without restoring spendable.
    */
   static async flagOrphanRefundRequired(tx: {
     id: string;
@@ -687,7 +698,7 @@ export class TransactionService {
       return { outcome: "skipped", transaction: current };
     }
 
-    if (!this.isOnChainTxHash(tx.txHash)) {
+    if (this.isAppLocalPlaceholderHash(tx.txHash)) {
       const updated = await this.failAndReleasePlaceholderCas(tx);
       console.warn(
         JSON.stringify({
@@ -696,7 +707,7 @@ export class TransactionService {
           orderId: tx.orderId.toString(),
           amountUsd: String(tx.amountUsd),
           message:
-            "Orphan remittance had placeholder hash; ledger restored and marked FAILED",
+            "Orphan remittance had app-local placeholder hash; ledger restored and marked FAILED",
         }),
       );
       return { outcome: "restored_failed", transaction: updated };
@@ -724,7 +735,7 @@ export class TransactionService {
         txHash: tx.txHash,
         externalId: tx.externalId,
         message:
-          "Orphan gateway-funded remittance missing recipient metadata; spendable reserved until on-chain refund credits via creditInboundDeposit or ops write-off via restoreRefundRequired",
+          "Orphan remittance missing recipient metadata (on-chain or unknown-* hash); spendable reserved until on-chain refund credits via creditInboundDeposit or ops write-off via restoreRefundRequired",
       }),
     );
 
@@ -838,11 +849,11 @@ export class TransactionService {
   /**
    * After REFUND_REQUIRED_TTL_MS (default 7d; set 0 to disable), close stale holds (#96).
    *
-   * Never auto-increments walletBalance for gateway-funded (on-chain) rows — that would
-   * double-credit when creditInboundDeposit later links the Paycrest refund. On-chain:
-   * if refundTxHash is already set, close with completeRefundRequiredAfterOnChainCredit;
-   * otherwise re-alert and leave REFUND_REQUIRED for ops. Placeholder rows may still
-   * restore via restoreRefundRequired.
+   * Never auto-increments walletBalance for gateway-funded (0x) or indexer unknown-*
+   * rows — that would double-credit when creditInboundDeposit later links a refund.
+   * Those rows: if refundTxHash is set, close with completeRefundRequiredAfterOnChainCredit;
+   * otherwise re-alert and leave REFUND_REQUIRED for ops. App-local pending-/abandoned-
+   * placeholders may still restore via restoreRefundRequired.
    */
   static async expireStaleRefundRequired(opts?: {
     olderThanMs?: number;
@@ -904,38 +915,38 @@ export class TransactionService {
           continue;
         }
 
-        if (this.isOnChainTxHash(row.txHash)) {
-          // Do not restoreRefundRequired — inbound refund deposit would double-credit.
-          escalated += 1;
-          console.error(
-            JSON.stringify({
-              alert: "REFUND_REQUIRED_TTL_ESCALATION",
-              severity: "high",
-              transactionId: row.id,
-              orderId: row.orderId.toString(),
-              amountUsd: row.amountUsd.toString(),
-              txHash: row.txHash,
-              olderThanMs,
-              message:
-                "Stale gateway-funded REFUND_REQUIRED with no refundTxHash; ops must confirm on-chain refund then completeRefundRequiredAfterOnChainCredit, or write-off via restoreRefundRequired only if no refund will credit",
-            }),
-          );
+        if (this.isAppLocalPlaceholderHash(row.txHash)) {
+          const updated = await this.restoreRefundRequired(row.id);
+          if (updated?.status === "FAILED") {
+            restored += 1;
+            console.warn(
+              JSON.stringify({
+                audit: "REFUND_REQUIRED_TTL_AUTO_RESTORE",
+                transactionId: row.id,
+                olderThanMs,
+              }),
+            );
+          } else {
+            failed += 1;
+          }
           continue;
         }
 
-        const updated = await this.restoreRefundRequired(row.id);
-        if (updated?.status === "FAILED") {
-          restored += 1;
-          console.warn(
-            JSON.stringify({
-              audit: "REFUND_REQUIRED_TTL_AUTO_RESTORE",
-              transactionId: row.id,
-              olderThanMs,
-            }),
-          );
-        } else {
-          failed += 1;
-        }
+        // On-chain 0x or indexer unknown-* — do not restoreRefundRequired.
+        escalated += 1;
+        console.error(
+          JSON.stringify({
+            alert: "REFUND_REQUIRED_TTL_ESCALATION",
+            severity: "high",
+            transactionId: row.id,
+            orderId: row.orderId.toString(),
+            amountUsd: row.amountUsd.toString(),
+            txHash: row.txHash,
+            olderThanMs,
+            message:
+              "Stale funded/unknown-hash REFUND_REQUIRED with no refundTxHash; ops must confirm on-chain refund then completeRefundRequiredAfterOnChainCredit, or write-off via restoreRefundRequired only if no refund will credit",
+          }),
+        );
       } catch (err) {
         failed += 1;
         console.error(

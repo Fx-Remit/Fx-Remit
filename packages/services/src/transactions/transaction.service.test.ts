@@ -1322,6 +1322,32 @@ describe('TransactionService REFUND_REQUIRED ops paths (#96)', () => {
     assert.equal(restore.mock.callCount(), 0);
   });
 
+  it('expireStaleRefundRequired escalates unknown-* holds without ledger restore', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-rr',
+        txHash: 'unknown-42-8453',
+        refundTxHash: null,
+        amountUsd: { toString: () => '25' },
+        orderId: 1n,
+      },
+    ]) as any;
+    const restore = mock.method(
+      TransactionService,
+      'restoreRefundRequired',
+      async () => {
+        throw new Error('must not restore unknown-* TTL');
+      },
+    );
+
+    const result = await TransactionService.expireStaleRefundRequired({
+      olderThanMs: 1,
+    });
+    assert.equal(result.escalated, 1);
+    assert.equal(result.restored, 0);
+    assert.equal(restore.mock.callCount(), 0);
+  });
+
   it('expireStaleRefundRequired closes when refundTxHash already set', async () => {
     const ON_CHAIN =
       '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';

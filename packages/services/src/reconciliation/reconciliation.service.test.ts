@@ -158,6 +158,33 @@ describe('ReconciliationService — happy paths', () => {
     assert.equal(createOrder.mock.callCount(), 0);
   });
 
+  it('flags unknown-* indexer orphans as REFUND_REQUIRED without restore (#96)', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      stuckTx({
+        externalId: null,
+        recipientAcc: null,
+        recipientName: null,
+        recipientBank: null,
+        txHash: 'unknown-99-8453',
+      }),
+    ]) as any;
+
+    prisma.transaction.updateMany = mock.fn(async (args: any) => {
+      assert.equal(args.data.status, 'REFUND_REQUIRED');
+      return { count: 1 };
+    }) as any;
+    prisma.transaction.findUnique = mock.fn(async () => ({
+      id: 'stuck-1',
+      status: 'REFUND_REQUIRED',
+    })) as any;
+    prisma.$transaction = mock.fn(async () => {
+      throw new Error('must not restore spendable for unknown-* hash');
+    }) as any;
+
+    const results = await ReconciliationService.reconcileStuckTransactions();
+    assert.deepEqual(results, { recovered: 0, flagged: 1, restored: 0, failed: 0 });
+  });
+
   it('restores ledger for placeholder orphan missing recipient data (#96)', async () => {
     prisma.transaction.findMany = mock.fn(async () => [
       stuckTx({
