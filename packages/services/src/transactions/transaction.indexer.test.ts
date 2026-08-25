@@ -50,20 +50,47 @@ function mockLookups(existingByHashLog: any, existingByOrder: any = null) {
 function mockAtomic(capture: {
   upsertArgs?: any;
   userUpdateArgs?: any;
+  userUpdateManyArgs?: any;
+  txUpdateArgs?: any;
   result?: any;
+  /** When set, remittance debit updateMany returns this count (default 1). */
+  reserveCount?: number;
 }) {
   prisma.$transaction = mock.fn(async (cb: any) => {
     const tx = {
       transaction: {
         upsert: mock.fn(async (args: any) => {
           capture.upsertArgs = args;
-          return capture.result ?? { id: 'db-tx', ...args.create, ...args.update };
+          return (
+            capture.result ?? {
+              id: 'db-tx',
+              ...args.create,
+              ...args.update,
+            }
+          );
         }),
+        update: mock.fn(async (args: any) => {
+          capture.txUpdateArgs = args;
+          return {
+            id: args.where.id,
+            status: args.data.status,
+            ...(capture.result ?? {}),
+          };
+        }),
+        findUnique: mock.fn(async (args: any) => ({
+          id: args.where.id,
+          status: capture.txUpdateArgs?.data?.status ?? 'VERIFIED',
+          type: 'REMITTANCE',
+        })),
       },
       user: {
         update: mock.fn(async (args: any) => {
           capture.userUpdateArgs = args;
           return { id: args.where.id };
+        }),
+        updateMany: mock.fn(async (args: any) => {
+          capture.userUpdateManyArgs = args;
+          return { count: capture.reserveCount ?? 1 };
         }),
       },
     };
@@ -87,11 +114,41 @@ describe('TransactionService.updateFromIndexer — happy paths', () => {
     assert.equal(capture.upsertArgs.create.status, 'VERIFIED');
     assert.equal(capture.upsertArgs.create.userId, 'user-1');
     assert.equal(capture.upsertArgs.create.sourceToken, 'USDC');
-    assert.ok(capture.userUpdateArgs);
-    assert.equal(capture.userUpdateArgs.where.id, 'user-1');
-    assert.equal(capture.userUpdateArgs.data.transactionCount.increment, 1);
-    assert.equal(capture.userUpdateArgs.data.totalSentUsd.increment.toString(), '50');
-    assert.equal(capture.userUpdateArgs.data.walletBalance.decrement.toString(), '50');
+    assert.ok(capture.userUpdateManyArgs);
+    assert.equal(capture.userUpdateManyArgs.where.id, 'user-1');
+    assert.equal(
+      capture.userUpdateManyArgs.where.walletBalance.gte.toString(),
+      '50',
+    );
+    assert.equal(
+      capture.userUpdateManyArgs.data.walletBalance.decrement.toString(),
+      '50',
+    );
+    assert.equal(capture.userUpdateManyArgs.data.transactionCount.increment, 1);
+    assert.equal(
+      capture.userUpdateManyArgs.data.totalSentUsd.increment.toString(),
+      '50',
+    );
+    assert.equal(capture.userUpdateArgs, undefined);
+  });
+
+  it('flags REFUND_REQUIRED without debit when indexer remittance balance is insufficient (#97)', async () => {
+    mockUsers([{ id: 'user-1', walletAddress: '0xSender' }]);
+    mockLookups(null, null);
+    mock.method(RpcClient, 'getBlockNumber', async () => 1010n);
+
+    const capture: any = {
+      result: { id: 'new-tx', status: 'VERIFIED', type: 'REMITTANCE' },
+      reserveCount: 0,
+    };
+    mockAtomic(capture);
+
+    const result = await TransactionService.updateFromIndexer(INDEXER);
+
+    assert.equal(result?.status, 'REFUND_REQUIRED');
+    assert.equal(capture.userUpdateManyArgs.where.walletBalance.gte.toString(), '50');
+    assert.equal(capture.txUpdateArgs.data.status, 'REFUND_REQUIRED');
+    assert.equal(capture.userUpdateArgs, undefined);
   });
 
   it('classifies deposit when recipient is the user and no recipientAcc yet', async () => {
@@ -110,7 +167,8 @@ describe('TransactionService.updateFromIndexer — happy paths', () => {
 
     assert.equal(capture.upsertArgs.create.type, 'DEPOSIT');
     assert.equal(capture.userUpdateArgs.data.walletBalance.increment.toString(), '50');
-    assert.equal(capture.userUpdateArgs.data.totalSentUsd.increment.toString(), '0');
+    assert.equal(capture.userUpdateArgs.data.transactionCount.increment, 1);
+    assert.equal(capture.userUpdateArgs.data.totalSentUsd, undefined);
   });
 
   it('updates PENDING to VERIFIED when confirmations reach threshold', async () => {
