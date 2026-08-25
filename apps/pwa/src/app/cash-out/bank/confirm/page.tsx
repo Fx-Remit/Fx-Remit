@@ -16,6 +16,7 @@ import {
   postCreatePending,
 } from '@/lib/cash-out/create-pending-client';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
+import { fetchFreshQuoteValidUntil } from '@/lib/cash-out/fetch-retail-quote';
 
 function CashOutConfirmContent() {
   const router = useRouter();
@@ -231,17 +232,10 @@ function CashOutConfirmContent() {
 
     let quoteValidUntil: number;
     try {
-      const quoteRes = await fetch(
-        `/api/quote?source=${encodeURIComponent(token)}&destination=${encodeURIComponent(currency)}&amount=1`,
-      );
-      const quoteJson = await quoteRes.json();
-      if (!quoteJson?.success || !quoteJson.quote?.valid_until) {
-        throw new Error(quoteJson?.error || 'Failed to refresh quote');
-      }
-      quoteValidUntil = Number(quoteJson.quote.valid_until);
-      if (!Number.isFinite(quoteValidUntil) || quoteValidUntil <= Date.now()) {
-        throw new Error('Quote expired go back and refresh the rate');
-      }
+      quoteValidUntil = await fetchFreshQuoteValidUntil({
+        sourceToken: token,
+        destinationCurrency: currency,
+      });
     } catch (err) {
       setOpenError(err instanceof Error ? err.message : 'Failed to refresh quote');
       return;
@@ -279,7 +273,7 @@ function CashOutConfirmContent() {
       .awaitPrepared()
       .then((prepared) => {
         if (generationRef.current !== generation) return;
-        // Capability token is enough for unload cancel drop the Privy bridge.
+        // Capability token is enough for unload cancel — drop the Privy bridge.
         bridgeAccessTokenRef.current = null;
         if (prepared.payoutFiat != null && Number.isFinite(prepared.payoutFiat)) {
           setBoundPayoutFiat(prepared.payoutFiat);
@@ -440,11 +434,15 @@ function CashOutConfirmContent() {
           }}
           sendAmount={sendAmount}
           receiveAmount={displayReceiveAmount}
+          token={token}
           currency={currency}
           accNum={accountNumber}
           accName={accountName}
           bankName={bankName}
           spreadBps={Number(spread)}
+          onPayoutFiatBound={(payoutFiat) => {
+            setBoundPayoutFiat(payoutFiat);
+          }}
         />
       )}
     </div>

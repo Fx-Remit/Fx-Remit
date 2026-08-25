@@ -9,6 +9,7 @@ import {
   type PreparedSettlement,
 } from '@/lib/cash-out/settlement-prefetch';
 import { postCreatePending } from '@/lib/cash-out/create-pending-client';
+import { fetchFreshQuoteValidUntil } from '@/lib/cash-out/fetch-retail-quote';
 
 export type PrefetchPhase = 'preparing' | 'ready' | 'error';
 
@@ -28,6 +29,7 @@ interface ConfirmTransactionSheetProps {
   onClose: () => void;
   sendAmount: string;
   receiveAmount: number;
+  token: string;
   currency: string;
   accNum: string;
   accName: string;
@@ -35,6 +37,8 @@ interface ConfirmTransactionSheetProps {
   spreadBps?: number;
   /** Parent sets this before close so abandon cleanup skips cancel. */
   onSendingChange?: (sending: boolean) => void;
+  /** Server-bound fiat from create-pending (prefetch or Send retry). */
+  onPayoutFiatBound?: (payoutFiat: number) => void;
 }
 
 const ERC20_ABI = [
@@ -98,12 +102,14 @@ export function ConfirmTransactionSheet({
   onClose,
   sendAmount,
   receiveAmount,
+  token,
   currency,
   accNum,
   accName,
   bankName,
   spreadBps,
   onSendingChange,
+  onPayoutFiatBound,
 }: ConfirmTransactionSheetProps) {
   const [status, setStatus] = useState<'idle' | 'creating' | 'sending' | 'success'>(
     'idle',
@@ -145,11 +151,21 @@ export function ConfirmTransactionSheet({
       try {
         orderData = await session.awaitPrepared();
       } catch {
-        // Prefetch failed earlier retry create-pending on Send (same session key).
+        // Prefetch failed earlier — refresh quote TTL then retry create-pending
+        // (same externalId). Frozen valid_until would 422 after ~60s.
+        const quoteValidUntil = await fetchFreshQuoteValidUntil({
+          sourceToken: token,
+          destinationCurrency: currency,
+        });
+        session.setQuoteValidUntil(quoteValidUntil);
         session.start((body, signal) =>
           postCreatePending(body, accessToken, signal),
         );
         orderData = await session.awaitPrepared();
+      }
+
+      if (orderData.payoutFiat != null && Number.isFinite(orderData.payoutFiat)) {
+        onPayoutFiatBound?.(orderData.payoutFiat);
       }
 
       const receiveAddress = orderData.paycrest?.receiveAddress;

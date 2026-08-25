@@ -186,6 +186,22 @@ export class SettlementPrefetchSession {
     return this.prepared?.externalId ?? this.fallbackExternalId;
   }
 
+  /**
+   * Refresh quote TTL before a Send retry. Keeps the same externalId so
+   * create-pending can still resume a reserved row or bind a fresh quote.
+   */
+  setQuoteValidUntil(quoteValidUntil: number): void {
+    if (!Number.isFinite(quoteValidUntil) || quoteValidUntil <= 0) {
+      throw new Error('quoteValidUntil must be a positive epoch ms');
+    }
+    this.body.quoteValidUntil = quoteValidUntil;
+  }
+
+  /** Test/debug: current create-pending body (stable externalId). */
+  getCreatePendingBody(): Readonly<CreatePendingRequestBody> {
+    return { ...this.body };
+  }
+
   private isPreparedFresh(): boolean {
     if (!this.prepared || this.preparedAtMs == null) return false;
     return Date.now() - this.preparedAtMs < this.maxAgeMs;

@@ -363,4 +363,27 @@ describe('SettlementPrefetchSession', () => {
     const prepared = await session.awaitPrepared();
     assert.equal(prepared.externalId, session.externalId);
   });
+
+  it('setQuoteValidUntil refreshes TTL for Send retry without changing externalId', () => {
+    const session = new SettlementPrefetchSession({
+      amountUsd: 1,
+      quoteValidUntil: 1_000,
+      recipientName: 'A',
+      recipientBank: 'B',
+      recipientAcc: '1',
+      token: 'USDC',
+      externalId: 'idem-retry',
+    });
+
+    const before = session.getCreatePendingBody();
+    assert.equal(before.quoteValidUntil, 1_000);
+    assert.equal(before.externalId, 'idem-retry');
+
+    const refreshed = Date.now() + 60_000;
+    session.setQuoteValidUntil(refreshed);
+
+    const after = session.getCreatePendingBody();
+    assert.equal(after.quoteValidUntil, refreshed);
+    assert.equal(after.externalId, 'idem-retry');
+  });
 });
