@@ -1,8 +1,10 @@
-# Blocks merge when the latest allowlisted formal Claude CI review is not APPROVE.
+# Blocks merge when the latest allowlisted formal Claude CI review on the
+# current PR head is not APPROVE.
 # Identity is binding: only claude[bot]/claude, or github-actions[bot] with the
 # CI sentinel. A public sentinel alone is never enough.
-# - CHANGES_REQUESTED / COMMENTED / incomplete → fail + disable auto-merge
-# - APPROVED / DISMISSED / no allowlisted formal review → pass
+# Reviews attached to older commits are ignored (same idea as dismiss-stale).
+# - CHANGES_REQUESTED / COMMENTED / incomplete on HEAD → fail + disable auto-merge
+# - APPROVED / DISMISSED / no allowlisted formal review on HEAD → pass
 # After merge: Settings → Branches → require status check "claude-review-gate".
 name: Claude review gate
 
@@ -28,6 +30,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const pull_number = context.payload.pull_request.number;
+            const headSha = context.payload.pull_request.head.sha;
             const SENTINEL = '<!-- fx-remit-claude-formal-review -->';
 
             const reviews = await github.paginate(
@@ -54,12 +57,17 @@ jobs:
               return false;
             };
 
-            const claudeReviews = reviews.filter(isFormalClaudeReview);
+            // Only reviews for the current head count — a push invalidates older ones.
+            const claudeReviews = reviews.filter(
+              (r) => isFormalClaudeReview(r) && r.commit_id === headSha,
+            );
             const latest = claudeReviews.at(-1);
             const state = (latest?.state || 'NONE').toUpperCase();
             const login = latest?.user?.login || '(none)';
 
-            core.info(`Latest formal Claude review: state=${state} user=${login}`);
+            core.info(
+              `Latest formal Claude review on ${headSha.slice(0, 7)}: state=${state} user=${login}`,
+            );
 
             const passStates = new Set(['NONE', 'APPROVED', 'DISMISSED']);
             if (passStates.has(state)) {
