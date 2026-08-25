@@ -126,23 +126,62 @@ export class TransactionService {
 
   /**
    * Fetch transaction history for a specific user with pagination.
-   * Explicit select avoids querying rail/stellar/refund columns that may be
-   * missing when production migrations lag the Prisma schema.
+   * Prefer Prisma select (skips rail/stellar/refund). If that still fails
+   * (e.g. enum drift / unexpected column issues), fall back to raw SQL that
+   * only touches the legacy column set so the home feed cannot stay dark.
    */
   static async getHistory(
     userId: string,
     limit: number = 20,
     offset: number = 0,
   ): Promise<TransactionResponse[]> {
-    const transactions = await prisma.transaction.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      skip: offset,
-      select: TRANSACTION_API_SELECT,
-    });
+    const take = Math.min(Math.max(1, Number(limit) || 20), 100);
+    const skip = Math.max(0, Number(offset) || 0);
 
-    return transactions.map((row) => TransactionService.serialize(row));
+    try {
+      const transactions = await prisma.transaction.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+        select: TRANSACTION_API_SELECT,
+      });
+      return transactions.map((row) => TransactionService.serialize(row));
+    } catch (err) {
+      console.warn(
+        "[TransactionService.getHistory] Prisma select failed; falling back to raw SQL",
+        err instanceof Error ? err.message : err,
+      );
+
+      const rows = await prisma.$queryRaw<TransactionApiRow[]>`
+        SELECT
+          id,
+          user_id AS "userId",
+          order_id AS "orderId",
+          tx_hash AS "txHash",
+          chain_id AS "chainId",
+          block_number AS "blockNumber",
+          log_index AS "logIndex",
+          source_token AS "sourceToken",
+          amount_usd AS "amountUsd",
+          payout_fiat AS "payoutFiat",
+          status::text AS status,
+          type::text AS type,
+          external_id AS "externalId",
+          recipient_name AS "recipientName",
+          recipient_bank AS "recipientBank",
+          recipient_acc AS "recipientAcc",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM transactions
+        WHERE user_id = ${userId}
+        ORDER BY created_at DESC
+        LIMIT ${take}
+        OFFSET ${skip}
+      `;
+
+      return rows.map((row) => TransactionService.serialize(row));
+    }
   }
 
   /**
