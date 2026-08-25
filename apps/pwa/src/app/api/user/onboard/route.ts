@@ -116,7 +116,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Database error' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, user: dbUser });
+    return NextResponse.json({
+      success: true,
+      user: {
+        ...dbUser,
+        totalSentUsd:
+          dbUser.totalSentUsd != null
+            ? dbUser.totalSentUsd.toString()
+            : '0',
+        walletBalance:
+          dbUser.walletBalance != null
+            ? dbUser.walletBalance.toString()
+            : '0',
+        createdAt:
+          dbUser.createdAt instanceof Date
+            ? dbUser.createdAt.toISOString()
+            : dbUser.createdAt,
+        updatedAt:
+          dbUser.updatedAt instanceof Date
+            ? dbUser.updatedAt.toISOString()
+            : dbUser.updatedAt,
+        lastLoginAt:
+          dbUser.lastLoginAt instanceof Date
+            ? dbUser.lastLoginAt.toISOString()
+            : dbUser.lastLoginAt ?? null,
+      },
+    });
   } catch (error) {
     console.error('[ONBOARD] Unhandled error:', error);
     return NextResponse.json(
