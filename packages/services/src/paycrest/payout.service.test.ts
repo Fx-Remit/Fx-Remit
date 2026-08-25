@@ -123,7 +123,7 @@ describe('PayoutService — happy paths', () => {
       { id: '1', name: 'GTBank', code: '058', type: 'bank' },
     ]);
 
-    const result = await PayoutService.getInstitutions('NG');
+    const result = await PayoutService.getInstitutions('NGN');
     assert.equal(result.success, true);
     assert.equal((result as any).data[0].code, '058');
   });
@@ -319,7 +319,7 @@ describe('PayoutService — unhappy paths', () => {
       throw new Error('network down');
     });
 
-    const result = await PayoutService.getInstitutions('NG');
+    const result = await PayoutService.getInstitutions('NGN');
     assert.equal(result.success, false);
     assert.equal(result.error, 'network down');
     assert.equal(result.status, 500);

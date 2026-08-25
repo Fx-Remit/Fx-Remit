@@ -120,10 +120,9 @@ async function smokeCorridor(
     );
   }
 
-  // 2) Institutions
-  const country = corridor === 'NGN' ? 'NG' : 'KE';
+  // 2) Institutions (Paycrest uses ISO-4217 fiat, e.g. NGN)
   try {
-    const list = await client.getInstitutions(country);
+    const list = await client.getInstitutions(corridor);
     if (!Array.isArray(list)) {
       throw new Error(`unexpected shape: ${typeof list}`);
     }
@@ -131,15 +130,15 @@ async function smokeCorridor(
       softFail = true;
       logStep(
         'soft',
-        `institutions ${country}`,
+        `institutions ${corridor}`,
         'API returned [] (provider directory empty or gated)',
       );
     } else {
-      logStep('pass', `institutions ${country}`, `${list.length} providers`);
+      logStep('pass', `institutions ${corridor}`, `${list.length} providers`);
     }
   } catch (e: any) {
     softFail = true;
-    logStep('soft', `institutions ${country}`, e.message);
+    logStep('soft', `institutions ${corridor}`, e.message);
   }
 
   // 3) Optional verify

@@ -65,10 +65,10 @@ describe('PaycrestClient — happy paths', () => {
     }));
 
     const client = new PaycrestClient('test-key');
-    const list = await client.getInstitutions('NG');
+    const list = await client.getInstitutions('NGN');
     assert.equal(list.length, 1);
     assert.equal(list[0].code, '058');
-    assert.equal(http.get.mock.calls[0].arguments[0], '/institutions/NG');
+    assert.equal(http.get.mock.calls[0].arguments[0], '/institutions/NGN');
   });
 
   it('verifyAccount posts camelCase fields', async () => {
@@ -294,7 +294,7 @@ describe('PaycrestClient — unhappy paths', () => {
 
     await assert.rejects(
       () => client.getInstitutions('../US'),
-      /Invalid country code/,
+      /Invalid currency code/,
     );
     await assert.rejects(
       () => client.getOrder('http://evil.example/order'),
@@ -311,7 +311,7 @@ describe('PaycrestClient — unhappy paths', () => {
     });
 
     const client = new PaycrestClient('test-key');
-    await assert.rejects(() => client.getInstitutions('NG'), (err) => {
+    await assert.rejects(() => client.getInstitutions('NGN'), (err) => {
       assert.equal(err, networkErr);
       return true;
     });
