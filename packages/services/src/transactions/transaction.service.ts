@@ -55,6 +55,7 @@ export interface TransactionResponse {
   amountUsd: number;
   payoutFiat: number;
   status: Status;
+  type: string;
   externalId: string | null;
   recipientName: string | null;
   recipientBank: string | null;
@@ -66,15 +67,26 @@ export interface TransactionResponse {
 export class TransactionService {
   /**
    * Serialize a Prisma Transaction model to a JSON-safe response object.
-   * Handles BigInt to string and Decimal to number conversion.
+   * Explicit field pick — never spread Prisma rows (BigInt/`Decimal` break JSON.stringify).
    */
   static serialize(tx: Transaction): TransactionResponse {
     return {
-      ...tx,
+      id: tx.id,
+      userId: tx.userId,
       orderId: tx.orderId.toString(),
+      txHash: tx.txHash,
+      chainId: tx.chainId,
       blockNumber: tx.blockNumber.toString(),
-      amountUsd: Number(tx.amountUsd),
-      payoutFiat: Number(tx.payoutFiat),
+      logIndex: tx.logIndex,
+      sourceToken: tx.sourceToken,
+      amountUsd: Number(tx.amountUsd.toString()),
+      payoutFiat: Number(tx.payoutFiat.toString()),
+      status: tx.status,
+      type: tx.type,
+      externalId: tx.externalId,
+      recipientName: tx.recipientName,
+      recipientBank: tx.recipientBank,
+      recipientAcc: tx.recipientAcc,
       createdAt: tx.createdAt.toISOString(),
       updatedAt: tx.updatedAt.toISOString(),
     };
@@ -82,6 +94,8 @@ export class TransactionService {
 
   /**
    * Fetch transaction history for a specific user with pagination.
+   * Explicit select avoids querying rail/stellar/refund columns that may be
+   * missing when production migrations lag the Prisma schema.
    */
   static async getHistory(
     userId: string,
@@ -93,9 +107,29 @@ export class TransactionService {
       orderBy: { createdAt: "desc" },
       take: limit,
       skip: offset,
+      select: {
+        id: true,
+        userId: true,
+        orderId: true,
+        txHash: true,
+        chainId: true,
+        blockNumber: true,
+        logIndex: true,
+        sourceToken: true,
+        amountUsd: true,
+        payoutFiat: true,
+        status: true,
+        type: true,
+        externalId: true,
+        recipientName: true,
+        recipientBank: true,
+        recipientAcc: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
-    return transactions.map(this.serialize);
+    return transactions.map((row) => TransactionService.serialize(row as Transaction));
   }
 
   /**
