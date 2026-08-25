@@ -1,3 +1,9 @@
+# Blocks merge when the latest allowlisted formal Claude CI review is not APPROVE.
+# Identity is binding: only claude[bot]/claude, or github-actions[bot] with the
+# CI sentinel. A public sentinel alone is never enough.
+# - CHANGES_REQUESTED / COMMENTED / incomplete → fail + disable auto-merge
+# - APPROVED / DISMISSED / no allowlisted formal review → pass
+# After merge: Settings → Branches → require status check "claude-review-gate".
 name: Claude review gate
 
 on:
@@ -29,15 +35,23 @@ jobs:
               { owner, repo, pull_number, per_page: 100 },
             );
 
-            const isLegacyClaudeLogin = (login) => {
-              const name = (login || '').toLowerCase();
-              return name === 'claude[bot]' || name === 'claude';
-            };
-
             const isFormalClaudeReview = (r) => {
+              const login = (r.user?.login || '').toLowerCase();
               const body = r.body || '';
-              if (body.includes(SENTINEL)) return true;
-              return isLegacyClaudeLogin(r.user?.login);
+              const hasSentinel = body.includes(SENTINEL);
+
+              // Claude OAuth identity — actor is authoritative.
+              if (login === 'claude[bot]' || login === 'claude') {
+                return true;
+              }
+
+              // GITHUB_TOKEN submits as github-actions[bot]; require sentinel so
+              // unrelated Actions reviews are not treated as Claude formal reviews.
+              if (login === 'github-actions[bot]' && hasSentinel) {
+                return true;
+              }
+
+              return false;
             };
 
             const claudeReviews = reviews.filter(isFormalClaudeReview);
