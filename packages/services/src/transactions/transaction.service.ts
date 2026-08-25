@@ -1,4 +1,4 @@
-import { prisma, Status, Transaction, Prisma } from "@fx-remit/database";
+import { prisma, Status, Transaction, TransactionType, Prisma } from "@fx-remit/database";
 import { RpcClient } from "../evm/rpc.client";
 
 /** Thrown when createPending cannot reserve spendable ledger. */
@@ -43,7 +43,12 @@ const TERMINAL_STATUSES: Status[] = [
   "REFUND_REQUIRED",
 ];
 
-/** Base columns for API/ledger paths omit rail/stellar/refund if migrations lag. */
+/**
+ * Base columns for API responses / create-pending returns.
+ * Omits rail / stellar / refund columns so reads still work if those migrations lag.
+ * Money-path writers that *need* those columns (refund linking, Stellar) still require
+ * `prisma migrate deploy` on prod — do not paper over that with selects alone.
+ */
 const TRANSACTION_API_SELECT = {
   id: true,
   userId: true,
@@ -65,6 +70,11 @@ const TRANSACTION_API_SELECT = {
   updatedAt: true,
 } as const;
 
+/** Row shape returned by TRANSACTION_API_SELECT — not a full Prisma Transaction. */
+export type TransactionApiRow = Prisma.TransactionGetPayload<{
+  select: typeof TRANSACTION_API_SELECT;
+}>;
+
 export interface TransactionResponse {
   id: string;
   userId: string;
@@ -77,7 +87,7 @@ export interface TransactionResponse {
   amountUsd: number;
   payoutFiat: number;
   status: Status;
-  type: string;
+  type: TransactionType;
   externalId: string | null;
   recipientName: string | null;
   recipientBank: string | null;
@@ -91,7 +101,7 @@ export class TransactionService {
    * Serialize a Prisma Transaction model to a JSON-safe response object.
    * Explicit field pick — never spread Prisma rows (BigInt/`Decimal` break JSON.stringify).
    */
-  static serialize(tx: Transaction): TransactionResponse {
+  static serialize(tx: TransactionApiRow): TransactionResponse {
     return {
       id: tx.id,
       userId: tx.userId,
@@ -132,7 +142,7 @@ export class TransactionService {
       select: TRANSACTION_API_SELECT,
     });
 
-    return transactions.map((row) => TransactionService.serialize(row as Transaction));
+    return transactions.map((row) => TransactionService.serialize(row));
   }
 
   /**
@@ -1091,7 +1101,10 @@ export class TransactionService {
    * Keeps `externalId` as the frontend idempotency / Paycrest reference so retries still match.
    * Webhooks resolve via reference, order id, or `pending-{orderId}` (see findByPaycrestKey).
    */
-  static async attachPaycrestOrder(id: string, paycrestOrderId: string) {
+  static async attachPaycrestOrder(
+    id: string,
+    paycrestOrderId: string,
+  ): Promise<TransactionApiRow | null> {
     // Refuse to attach onto an abandoned/cancelled row (client abandon race).
     const attached = await prisma.transaction.updateMany({
       where: {
@@ -1141,7 +1154,7 @@ export class TransactionService {
     recipientName: string;
     recipientBank: string;
     recipientAcc: string;
-  }) {
+  }): Promise<TransactionApiRow> {
     const amount = new Prisma.Decimal(data.amountUsd);
     const payoutFiat = new Prisma.Decimal(data.payoutFiat);
 
@@ -1160,7 +1173,7 @@ export class TransactionService {
 
       // In-flight retry — funds already reserved
       if (existing.status === "PENDING" || existing.status === "PROCESSING") {
-        return existing as Transaction;
+        return existing;
       }
 
       // Abandoned after Paycrest failure — re-reserve and reopen same row
@@ -1252,7 +1265,7 @@ export class TransactionService {
         },
         select: TRANSACTION_API_SELECT,
       });
-    }) as Promise<Transaction>;
+    });
   }
 
   /**
