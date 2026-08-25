@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { PayoutService } from '@fx-remit/services';
+import { fiatToCountryCode } from '@/lib/cash-out/fiat-country';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,14 +24,15 @@ export async function GET(req: NextRequest) {
     }
 
     const searchParams = req.nextUrl.searchParams;
-    const countryCode = searchParams.get('country') || 'NG';
+    // Clients often pass fiat (NGN); Paycrest institutions expect ISO country (NG).
+    const countryCode = fiatToCountryCode(searchParams.get('country') || 'NG');
 
     const resp = await PayoutService.getInstitutions(countryCode);
 
     if (!resp.success) {
       return NextResponse.json(
-        { error: resp.error || 'Failed to fetch institutions' }, 
-        { status: (resp as any).status || 500 }
+        { error: resp.error || 'Failed to fetch institutions' },
+        { status: (resp as any).status || 500 },
       );
     }
 

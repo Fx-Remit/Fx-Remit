@@ -75,6 +75,22 @@ export type TransactionApiRow = Prisma.TransactionGetPayload<{
   select: typeof TRANSACTION_API_SELECT;
 }>;
 
+/** True when Prisma failed because the live DB schema lags the client schema. */
+function isHistorySchemaDriftError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const code =
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code?: unknown }).code ?? "")
+      : "";
+  return (
+    code === "P2022" ||
+    /column .* does not exist/i.test(message) ||
+    /does not exist in the current database/i.test(message) ||
+    /type .* does not exist/i.test(message) ||
+    /invalid input value for enum/i.test(message)
+  );
+}
+
 export interface TransactionResponse {
   id: string;
   userId: string;
@@ -126,23 +142,77 @@ export class TransactionService {
 
   /**
    * Fetch transaction history for a specific user with pagination.
-   * Explicit select avoids querying rail/stellar/refund columns that may be
-   * missing when production migrations lag the Prisma schema.
+   * Prefer Prisma select (skips rail/stellar/refund). On schema-drift errors
+   * only, fall back to raw SQL over the legacy column set so the home feed
+   * cannot stay dark — other DB errors still fail closed.
    */
   static async getHistory(
     userId: string,
     limit: number = 20,
     offset: number = 0,
   ): Promise<TransactionResponse[]> {
-    const transactions = await prisma.transaction.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      skip: offset,
-      select: TRANSACTION_API_SELECT,
-    });
+    const parsedLimit = Number(limit);
+    const take = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(0, Math.trunc(parsedLimit)), 100)
+      : 20;
+    const parsedOffset = Number(offset);
+    const skip = Number.isFinite(parsedOffset)
+      ? Math.max(0, Math.trunc(parsedOffset))
+      : 0;
 
-    return transactions.map((row) => TransactionService.serialize(row));
+    try {
+      const transactions = await prisma.transaction.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+        select: TRANSACTION_API_SELECT,
+      });
+      return transactions.map((row) => TransactionService.serialize(row));
+    } catch (err) {
+      if (!isHistorySchemaDriftError(err)) {
+        throw err;
+      }
+
+      console.error(
+        JSON.stringify({
+          alert: "HISTORY_SCHEMA_DRIFT_FALLBACK",
+          userId,
+          take,
+          skip,
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+
+      const rows = await prisma.$queryRaw<TransactionApiRow[]>`
+        SELECT
+          id,
+          user_id AS "userId",
+          order_id AS "orderId",
+          tx_hash AS "txHash",
+          chain_id AS "chainId",
+          block_number AS "blockNumber",
+          log_index AS "logIndex",
+          source_token AS "sourceToken",
+          amount_usd AS "amountUsd",
+          payout_fiat AS "payoutFiat",
+          status::text AS status,
+          type::text AS type,
+          external_id AS "externalId",
+          recipient_name AS "recipientName",
+          recipient_bank AS "recipientBank",
+          recipient_acc AS "recipientAcc",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM transactions
+        WHERE user_id = ${userId}
+        ORDER BY created_at DESC
+        LIMIT ${take}
+        OFFSET ${skip}
+      `;
+
+      return rows.map((row) => TransactionService.serialize(row));
+    }
   }
 
   /**

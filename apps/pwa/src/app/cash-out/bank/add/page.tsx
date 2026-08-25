@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { usePrivy } from '@privy-io/react-auth';
+import { fiatToCountryCode } from '@/lib/cash-out/fiat-country';
 
 function AddAccountForm() {
   const router = useRouter();
@@ -18,6 +19,7 @@ function AddAccountForm() {
   const wholesaleRate = searchParams.get('wholesaleRate') || '0';
   const spread = searchParams.get('spread') || '75';
   const { getAccessToken } = usePrivy();
+  const countryCode = fiatToCountryCode(currency);
 
   // Form states
   const [accountNumber, setAccountNumber] = useState('');
@@ -31,10 +33,10 @@ function AddAccountForm() {
 
   // Fetch institutions
   const { data: institutionsData } = useQuery({
-    queryKey: ['institutions', currency],
+    queryKey: ['institutions', countryCode],
     queryFn: async () => {
       const accessToken = await getAccessToken();
-      const res = await fetch(`/api/paycrest/institutions?country=${currency}`, {
+      const res = await fetch(`/api/paycrest/institutions?country=${countryCode}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
@@ -48,7 +50,7 @@ function AddAccountForm() {
 
   // Auto-verify account name
   const { data: verifyData, isFetching: isVerifying } = useQuery({
-    queryKey: ['verify-account', accountNumber, bankCode, currency],
+    queryKey: ['verify-account', accountNumber, bankCode, countryCode],
     queryFn: async () => {
       const accessToken = await getAccessToken();
       const res = await fetch('/api/paycrest/verify-account', {
@@ -57,7 +59,7 @@ function AddAccountForm() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ accountNumber, bankCode, countryCode: currency === 'NGN' ? 'NG' : 'KE' })
+        body: JSON.stringify({ accountNumber, bankCode, countryCode }),
       });
       const data = await res.json();
       return data.success ? data.data.account_name : null;

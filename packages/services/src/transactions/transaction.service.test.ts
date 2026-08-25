@@ -18,6 +18,7 @@ const originals = {
   updateMany: prisma.transaction.updateMany,
   create: prisma.transaction.create,
   findMany: prisma.transaction.findMany,
+  queryRaw: prisma.$queryRaw,
   dollarTransaction: prisma.$transaction,
   userUpdate: prisma.user.update,
 };
@@ -29,6 +30,7 @@ afterEach(() => {
   prisma.transaction.updateMany = originals.updateMany;
   prisma.transaction.create = originals.create;
   prisma.transaction.findMany = originals.findMany;
+  prisma.$queryRaw = originals.queryRaw;
   prisma.$transaction = originals.dollarTransaction;
   prisma.user.update = originals.userUpdate;
   mock.restoreAll();
@@ -1393,6 +1395,9 @@ describe('TransactionService.getHistory — happy paths', () => {
       assert.equal(args.take, 10);
       assert.equal(args.skip, 5);
       assert.deepEqual(args.orderBy, { createdAt: 'desc' });
+      assert.ok(args.select);
+      assert.equal(args.select.rail, undefined);
+      assert.equal(args.select.refundTxHash, undefined);
       return [sampleTx()];
     }) as any;
 
@@ -1400,5 +1405,42 @@ describe('TransactionService.getHistory — happy paths', () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0].orderId, '42');
     assert.equal(rows[0].amountUsd, 100.5);
+  });
+
+  it('falls back to raw SQL when Prisma select throws', async () => {
+    prisma.transaction.findMany = mock.fn(async () => {
+      throw new Error('column rail does not exist');
+    }) as any;
+    prisma.$queryRaw = mock.fn(async () => [sampleTx()]) as any;
+
+    const rows = await TransactionService.getHistory('user-1', 10, 0);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, 'tx-1');
+    assert.equal((prisma.$queryRaw as any).mock.callCount(), 1);
+  });
+
+  it('rethrows non-schema-drift Prisma errors without raw fallback', async () => {
+    prisma.transaction.findMany = mock.fn(async () => {
+      throw new Error('connection refused');
+    }) as any;
+    prisma.$queryRaw = mock.fn(async () => {
+      throw new Error('should not be called');
+    }) as any;
+
+    await assert.rejects(
+      () => TransactionService.getHistory('user-1', 10, 0),
+      /connection refused/,
+    );
+    assert.equal((prisma.$queryRaw as any).mock.callCount(), 0);
+  });
+
+  it('preserves limit=0 instead of coercing to 20', async () => {
+    prisma.transaction.findMany = mock.fn(async (args: any) => {
+      assert.equal(args.take, 0);
+      return [];
+    }) as any;
+
+    const rows = await TransactionService.getHistory('user-1', 0, 0);
+    assert.equal(rows.length, 0);
   });
 });
