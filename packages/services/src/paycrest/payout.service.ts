@@ -324,17 +324,17 @@ export class PayoutService {
   }
 
   /**
-   * Fetches supported institutions for a country.
+   * Fetches supported institutions for a fiat currency (ISO 4217, e.g. NGN).
    */
-  static async getInstitutions(countryCode: string) {
+  static async getInstitutions(currencyCode: string) {
     try {
-      const institutions = await this.client.getInstitutions(countryCode);
+      const institutions = await this.client.getInstitutions(currencyCode);
       return { success: true, data: institutions };
     } catch (error: any) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message,
-        status: error.status || 500
+        status: error.status || 500,
       };
     }
   }

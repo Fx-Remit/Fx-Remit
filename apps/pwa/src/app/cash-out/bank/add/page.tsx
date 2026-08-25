@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { usePrivy } from '@privy-io/react-auth';
-import { fiatToCountryCode } from '@/lib/cash-out/fiat-country';
+import { normalizeFiatCurrency } from '@/lib/cash-out/fiat-country';
 
 function AddAccountForm() {
   const router = useRouter();
@@ -19,7 +19,7 @@ function AddAccountForm() {
   const wholesaleRate = searchParams.get('wholesaleRate') || '0';
   const spread = searchParams.get('spread') || '75';
   const { getAccessToken } = usePrivy();
-  const countryCode = fiatToCountryCode(currency);
+  const fiatCurrency = normalizeFiatCurrency(currency);
 
   // Form states
   const [accountNumber, setAccountNumber] = useState('');
@@ -31,35 +31,50 @@ function AddAccountForm() {
 
   const isBank = type === 'bank';
 
-  // Fetch institutions
-  const { data: institutionsData } = useQuery({
-    queryKey: ['institutions', countryCode],
+  // Fetch institutions — Paycrest wants fiat currency (NGN), not country (NG).
+  const {
+    data: institutionsData,
+    isLoading: isLoadingInstitutions,
+    isError: isInstitutionsError,
+    error: institutionsError,
+  } = useQuery({
+    queryKey: ['institutions', fiatCurrency],
     queryFn: async () => {
       const accessToken = await getAccessToken();
-      const res = await fetch(`/api/paycrest/institutions?country=${countryCode}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
+      const res = await fetch(
+        `/api/paycrest/institutions?currency=${encodeURIComponent(fiatCurrency)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
         },
-      });
-      const data = await res.json();
-      return data.success ? data.institutions : [];
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Failed to load banks (${res.status})`);
+      }
+      return Array.isArray(data.institutions) ? data.institutions : [];
     },
   });
 
   const institutions = institutionsData || [];
 
-  // Auto-verify account name
+  // Auto-verify account name (Paycrest resolves via institution code; no country needed)
   const { data: verifyData, isFetching: isVerifying } = useQuery({
-    queryKey: ['verify-account', accountNumber, bankCode, countryCode],
+    queryKey: ['verify-account', accountNumber, bankCode, fiatCurrency],
     queryFn: async () => {
       const accessToken = await getAccessToken();
       const res = await fetch('/api/paycrest/verify-account', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ accountNumber, bankCode, countryCode }),
+        body: JSON.stringify({
+          accountNumber,
+          bankCode,
+          countryCode: fiatCurrency,
+        }),
       });
       const data = await res.json();
       return data.success ? data.data.account_name : null;
@@ -71,9 +86,13 @@ function AddAccountForm() {
   const accountName = verifyData || manualAccountName;
   const isVerified = !!verifyData && accountNumber.length === 10 && !!bankCode;
 
-  const filteredInstitutions = institutions.filter((inst: any) => 
-    inst.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredInstitutions = institutions.filter((inst: { name?: string; type?: string }) => {
+    const name = (inst.name || '').toLowerCase();
+    if (!name.includes(searchTerm.toLowerCase())) return false;
+    const instType = (inst.type || '').toLowerCase();
+    if (isBank) return instType !== 'mobile_money';
+    return instType === 'mobile_money' || instType.includes('mobile');
+  });
 
   const [idempotencyKey] = useState(() => {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -201,22 +220,44 @@ function AddAccountForm() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 pb-10">
-              {filteredInstitutions.map((inst) => (
-                <button
-                  key={inst.id}
-                  onClick={() => {
-                    setBankName(inst.name);
-                    setBankCode(inst.code);
-                    setIsBankSheetOpen(false);
-                  }}
-                  className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 rounded-[15px] transition-colors border-b border-gray-50 last:border-none"
-                >
-                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-[#2261FE] font-bold">
-                    {inst.name.charAt(0)}
-                  </div>
-                  <span className="text-[16px] font-medium text-[#1C1C1C]">{inst.name}</span>
-                </button>
-              ))}
+              {isLoadingInstitutions ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <Loader2 size={28} className="text-[#2261FE] animate-spin" />
+                  <p className="text-gray-400 text-sm">Loading banks…</p>
+                </div>
+              ) : isInstitutionsError ? (
+                <div className="px-2 py-12 text-center space-y-2">
+                  <p className="text-red-500 font-medium text-[15px]">Couldn’t load banks</p>
+                  <p className="text-gray-400 text-sm">
+                    {(institutionsError as Error)?.message || 'Try again in a moment'}
+                  </p>
+                </div>
+              ) : filteredInstitutions.length === 0 ? (
+                <div className="px-2 py-12 text-center">
+                  <p className="text-gray-400 text-sm">
+                    {searchTerm
+                      ? 'No banks match your search'
+                      : `No ${isBank ? 'banks' : 'providers'} available for ${fiatCurrency}`}
+                  </p>
+                </div>
+              ) : (
+                filteredInstitutions.map((inst: { id?: string; code?: string; name: string }) => (
+                  <button
+                    key={inst.code || inst.id || inst.name}
+                    onClick={() => {
+                      setBankName(inst.name);
+                      setBankCode(inst.code || '');
+                      setIsBankSheetOpen(false);
+                    }}
+                    className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 rounded-[15px] transition-colors border-b border-gray-50 last:border-none"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-[#2261FE] font-bold">
+                      {inst.name.charAt(0)}
+                    </div>
+                    <span className="text-[16px] font-medium text-[#1C1C1C]">{inst.name}</span>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>

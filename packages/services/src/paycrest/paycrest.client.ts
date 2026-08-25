@@ -184,17 +184,19 @@ export class PaycrestClient {
   }
 
   /**
-   * Fetches supported institutions for a country.
+   * Fetches supported institutions for a fiat currency (ISO 4217).
+   * Paycrest: GET /institutions/{currency_code} e.g. NGN — not country NG.
    */
-  public async getInstitutions(countryCode: string): Promise<PaycrestInstitution[]> {
-    const safeCountry = sanitizePathSegment(
-      countryCode.toUpperCase(),
-      "country code",
-      COUNTRY_SEGMENT,
+  public async getInstitutions(currencyCode: string): Promise<PaycrestInstitution[]> {
+    const safeCurrency = sanitizePathSegment(
+      currencyCode.toUpperCase(),
+      "currency code",
+      CURRENCY_SEGMENT,
     );
     try {
-      const response = await this.client.get(`/institutions/${safeCountry}`);
-      return response.data.data || response.data;
+      const response = await this.client.get(`/institutions/${safeCurrency}`);
+      const data = response.data.data || response.data;
+      return Array.isArray(data) ? data : [];
     } catch (error) {
       this.handleError(error);
     }
