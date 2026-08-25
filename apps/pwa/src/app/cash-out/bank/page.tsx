@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronDown, X, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
@@ -11,12 +11,17 @@ import { useQuery } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/use-debounce';
 import { Decimal } from 'decimal.js';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
+import {
+  aggregateTokenBalancesUsd,
+  BANK_SETTLEMENT_TOKENS,
+  pickHighestBalanceToken,
+} from '@/lib/cash-out/token-balances';
 
 const TOKENS = [
-  { symbol: 'USDT', icon: '/usdt.svg' },
-  { symbol: 'USDC', icon: '/usdc.svg' },
-  { symbol: 'cUSD', icon: '/cusd.svg' },
-  { symbol: 'CELO', icon: '/celo.svg' },
+  { symbol: 'USDT', icon: '/usdt.svg', bankSupported: true },
+  { symbol: 'USDC', icon: '/usdc.svg', bankSupported: true },
+  { symbol: 'cUSD', icon: '/cusd.svg', bankSupported: false },
+  { symbol: 'CELO', icon: '/celo.svg', bankSupported: false },
 ];
 
 const CURRENCIES = [
@@ -26,17 +31,28 @@ const CURRENCIES = [
   { code: 'TZS', flag: '🇹🇿', name: 'Tanzanian Shilling' },
 ];
 
+type QuoteResult =
+  | {
+      comingSoon?: false;
+      retail_rate?: number;
+      wholesale_rate?: number;
+      spread_bps?: number;
+      valid_until?: number;
+    }
+  | { comingSoon: true };
+
 export default function BankCashOutPage() {
   const router = useRouter();
-  
+
   const [amountInput, setAmountInput] = useState('');
   const [lastEdited, setLastEdited] = useState<'send' | 'receive'>('send');
-  
+
   const debouncedAmount = useDebounce(amountInput, 500);
-  
+
   const [token, setToken] = useState('USDC');
   const [currency, setCurrency] = useState('NGN');
-  
+  const tokenTouchedRef = useRef(false);
+
   const [isTokenSheetOpen, setIsTokenSheetOpen] = useState(false);
   const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
   const [isPaymentMethodSheetOpen, setIsPaymentMethodSheetOpen] = useState(false);
@@ -48,9 +64,9 @@ export default function BankCashOutPage() {
   const { data: balanceData } = useQuery({
     queryKey: ['live-wallet-balance', dbUser?.walletAddress],
     queryFn: async () => {
-      const token = await getAccessToken();
+      const accessToken = await getAccessToken();
       const res = await fetch('/api/deposit/balance', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -63,6 +79,19 @@ export default function BankCashOutPage() {
     retry: 1,
   });
 
+  const tokenBalances = aggregateTokenBalancesUsd(balanceData?.perChain);
+
+  // Default to the settlement token with the highest live balance (once).
+  useEffect(() => {
+    if (tokenTouchedRef.current || !balanceData?.perChain) return;
+    const best = pickHighestBalanceToken(
+      balanceData.perChain,
+      BANK_SETTLEMENT_TOKENS,
+      'USDC',
+    );
+    setToken(best);
+  }, [balanceData?.perChain]);
+
   const spendable = spendableLedgerUsd({
     balanceData,
     fallbackWalletBalance: (dbUser as { walletBalance?: { toString(): string } })
@@ -73,28 +102,44 @@ export default function BankCashOutPage() {
   // For tiered wholesale rates, we pass the send amount if available, otherwise fallback to 1 unit.
   const queryAmount = lastEdited === 'send' && debouncedAmount ? debouncedAmount : '1';
 
-  // Fetch rate
+  // Fetch rate — unsupported Paycrest corridors surface as Coming soon (no throw/retry spam).
   const { data: quote, isLoading: isLoadingRate } = useQuery({
     queryKey: ['quote', token, currency, queryAmount],
-    queryFn: async () => {
-      const res = await fetch(`/api/quote?source=${token}&destination=${currency}&amount=${queryAmount}`);
-      const data = await res.json();
-      if (!data.success) throw new Error('Failed to fetch quote');
+    queryFn: async (): Promise<QuoteResult> => {
+      const res = await fetch(
+        `/api/quote?source=${token}&destination=${currency}&amount=${queryAmount}`,
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 404 || data?.code === 'COMING_SOON') {
+        return { comingSoon: true };
+      }
+      if (!data.success) throw new Error(data.error || 'Failed to fetch quote');
       return data.quote;
     },
     enabled: !!currency && !!token,
+    retry: false,
   });
 
-  const rate = quote?.retail_rate || null;
+  const comingSoon = quote?.comingSoon === true;
+  const rate =
+    quote && !quote.comingSoon && typeof quote.retail_rate === 'number'
+      ? quote.retail_rate
+      : null;
 
   // Derived bidirectional state
-  const sendAmount = lastEdited === 'send' 
-    ? amountInput 
-    : (rate && amountInput && !isNaN(Number(amountInput)) ? new Decimal(amountInput).div(rate).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString() : '');
+  const sendAmount =
+    lastEdited === 'send'
+      ? amountInput
+      : rate && amountInput && !isNaN(Number(amountInput))
+        ? new Decimal(amountInput).div(rate).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString()
+        : '';
 
-  const receiveAmount = lastEdited === 'receive' 
-    ? amountInput 
-    : (rate && amountInput && !isNaN(Number(amountInput)) ? new Decimal(amountInput).mul(rate).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString() : '');
+  const receiveAmount =
+    lastEdited === 'receive'
+      ? amountInput
+      : rate && amountInput && !isNaN(Number(amountInput))
+        ? new Decimal(amountInput).mul(rate).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString()
+        : '';
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] flex flex-col">
@@ -165,11 +210,12 @@ export default function BankCashOutPage() {
                   type="number"
                   placeholder="0"
                   value={receiveAmount}
+                  disabled={comingSoon}
                   onChange={(e) => {
                     setAmountInput(e.target.value);
                     setLastEdited('receive');
                   }}
-                  className="w-0 flex-1 bg-transparent text-[32px] font-bold text-[#1C1C1C] placeholder:text-gray-200 focus:outline-none min-w-0"
+                  className="w-0 flex-1 bg-transparent text-[32px] font-bold text-[#1C1C1C] placeholder:text-gray-200 focus:outline-none min-w-0 disabled:opacity-50"
                 />
                 <button
                   onClick={() => setIsCurrencySheetOpen(true)}
@@ -192,13 +238,23 @@ export default function BankCashOutPage() {
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[15px] font-medium">Fees</span>
             <span className="text-[#1C1C1C] text-[15px] font-bold">
-              {quote?.spread_bps ? `${(quote.spread_bps / 100).toFixed(2)}%` : '0.75%'}
+              {comingSoon
+                ? '—'
+                : quote && !quote.comingSoon && quote.spread_bps
+                  ? `${(quote.spread_bps / 100).toFixed(2)}%`
+                  : '0.75%'}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[15px] font-medium">Exchange rate</span>
             <span className="text-[#1C1C1C] text-[15px] font-bold">
-              {isLoadingRate ? 'Updating...' : rate ? `1 ${token} = ${rate.toLocaleString()} ${currency}` : '-'}
+              {comingSoon
+                ? 'Coming soon'
+                : isLoadingRate
+                  ? 'Updating...'
+                  : rate
+                    ? `1 ${token} = ${rate.toLocaleString()} ${currency}`
+                    : '-'}
             </span>
           </div>
         </div>
@@ -206,15 +262,21 @@ export default function BankCashOutPage() {
         {/* Payment Method Selector */}
         <div className="mt-12 w-full flex justify-center px-[20px]">
           <button
-            onClick={() => setIsPaymentMethodSheetOpen(true)}
-            className="w-full max-w-[390px] rounded-[15px] border-2 border-dashed border-[#89C1FF] bg-white flex flex-col items-center justify-center gap-1 hover:bg-[#F8FBFF] transition-colors group active:scale-[0.99] duration-200"
+            onClick={() => {
+              if (comingSoon) return;
+              setIsPaymentMethodSheetOpen(true);
+            }}
+            disabled={comingSoon}
+            className="w-full max-w-[390px] rounded-[15px] border-2 border-dashed border-[#89C1FF] bg-white flex flex-col items-center justify-center gap-1 hover:bg-[#F8FBFF] transition-colors group active:scale-[0.99] duration-200 disabled:opacity-50 disabled:pointer-events-none"
             style={{ height: '126px' }}
           >
             <span className="text-[#1C1C1C] text-[18px] font-bold group-hover:text-[#2261FE]">
-              Choose payment method
+              {comingSoon ? 'Coming soon' : 'Choose payment method'}
             </span>
             <span className="text-[#888888] text-[14px] font-medium">
-              Bank account or mobile money
+              {comingSoon
+                ? `${currency} payouts are not available yet`
+                : 'Bank account or mobile money'}
             </span>
           </button>
         </div>
@@ -227,28 +289,49 @@ export default function BankCashOutPage() {
         title="Select token"
       >
         <div className="space-y-1">
-          {TOKENS.map((t) => (
-            <button
-              key={t.symbol}
-              onClick={() => {
-                setToken(t.symbol);
-                setIsTokenSheetOpen(false);
-              }}
-              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center">
-                  <img src={t.icon} alt="" className="w-7 h-7 object-contain" />
+          {TOKENS.map((t) => {
+            const bal = tokenBalances[t.symbol] ?? 0;
+            const supported = t.bankSupported;
+            return (
+              <button
+                key={t.symbol}
+                disabled={!supported}
+                onClick={() => {
+                  if (!supported) return;
+                  tokenTouchedRef.current = true;
+                  setToken(t.symbol);
+                  setIsTokenSheetOpen(false);
+                }}
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-55 disabled:hover:bg-transparent"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center">
+                    <img src={t.icon} alt="" className="w-7 h-7 object-contain" />
+                  </div>
+                  <div className="text-left">
+                    <span
+                      className={`text-[17px] font-bold ${
+                        token === t.symbol ? 'text-[#2261FE]' : 'text-[#1C1C1C]'
+                      }`}
+                    >
+                      {t.symbol}
+                    </span>
+                    <p className="text-[13px] text-[#888888] font-medium">
+                      {supported
+                        ? `$${bal.toFixed(2)}`
+                        : 'Coming soon'}
+                    </p>
+                  </div>
                 </div>
-                <span
-                  className={`text-[17px] font-bold ${token === t.symbol ? 'text-[#2261FE]' : 'text-[#1C1C1C]'}`}
-                >
-                  {t.symbol}
-                </span>
-              </div>
-              {token === t.symbol && <div className="w-2.5 h-2.5 rounded-full bg-[#2261FE]" />}
-            </button>
-          ))}
+                {token === t.symbol && supported && (
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#2261FE]" />
+                )}
+                {!supported && (
+                  <span className="text-[12px] font-semibold text-[#888888]">Coming soon</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </SelectionSheet>
 
@@ -340,8 +423,14 @@ export default function BankCashOutPage() {
                 token: token,
                 currency: currency || 'Choose currency',
                 rate: rate?.toString() || '0',
-                wholesaleRate: quote?.wholesale_rate?.toString() || '0',
-                spread: quote?.spread_bps?.toString() || '75',
+                wholesaleRate:
+                  quote && !quote.comingSoon
+                    ? quote.wholesale_rate?.toString() || '0'
+                    : '0',
+                spread:
+                  quote && !quote.comingSoon
+                    ? quote.spread_bps?.toString() || '75'
+                    : '75',
               });
               router.push(`/cash-out/bank/add?${params.toString()}`);
             }}

@@ -40,12 +40,26 @@ export async function GET(req: NextRequest) {
     );
 
     if (!wholesaleResp.success || !wholesaleResp.rate) {
+      const status = (wholesaleResp as { status?: number }).status || 500;
+      // Paycrest has no book for this corridor — surface as Coming soon, not a hard failure.
+      if (status === 404) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Coming soon',
+            code: 'COMING_SOON',
+            destination: destination.toUpperCase(),
+          },
+          { status: 404 },
+        );
+      }
       return NextResponse.json(
         {
+          success: false,
           error: wholesaleResp.error || 'Failed to fetch wholesale rates',
           code: 'QUOTE_UNAVAILABLE',
         },
-        { status: (wholesaleResp as { status?: number }).status || 500 },
+        { status },
       );
     }
 

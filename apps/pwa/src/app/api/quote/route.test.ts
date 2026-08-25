@@ -105,6 +105,20 @@ describe('GET /api/quote — unhappy paths', () => {
     assert.match(body.error, /Liquidity Provider Unavailable/);
   });
 
+  it('maps provider 404 to Coming soon', async () => {
+    mock.method(PayoutService, 'fetchRate', async () => ({
+      success: false,
+      error: 'no provider',
+      status: 404,
+    }));
+
+    const res = await GET(quoteReq('source=USDC&destination=XYZ'));
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.code, 'COMING_SOON');
+    assert.equal(body.error, 'Coming soon');
+  });
+
   it('returns 500 on unexpected throw', async () => {
     mock.method(PayoutService, 'fetchRate', async () => {
       throw new Error('boom');
