@@ -31,6 +31,38 @@ export interface PaycrestInstitution {
   type: string;
 }
 
+/**
+ * Barrier against SSRF / path injection in relative axios URLs.
+ * Rejects absolute URLs, traversal, and non-allowlisted characters before
+ * they can alter the request host or escape `/v2/...` path segments.
+ */
+function sanitizePathSegment(
+  value: string,
+  kind: string,
+  pattern: RegExp,
+): string {
+  const v = String(value ?? "").trim();
+  if (
+    !v ||
+    /:\/\//.test(v) ||
+    v.startsWith("//") ||
+    v.includes("..") ||
+    /[/\\?#@]/.test(v)
+  ) {
+    throw new Error(`Invalid ${kind} for Paycrest request`);
+  }
+  if (!pattern.test(v)) {
+    throw new Error(`Invalid ${kind} for Paycrest request`);
+  }
+  return encodeURIComponent(v);
+}
+
+const NETWORK_SEGMENT = /^[a-z0-9][a-z0-9_-]{0,31}$/i;
+const CURRENCY_SEGMENT = /^[A-Za-z]{2,10}$/;
+const AMOUNT_SEGMENT = /^(?:0|[1-9]\d*)(?:\.\d{1,18})?$/;
+const COUNTRY_SEGMENT = /^[A-Za-z]{2}$/;
+const ORDER_ID_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
 export class PaycrestClient {
   private client: AxiosInstance;
 
@@ -107,23 +139,41 @@ export class PaycrestClient {
     amount: string,
     destinationCurrency: string,
   ): Promise<PaycrestRate> {
+    const safeNetwork = sanitizePathSegment(
+      network.toLowerCase(),
+      "network",
+      NETWORK_SEGMENT,
+    );
+    const safeSource = sanitizePathSegment(
+      sourceCurrency.toUpperCase(),
+      "source currency",
+      CURRENCY_SEGMENT,
+    );
+    const safeAmount = sanitizePathSegment(amount, "amount", AMOUNT_SEGMENT);
+    const safeDest = sanitizePathSegment(
+      destinationCurrency.toUpperCase(),
+      "destination currency",
+      CURRENCY_SEGMENT,
+    );
+
     try {
       const response = await this.client.get(
-        `/rates/${network.toLowerCase()}/${sourceCurrency}/${amount}/${destinationCurrency}`,
+        `/rates/${safeNetwork}/${safeSource}/${safeAmount}/${safeDest}`,
       );
-      
-      const rawRate = response.data.data?.sell?.rate || 
-                      response.data.data?.rate || 
-                      response.data.rate || 
-                      response.data.data?.buy?.rate;
-                      
+
+      const rawRate =
+        response.data.data?.sell?.rate ||
+        response.data.data?.rate ||
+        response.data.rate ||
+        response.data.data?.buy?.rate;
+
       if (!rawRate) {
         throw new Error("Invalid response format from Paycrest rates API");
       }
 
       return {
-        source_currency: sourceCurrency,
-        destination_currency: destinationCurrency,
+        source_currency: sourceCurrency.toUpperCase(),
+        destination_currency: destinationCurrency.toUpperCase(),
         rate: Number(rawRate),
         fixed_fee: response.data.fixed_fee || 0,
         variable_fee: response.data.variable_fee || 0,
@@ -137,8 +187,13 @@ export class PaycrestClient {
    * Fetches supported institutions for a country.
    */
   public async getInstitutions(countryCode: string): Promise<PaycrestInstitution[]> {
+    const safeCountry = sanitizePathSegment(
+      countryCode.toUpperCase(),
+      "country code",
+      COUNTRY_SEGMENT,
+    );
     try {
-      const response = await this.client.get(`/institutions/${countryCode}`);
+      const response = await this.client.get(`/institutions/${safeCountry}`);
       return response.data.data || response.data;
     } catch (error) {
       this.handleError(error);
@@ -210,8 +265,13 @@ export class PaycrestClient {
    * Fetches an order's status by its ID.
    */
   public async getOrder(orderId: string): Promise<any> {
+    const safeOrderId = sanitizePathSegment(
+      orderId,
+      "order id",
+      ORDER_ID_SEGMENT,
+    );
     try {
-      const response = await this.client.get(`/sender/orders/${orderId}`);
+      const response = await this.client.get(`/sender/orders/${safeOrderId}`);
       return response.data.data || response.data;
     } catch (error) {
       this.handleError(error);

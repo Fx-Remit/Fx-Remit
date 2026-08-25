@@ -265,6 +265,44 @@ describe('PaycrestClient — unhappy paths', () => {
     );
   });
 
+  it('rejects path-injection / SSRF payloads in getRate segments', async () => {
+    const http = mockAxiosClient();
+    const client = new PaycrestClient('test-key');
+
+    await assert.rejects(
+      () => client.getRate('https://evil.example', 'USDC', '10', 'NGN'),
+      /Invalid network/,
+    );
+    await assert.rejects(
+      () => client.getRate('base', '../USDC', '10', 'NGN'),
+      /Invalid source currency/,
+    );
+    await assert.rejects(
+      () => client.getRate('base', 'USDC', '10/../../admin', 'NGN'),
+      /Invalid amount/,
+    );
+    await assert.rejects(
+      () => client.getRate('base', 'USDC', '10', 'NGN?x=1'),
+      /Invalid destination currency/,
+    );
+    assert.equal(http.get.mock.callCount(), 0);
+  });
+
+  it('rejects path-injection in getInstitutions and getOrder', async () => {
+    const http = mockAxiosClient();
+    const client = new PaycrestClient('test-key');
+
+    await assert.rejects(
+      () => client.getInstitutions('../US'),
+      /Invalid country code/,
+    );
+    await assert.rejects(
+      () => client.getOrder('http://evil.example/order'),
+      /Invalid order id/,
+    );
+    assert.equal(http.get.mock.callCount(), 0);
+  });
+
   it('rethrows non-response network errors unchanged', async () => {
     const http = mockAxiosClient();
     const networkErr = new Error('socket hang up');
