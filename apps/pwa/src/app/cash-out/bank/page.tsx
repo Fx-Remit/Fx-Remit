@@ -31,15 +31,13 @@ const CURRENCIES = [
   { code: 'TZS', flag: '🇹🇿', name: 'Tanzanian Shilling' },
 ];
 
-type QuoteResult =
-  | {
-      comingSoon?: false;
-      retail_rate?: number;
-      wholesale_rate?: number;
-      spread_bps?: number;
-      valid_until?: number;
-    }
-  | { comingSoon: true };
+type QuoteResult = {
+  comingSoon?: boolean;
+  retail_rate?: number;
+  wholesale_rate?: number;
+  spread_bps?: number;
+  valid_until?: number;
+};
 
 export default function BankCashOutPage() {
   const router = useRouter();
@@ -114,7 +112,7 @@ export default function BankCashOutPage() {
         return { comingSoon: true };
       }
       if (!data.success) throw new Error(data.error || 'Failed to fetch quote');
-      return data.quote;
+      return data.quote as QuoteResult;
     },
     enabled: !!currency && !!token,
     retry: false,
@@ -122,9 +120,7 @@ export default function BankCashOutPage() {
 
   const comingSoon = quote?.comingSoon === true;
   const rate =
-    quote && !quote.comingSoon && typeof quote.retail_rate === 'number'
-      ? quote.retail_rate
-      : null;
+    !comingSoon && typeof quote?.retail_rate === 'number' ? quote.retail_rate : null;
 
   // Derived bidirectional state
   const sendAmount =
@@ -240,7 +236,7 @@ export default function BankCashOutPage() {
             <span className="text-[#1C1C1C] text-[15px] font-bold">
               {comingSoon
                 ? '—'
-                : quote && !quote.comingSoon && quote.spread_bps
+                : quote?.spread_bps
                   ? `${(quote.spread_bps / 100).toFixed(2)}%`
                   : '0.75%'}
             </span>
@@ -423,14 +419,12 @@ export default function BankCashOutPage() {
                 token: token,
                 currency: currency || 'Choose currency',
                 rate: rate?.toString() || '0',
-                wholesaleRate:
-                  quote && !quote.comingSoon
-                    ? quote.wholesale_rate?.toString() || '0'
-                    : '0',
-                spread:
-                  quote && !quote.comingSoon
-                    ? quote.spread_bps?.toString() || '75'
-                    : '75',
+                wholesaleRate: !comingSoon
+                  ? quote?.wholesale_rate?.toString() || '0'
+                  : '0',
+                spread: !comingSoon
+                  ? quote?.spread_bps?.toString() || '75'
+                  : '75',
               });
               router.push(`/cash-out/bank/add?${params.toString()}`);
             }}
