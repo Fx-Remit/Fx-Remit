@@ -1,5 +1,8 @@
 name: Claude Code
 
+# Standard Anthropic @claude path: comment / help on demand.
+# Does not submit formal GitHub APPROVE / REQUEST_CHANGES (CLAUDE_CODE_OAUTH_TOKEN
+# is not a GitHub credential). Merge blocking stays with humans + required CI checks.
 on:
   issue_comment:
     types: [created]
@@ -31,35 +34,6 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Resolve PR number
-        id: pr
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          ISSUE_PR: ${{ github.event.issue.pull_request.html_url }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          if [ "$EVENT_NAME" = "issue_comment" ] && [ -n "$ISSUE_PR" ]; then
-            echo "number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT_NAME" = "pull_request_review_comment" ] || [ "$EVENT_NAME" = "pull_request_review" ]; then
-            echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          else
-            echo "number=" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Snapshot any committed planted verdict BEFORE Claude runs (action may re-checkout).
-      - name: Snapshot planted verdict blob
-        env:
-          VERDICT_FILE: claude-review-verdict.json
-        run: |
-          rm -f "$VERDICT_FILE" "${{ runner.temp }}/claude-review-verdict.json"
-          if git cat-file -e "HEAD:$VERDICT_FILE" 2>/dev/null; then
-            git show "HEAD:$VERDICT_FILE" > "${{ runner.temp }}/planted-verdict.json"
-            echo "Planted verdict present in HEAD — will reject identical session files."
-          else
-            rm -f "${{ runner.temp }}/planted-verdict.json"
-          fi
-
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -67,163 +41,6 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
-          # No gh api / gh pr review — only CI submits formal Claude OAuth reviews.
+          # Comment-only tools (Anthropic-documented review pattern).
           claude_args: |
-            --allowedTools "Write,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
-            --append-system-prompt "When reviewing a pull request (including a bare @claude on a PR), you MUST write exactly one JSON file at path claude-review-verdict.json in the repository root before finishing. Schema: {\"verdict\":\"APPROVE\"|\"REQUEST_CHANGES\",\"body\":\"markdown review summary\"}. Use REQUEST_CHANGES for correctness, security, money-path, or other blocking issues. Use APPROVE when there are no blocking issues (nits may go in body). You may post explanatory comments with gh pr comment only. Do NOT run gh pr review or gh api — a CI step submits the formal review from your verdict file. If this is not a PR review request, do not write the verdict file."
-
-      - name: Submit formal PR review from verdict
-        id: submit
-        if: steps.pr.outputs.number != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CLAUDE_GH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          VERDICT_FILE: claude-review-verdict.json
-          PLANTED_FILE: ${{ runner.temp }}/planted-verdict.json
-          BLOCK_LABEL: claude-changes-requested
-          SENTINEL: '<!-- fx-remit-claude-formal-review -->'
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          # Claude action may restore a committed planted file with a fresh mtime.
-          # Only trust content that is NOT identical to the HEAD blob snapshot.
-          trust_verdict=false
-          if [ -f "$VERDICT_FILE" ]; then
-            if [ -f "$PLANTED_FILE" ] && cmp -s "$VERDICT_FILE" "$PLANTED_FILE"; then
-              echo "Rejecting verdict file identical to planted HEAD blob."
-            else
-              # Must be valid JSON with a known verdict key.
-              if python3 -c 'import json,sys; v=json.load(open(sys.argv[1])).get("verdict","").strip().upper(); sys.exit(0 if v in ("APPROVE","APPROVED","REQUEST_CHANGES","CHANGES_REQUESTED") else 1)' "$VERDICT_FILE"; then
-                trust_verdict=true
-              else
-                echo "Rejecting verdict file with invalid schema."
-              fi
-            fi
-          fi
-
-          ensure_block_label() {
-            gh label create "$BLOCK_LABEL" --color B60205 --description "Claude formal review requested changes / CI fail-closed" 2>/dev/null || true
-            gh pr edit "$PR_NUMBER" --add-label "$BLOCK_LABEL"
-          }
-
-          clear_block_label() {
-            gh pr edit "$PR_NUMBER" --remove-label "$BLOCK_LABEL" 2>/dev/null || true
-          }
-
-          disable_automerge() {
-            node_id=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .node_id)
-            gh api graphql -f query='
-              mutation($id:ID!) {
-                disablePullRequestAutoMerge(input:{pullRequestId:$id}) {
-                  pullRequest { number }
-                }
-              }' -f id="$node_id" || true
-          }
-
-          # Fail closed without github-actions REQUEST_CHANGES (that blocks native merge).
-          fail_closed() {
-            local msg="$1"
-            echo "$msg"
-            gh pr comment "$PR_NUMBER" --body "${msg}"$'\n\n'"${SENTINEL}"
-            ensure_block_label
-            disable_automerge
-            exit 1
-          }
-
-          if [ "$trust_verdict" != true ]; then
-            fail_closed "Claude finished without a trusted session verdict (missing, invalid, or identical to a planted HEAD file). Blocking via label \`$BLOCK_LABEL\`."
-          fi
-
-          verdict=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["verdict"].strip().upper())' "$VERDICT_FILE")
-          body=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("body") or "")' "$VERDICT_FILE")
-          rm -f "$VERDICT_FILE"
-
-          if [ -z "$body" ]; then
-            body="Claude review verdict: $verdict"
-          fi
-
-          {
-            printf '%s\n\n' "$body"
-            printf '%s\n' "$SENTINEL"
-          } > /tmp/claude-review-body.md
-
-          # Formal reviews are submitted ONLY with Claude OAuth (never GITHUB_TOKEN).
-          create_claude_review() {
-            local event="$1"
-            GH_TOKEN="$CLAUDE_GH_TOKEN" gh api --method POST "repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
-              -f event="$event" \
-              -F "body=@/tmp/claude-review-body.md"
-          }
-
-          verify_claude_review_id() {
-            local review_id="$1"
-            local want="$2"
-            GH_TOKEN="$CLAUDE_GH_TOKEN" gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${review_id}" \
-              | WANT_STATE="$want" python3 -c '
-          import json,os,sys
-          r=json.load(sys.stdin)
-          want=os.environ["WANT_STATE"]
-          login=((r.get("user") or {}).get("login") or "").lower()
-          body=r.get("body") or ""
-          state=(r.get("state") or "").upper()
-          ok=(
-            login in ("claude[bot]", "claude")
-            and "<!-- fx-remit-claude-formal-review -->" in body
-            and state==want
-          )
-          if not ok:
-            print("Review %s login=%s state=%s failed verification" % (r.get("id"), login, state), file=sys.stderr)
-          sys.exit(0 if ok else 1)
-          '
-          }
-
-          case "$verdict" in
-            APPROVE|APPROVED)
-              echo "Submitting APPROVE on PR #$PR_NUMBER via Claude OAuth"
-              if ! response=$(create_claude_review APPROVE); then
-                fail_closed "Claude OAuth APPROVE failed. Blocking via label \`$BLOCK_LABEL\`."
-              fi
-              review_id=$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-              verify_claude_review_id "$review_id" APPROVED
-              clear_block_label
-              echo "Formal APPROVE id=$review_id verified."
-              ;;
-            REQUEST_CHANGES|CHANGES_REQUESTED)
-              echo "Submitting REQUEST_CHANGES on PR #$PR_NUMBER via Claude OAuth"
-              if ! response=$(create_claude_review REQUEST_CHANGES); then
-                fail_closed "Claude OAuth REQUEST_CHANGES failed. Blocking via label \`$BLOCK_LABEL\`."
-              fi
-              review_id=$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-              verify_claude_review_id "$review_id" CHANGES_REQUESTED
-              ensure_block_label
-              disable_automerge
-              echo "Formal REQUEST_CHANGES id=$review_id verified."
-              ;;
-            *)
-              fail_closed "Invalid verdict '$verdict'. Blocking via label \`$BLOCK_LABEL\`."
-              ;;
-          esac
-
-      - name: Fail closed when formal review missing
-        if: always() && steps.pr.outputs.number != '' && (failure() || cancelled())
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          BLOCK_LABEL: claude-changes-requested
-          SENTINEL: '<!-- fx-remit-claude-formal-review -->'
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          # Do not post github-actions REQUEST_CHANGES — it blocks native merge and is impersonable.
-          gh label create "$BLOCK_LABEL" --color B60205 --description "Claude formal review requested changes / CI fail-closed" 2>/dev/null || true
-          gh pr edit "$PR_NUMBER" --add-label "$BLOCK_LABEL" || true
-          gh pr comment "$PR_NUMBER" --body "Claude formal-review CI failed or was cancelled. Auto-merge is blocked until the \`$BLOCK_LABEL\` label is cleared by a successful Claude APPROVE or a human."$'\n\n'"$SENTINEL" || true
-          node_id=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .node_id)
-          gh api graphql -f query='
-            mutation($id:ID!) {
-              disablePullRequestAutoMerge(input:{pullRequestId:$id}) {
-                pullRequest { number }
-              }
-            }' -f id="$node_id" || true
+            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue comment:*),Bash(gh issue view:*)"

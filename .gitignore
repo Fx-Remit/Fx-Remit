@@ -46,6 +46,3 @@ packages/services/.sep24-interactive-url.txt
 
 # API
 packages/api/tsconfig.json
-
-# Claude CI formal-review verdict (written by @claude job; never commit)
-claude-review-verdict.json
