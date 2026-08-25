@@ -34,7 +34,14 @@ export class ProviderOrderStillLiveError extends Error {
 
 const LEDGER_RESTORED_STATUSES: Status[] = ["FAILED", "REFUNDING"];
 // Once a remittance reaches any of these it is settled/reversed — never transition out.
-const TERMINAL_STATUSES: Status[] = ["COMPLETED", "FAILED", "REFUNDING"];
+// REFUND_REQUIRED is an ops hold : Paycrest must not move it; only restoreRefundRequired /
+// completeRefundRequiredAfterOnChainCredit may leave it.
+const TERMINAL_STATUSES: Status[] = [
+  "COMPLETED",
+  "FAILED",
+  "REFUNDING",
+  "REFUND_REQUIRED",
+];
 
 export interface TransactionResponse {
   id: string;
@@ -652,6 +659,233 @@ export class TransactionService {
    */
   static isOnChainTxHash(txHash: string | null | undefined): boolean {
     return !!txHash && /^0x[a-fA-F0-9]{64}$/.test(txHash);
+  }
+
+  /**
+   * Orphan VERIFIED remittance missing recipient metadata (#96).
+   *
+   * - Placeholder hash: restore spendable immediately and mark FAILED (never left on-chain).
+   * - On-chain hash: set REFUND_REQUIRED without restore (funds at gateway; Alchemy may
+   *   later creditInboundDeposit). Ops must call restoreRefundRequired (write-off) or
+   *   completeRefundRequiredAfterOnChainCredit (refund already landed) — or wait for TTL.
+   */
+  static async flagOrphanRefundRequired(tx: {
+    id: string;
+    userId: string;
+    orderId: bigint;
+    amountUsd: Prisma.Decimal | number | string;
+    status: Status;
+    txHash: string;
+    externalId: string | null;
+  }): Promise<{
+    outcome: "restored_failed" | "flagged" | "skipped";
+    transaction: Transaction | null;
+  }> {
+    if (tx.status !== "VERIFIED") {
+      const current = await prisma.transaction.findUnique({ where: { id: tx.id } });
+      return { outcome: "skipped", transaction: current };
+    }
+
+    if (!this.isOnChainTxHash(tx.txHash)) {
+      const updated = await this.failAndReleasePlaceholderCas(tx);
+      console.warn(
+        JSON.stringify({
+          audit: "ORPHAN_PLACEHOLDER_RESTORED",
+          transactionId: tx.id,
+          orderId: tx.orderId.toString(),
+          amountUsd: String(tx.amountUsd),
+          message:
+            "Orphan remittance had placeholder hash; ledger restored and marked FAILED",
+        }),
+      );
+      return { outcome: "restored_failed", transaction: updated };
+    }
+
+    const claimed = await prisma.transaction.updateMany({
+      where: { id: tx.id, status: "VERIFIED", type: "REMITTANCE" },
+      data: {
+        status: "REFUND_REQUIRED",
+        updatedAt: new Date(),
+      },
+    });
+    if (claimed.count !== 1) {
+      const current = await prisma.transaction.findUnique({ where: { id: tx.id } });
+      return { outcome: "skipped", transaction: current };
+    }
+
+    console.error(
+      JSON.stringify({
+        alert: "REFUND_REQUIRED",
+        severity: "high",
+        transactionId: tx.id,
+        orderId: tx.orderId.toString(),
+        amountUsd: String(tx.amountUsd),
+        txHash: tx.txHash,
+        externalId: tx.externalId,
+        message:
+          "Orphan gateway-funded remittance missing recipient metadata; spendable reserved until ops restore, on-chain refund credit, or REFUND_REQUIRED_TTL_MS auto-restore",
+      }),
+    );
+
+    const flagged = await prisma.transaction.findUnique({ where: { id: tx.id } });
+    return { outcome: "flagged", transaction: flagged };
+  }
+
+  /**
+   * Ops / TTL write-off (#96): REFUND_REQUIRED → FAILED and restore spendable.
+   * Only use when no on-chain Paycrest refund will also credit via creditInboundDeposit
+   * (otherwise the user is double-credited). Prefer completeRefundRequiredAfterOnChainCredit
+   * when the refund deposit already landed.
+   */
+  static async restoreRefundRequired(transactionId: string) {
+    const tx = await prisma.transaction.findUnique({ where: { id: transactionId } });
+    if (!tx || tx.type !== "REMITTANCE") {
+      return tx;
+    }
+    if (tx.status !== "REFUND_REQUIRED") {
+      return tx;
+    }
+
+    return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
+      const claimed = await client.transaction.updateMany({
+        where: {
+          id: tx.id,
+          status: "REFUND_REQUIRED",
+          type: "REMITTANCE",
+        },
+        data: {
+          status: "FAILED",
+          updatedAt: new Date(),
+        },
+      });
+      if (claimed.count !== 1) {
+        return await client.transaction.findUnique({ where: { id: tx.id } });
+      }
+
+      await client.user.update({
+        where: { id: tx.userId },
+        data: {
+          walletBalance: { increment: tx.amountUsd },
+          totalSentUsd: { decrement: tx.amountUsd },
+        },
+      });
+
+      console.warn(
+        JSON.stringify({
+          audit: "REFUND_REQUIRED_LEDGER_RESTORED",
+          transactionId: tx.id,
+          orderId: tx.orderId.toString(),
+          amountUsd: tx.amountUsd.toString(),
+          txHash: tx.txHash,
+        }),
+      );
+
+      return await client.transaction.findUnique({ where: { id: tx.id } });
+    });
+  }
+
+  /**
+   * Ops path (#96): REFUND_REQUIRED → FAILED with no ledger restore because
+   * creditInboundDeposit already returned spendable for the on-chain refund.
+   */
+  static async completeRefundRequiredAfterOnChainCredit(transactionId: string) {
+    const tx = await prisma.transaction.findUnique({ where: { id: transactionId } });
+    if (!tx || tx.type !== "REMITTANCE" || tx.status !== "REFUND_REQUIRED") {
+      return tx;
+    }
+
+    const claimed = await prisma.transaction.updateMany({
+      where: {
+        id: tx.id,
+        status: "REFUND_REQUIRED",
+        type: "REMITTANCE",
+      },
+      data: {
+        status: "FAILED",
+        updatedAt: new Date(),
+      },
+    });
+    if (claimed.count !== 1) {
+      return await prisma.transaction.findUnique({ where: { id: tx.id } });
+    }
+
+    console.warn(
+      JSON.stringify({
+        audit: "REFUND_REQUIRED_CLOSED_AFTER_ONCHAIN_CREDIT",
+        transactionId: tx.id,
+        orderId: tx.orderId.toString(),
+        amountUsd: tx.amountUsd.toString(),
+        txHash: tx.txHash,
+      }),
+    );
+
+    return await prisma.transaction.findUnique({ where: { id: tx.id } });
+  }
+
+  /**
+   * Count open REFUND_REQUIRED remittances for cron / monitoring (#96).
+   */
+  static async countOpenRefundRequired() {
+    return prisma.transaction.count({
+      where: { type: "REMITTANCE", status: "REFUND_REQUIRED" },
+    });
+  }
+
+  /**
+   * After REFUND_REQUIRED_TTL_MS (default 7d; set 0 to disable), auto write-off
+   * via restoreRefundRequired with an audit log (#96).
+   */
+  static async expireStaleRefundRequired(opts?: {
+    olderThanMs?: number;
+    limit?: number;
+  }) {
+    const olderThanMs =
+      opts?.olderThanMs ??
+      Number(process.env.REFUND_REQUIRED_TTL_MS ?? 7 * 24 * 60 * 60 * 1000);
+    if (!Number.isFinite(olderThanMs) || olderThanMs <= 0) {
+      return { scanned: 0, restored: 0, failed: 0, disabled: true as const };
+    }
+
+    const limit = opts?.limit ?? 100;
+    const cutoff = new Date(Date.now() - olderThanMs);
+    const stale = await prisma.transaction.findMany({
+      where: {
+        type: "REMITTANCE",
+        status: "REFUND_REQUIRED",
+        updatedAt: { lte: cutoff },
+      },
+      select: { id: true },
+      take: limit,
+      orderBy: { updatedAt: "asc" },
+    });
+
+    let restored = 0;
+    let failed = 0;
+    for (const row of stale) {
+      try {
+        const updated = await this.restoreRefundRequired(row.id);
+        if (updated?.status === "FAILED") {
+          restored += 1;
+          console.warn(
+            JSON.stringify({
+              audit: "REFUND_REQUIRED_TTL_AUTO_RESTORE",
+              transactionId: row.id,
+              olderThanMs,
+            }),
+          );
+        } else {
+          failed += 1;
+        }
+      } catch (err) {
+        failed += 1;
+        console.error(
+          `[TransactionService] expireStaleRefundRequired failed for ${row.id}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    return { scanned: stale.length, restored, failed, disabled: false as const };
   }
 
   /**

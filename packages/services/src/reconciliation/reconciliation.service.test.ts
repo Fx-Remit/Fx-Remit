@@ -12,6 +12,8 @@ const originals = {
   findMany: prisma.transaction.findMany,
   update: prisma.transaction.update,
   updateMany: prisma.transaction.updateMany,
+  findUnique: prisma.transaction.findUnique,
+  dollarTransaction: prisma.$transaction,
 };
 
 const ZERO = '0x0000000000000000000000000000000000000000';
@@ -22,6 +24,8 @@ afterEach(() => {
   prisma.transaction.findMany = originals.findMany;
   prisma.transaction.update = originals.update;
   prisma.transaction.updateMany = originals.updateMany;
+  prisma.transaction.findUnique = originals.findUnique;
+  prisma.$transaction = originals.dollarTransaction;
   delete process.env.SUSPENSE_WALLET_ADDRESS;
   mock.restoreAll();
 });
@@ -29,6 +33,7 @@ afterEach(() => {
 function stuckTx(overrides: Record<string, unknown> = {}) {
   return {
     id: 'stuck-1',
+    userId: 'user-1',
     orderId: 99n,
     externalId: 'ext-99',
     sourceToken: 'USDC',
@@ -49,7 +54,7 @@ describe('ReconciliationService — happy paths', () => {
     prisma.transaction.findMany = mock.fn(async () => []) as any;
 
     const results = await ReconciliationService.reconcileStuckTransactions();
-    assert.deepEqual(results, { recovered: 0, flagged: 0, failed: 0 });
+    assert.deepEqual(results, { recovered: 0, flagged: 0, restored: 0, failed: 0 });
   });
 
   it('claims gateway-funded VERIFIED → PROCESSING without createPaycrestOrder (#95)', async () => {
@@ -75,7 +80,7 @@ describe('ReconciliationService — happy paths', () => {
     });
 
     const results = await ReconciliationService.reconcileStuckTransactions();
-    assert.deepEqual(results, { recovered: 1, flagged: 0, failed: 0 });
+    assert.deepEqual(results, { recovered: 1, flagged: 0, restored: 0, failed: 0 });
     assert.deepEqual(claimOrder, ['claim']);
     assert.equal(createOrder.mock.callCount(), 0);
     assert.equal(updateManyMock.mock.callCount(), 1);
@@ -101,7 +106,7 @@ describe('ReconciliationService — happy paths', () => {
     });
 
     const results = await ReconciliationService.reconcileStuckTransactions();
-    assert.deepEqual(results, { recovered: 1, flagged: 0, failed: 0 });
+    assert.deepEqual(results, { recovered: 1, flagged: 0, restored: 0, failed: 0 });
     assert.deepEqual(claimOrder, ['claim', 'create']);
     assert.equal(createOrder.mock.callCount(), 1);
   });
@@ -123,7 +128,7 @@ describe('ReconciliationService — happy paths', () => {
     assert.equal(results.recovered, 1);
   });
 
-  it('flags orphan txs missing recipient data as REFUND_REQUIRED', async () => {
+  it('flags on-chain orphan txs missing recipient data as REFUND_REQUIRED (#96)', async () => {
     prisma.transaction.findMany = mock.fn(async () => [
       stuckTx({
         externalId: null,
@@ -133,20 +138,76 @@ describe('ReconciliationService — happy paths', () => {
       }),
     ]) as any;
 
-    const updateMock = mock.fn(async (args: any) => {
+    prisma.transaction.updateMany = mock.fn(async (args: any) => {
       assert.equal(args.where.id, 'stuck-1');
+      assert.equal(args.where.status, 'VERIFIED');
       assert.equal(args.data.status, 'REFUND_REQUIRED');
-      return { id: 'stuck-1', status: 'REFUND_REQUIRED' };
-    });
-    prisma.transaction.update = updateMock as any;
+      return { count: 1 };
+    }) as any;
+    prisma.transaction.findUnique = mock.fn(async () => ({
+      id: 'stuck-1',
+      status: 'REFUND_REQUIRED',
+    })) as any;
 
     const createOrder = mock.method(PayoutService, 'createPaycrestOrder', async () => {
       throw new Error('should not create order');
     });
 
     const results = await ReconciliationService.reconcileStuckTransactions();
-    assert.deepEqual(results, { recovered: 0, flagged: 1, failed: 0 });
-    assert.equal(updateMock.mock.callCount(), 1);
+    assert.deepEqual(results, { recovered: 0, flagged: 1, restored: 0, failed: 0 });
+    assert.equal(createOrder.mock.callCount(), 0);
+  });
+
+  it('restores ledger for placeholder orphan missing recipient data (#96)', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      stuckTx({
+        externalId: null,
+        recipientAcc: null,
+        recipientName: null,
+        recipientBank: null,
+        txHash: 'pending-orphan-1',
+        amountUsd: 40,
+      }),
+    ]) as any;
+
+    const capture: { userUpdateArgs?: any; status?: string } = {};
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const client = {
+        transaction: {
+          updateMany: mock.fn(async (args: any) => {
+            capture.status = args.data.status;
+            assert.equal(args.where.status, 'VERIFIED');
+            return { count: 1 };
+          }),
+          update: mock.fn(async () => ({
+            id: 'stuck-1',
+            status: 'FAILED',
+            txHash: 'abandoned-stuck-1',
+          })),
+          findUnique: mock.fn(async () => ({
+            id: 'stuck-1',
+            status: 'FAILED',
+          })),
+        },
+        user: {
+          update: mock.fn(async (args: any) => {
+            capture.userUpdateArgs = args;
+            return { id: args.where.id };
+          }),
+        },
+      };
+      return cb(client);
+    }) as any;
+
+    const createOrder = mock.method(PayoutService, 'createPaycrestOrder', async () => {
+      throw new Error('should not create order');
+    });
+
+    const results = await ReconciliationService.reconcileStuckTransactions();
+    assert.deepEqual(results, { recovered: 0, flagged: 0, restored: 1, failed: 0 });
+    assert.equal(capture.status, 'FAILED');
+    assert.equal(capture.userUpdateArgs.where.id, 'user-1');
+    assert.equal(capture.userUpdateArgs.data.walletBalance.increment, 40);
     assert.equal(createOrder.mock.callCount(), 0);
   });
 });
@@ -168,7 +229,7 @@ describe('ReconciliationService — unhappy paths', () => {
     }));
 
     const results = await ReconciliationService.reconcileStuckTransactions();
-    assert.deepEqual(results, { recovered: 0, flagged: 0, failed: 1 });
+    assert.deepEqual(results, { recovered: 0, flagged: 0, restored: 0, failed: 1 });
     // Claim then revert
     assert.deepEqual(updates, ['PROCESSING', 'VERIFIED']);
   });
@@ -184,7 +245,7 @@ describe('ReconciliationService — unhappy paths', () => {
     }));
 
     const results = await ReconciliationService.reconcileStuckTransactions();
-    assert.deepEqual(results, { recovered: 0, flagged: 0, failed: 1 });
+    assert.deepEqual(results, { recovered: 0, flagged: 0, restored: 0, failed: 1 });
     assert.equal(createOrder.mock.callCount(), 0);
   });
 
@@ -198,7 +259,7 @@ describe('ReconciliationService — unhappy paths', () => {
     }));
 
     const results = await ReconciliationService.reconcileStuckTransactions();
-    assert.deepEqual(results, { recovered: 0, flagged: 0, failed: 1 });
+    assert.deepEqual(results, { recovered: 0, flagged: 0, restored: 0, failed: 1 });
     assert.equal(createOrder.mock.callCount(), 0);
   });
 
@@ -212,7 +273,7 @@ describe('ReconciliationService — unhappy paths', () => {
     });
 
     const results = await ReconciliationService.reconcileStuckTransactions();
-    assert.deepEqual(results, { recovered: 0, flagged: 0, failed: 1 });
+    assert.deepEqual(results, { recovered: 0, flagged: 0, restored: 0, failed: 1 });
   });
 
   it('skips create when claim loses the VERIFIED race', async () => {
@@ -223,7 +284,7 @@ describe('ReconciliationService — unhappy paths', () => {
     });
 
     const results = await ReconciliationService.reconcileStuckTransactions();
-    assert.deepEqual(results, { recovered: 0, flagged: 0, failed: 0 });
+    assert.deepEqual(results, { recovered: 0, flagged: 0, restored: 0, failed: 0 });
     assert.equal(createOrder.mock.callCount(), 0);
   });
 });
