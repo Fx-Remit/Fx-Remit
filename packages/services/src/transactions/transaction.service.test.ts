@@ -306,7 +306,7 @@ describe('TransactionService.updateFromPaycrest — happy paths', () => {
     const result = await TransactionService.updateFromPaycrest('ext-1', 'FAILED');
     assert.equal(result?.status, 'FAILED');
     assert.deepEqual(capture.updateManyArgs.where.status, {
-      notIn: ['COMPLETED', 'FAILED', 'REFUNDING'],
+      notIn: ['COMPLETED', 'FAILED', 'REFUNDING', 'REFUND_REQUIRED'],
     });
     assert.equal(capture.userUpdateArgs.data.walletBalance.increment, 25);
   });
@@ -1199,6 +1199,187 @@ describe('TransactionService.attachOnChainHash', () => {
       txHash: HASH,
     });
     assert.equal(result?.status, 'COMPLETED');
+  });
+});
+
+describe('TransactionService REFUND_REQUIRED ops paths (#96)', () => {
+  const ON_CHAIN =
+    '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+  it('restoreRefundRequired credits wallet and marks FAILED', async () => {
+    const existing = sampleTx({
+      status: 'REFUND_REQUIRED',
+      amountUsd: 25 as any,
+      txHash: ON_CHAIN,
+    });
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({ status: 'FAILED', amountUsd: 25 as any, txHash: ON_CHAIN }),
+    ) as any;
+
+    const capture: { userUpdateArgs?: any } = {};
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const client = {
+        transaction: {
+          updateMany: mock.fn(async (args: any) => {
+            assert.equal(args.where.status, 'REFUND_REQUIRED');
+            assert.equal(args.data.status, 'FAILED');
+            return { count: 1 };
+          }),
+          findUnique: mock.fn(async () =>
+            sampleTx({ status: 'FAILED', amountUsd: 25 as any, txHash: ON_CHAIN }),
+          ),
+        },
+        user: {
+          update: mock.fn(async (args: any) => {
+            capture.userUpdateArgs = args;
+            return { id: args.where.id };
+          }),
+        },
+      };
+      // First findUnique outside $transaction
+      return cb(client);
+    }) as any;
+
+    // Outside findUnique for the initial load
+    let calls = 0;
+    prisma.transaction.findUnique = mock.fn(async () => {
+      calls += 1;
+      return calls === 1
+        ? existing
+        : sampleTx({ status: 'FAILED', amountUsd: 25 as any, txHash: ON_CHAIN });
+    }) as any;
+
+    const result = await TransactionService.restoreRefundRequired('tx-1');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(capture.userUpdateArgs.data.walletBalance.increment, 25);
+  });
+
+  it('completeRefundRequiredAfterOnChainCredit closes without ledger restore', async () => {
+    const existing = sampleTx({
+      status: 'REFUND_REQUIRED',
+      amountUsd: 25 as any,
+      txHash: ON_CHAIN,
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+    prisma.transaction.updateMany = mock.fn(async (args: any) => {
+      assert.equal(args.data.status, 'FAILED');
+      return { count: 1 };
+    }) as any;
+    const dollar = mock.fn(async () => {
+      throw new Error('should not open ledger restore');
+    });
+    prisma.$transaction = dollar as any;
+
+    // Second findUnique after claim
+    let n = 0;
+    prisma.transaction.findUnique = mock.fn(async () => {
+      n += 1;
+      return n === 1
+        ? existing
+        : sampleTx({ status: 'FAILED', amountUsd: 25 as any, txHash: ON_CHAIN });
+    }) as any;
+
+    const result =
+      await TransactionService.completeRefundRequiredAfterOnChainCredit('tx-1');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(dollar.mock.callCount(), 0);
+  });
+
+  it('expireStaleRefundRequired is disabled when TTL is 0', async () => {
+    process.env.REFUND_REQUIRED_TTL_MS = '0';
+    const result = await TransactionService.expireStaleRefundRequired();
+    assert.equal(result.disabled, true);
+    assert.equal(result.restored, 0);
+    assert.equal(result.escalated, 0);
+    delete process.env.REFUND_REQUIRED_TTL_MS;
+  });
+
+  it('expireStaleRefundRequired escalates on-chain holds without ledger restore', async () => {
+    const ON_CHAIN =
+      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-rr',
+        txHash: ON_CHAIN,
+        refundTxHash: null,
+        amountUsd: { toString: () => '25' },
+        orderId: 1n,
+      },
+    ]) as any;
+    const restore = mock.method(
+      TransactionService,
+      'restoreRefundRequired',
+      async () => {
+        throw new Error('must not restore on-chain TTL');
+      },
+    );
+
+    const result = await TransactionService.expireStaleRefundRequired({
+      olderThanMs: 1,
+    });
+    assert.equal(result.escalated, 1);
+    assert.equal(result.restored, 0);
+    assert.equal(restore.mock.callCount(), 0);
+  });
+
+  it('expireStaleRefundRequired escalates unknown-* holds without ledger restore', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-rr',
+        txHash: 'unknown-42-8453',
+        refundTxHash: null,
+        amountUsd: { toString: () => '25' },
+        orderId: 1n,
+      },
+    ]) as any;
+    const restore = mock.method(
+      TransactionService,
+      'restoreRefundRequired',
+      async () => {
+        throw new Error('must not restore unknown-* TTL');
+      },
+    );
+
+    const result = await TransactionService.expireStaleRefundRequired({
+      olderThanMs: 1,
+    });
+    assert.equal(result.escalated, 1);
+    assert.equal(result.restored, 0);
+    assert.equal(restore.mock.callCount(), 0);
+  });
+
+  it('expireStaleRefundRequired closes when refundTxHash already set', async () => {
+    const ON_CHAIN =
+      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        id: 'tx-rr',
+        txHash: ON_CHAIN,
+        refundTxHash: '0xrefund',
+        amountUsd: { toString: () => '25' },
+        orderId: 1n,
+      },
+    ]) as any;
+    const complete = mock.method(
+      TransactionService,
+      'completeRefundRequiredAfterOnChainCredit',
+      async () => sampleTx({ status: 'FAILED', id: 'tx-rr' }),
+    );
+    const restore = mock.method(
+      TransactionService,
+      'restoreRefundRequired',
+      async () => {
+        throw new Error('must not restore when refund linked');
+      },
+    );
+
+    const result = await TransactionService.expireStaleRefundRequired({
+      olderThanMs: 1,
+    });
+    assert.equal(result.closedAfterCredit, 1);
+    assert.equal(result.restored, 0);
+    assert.equal(complete.mock.callCount(), 1);
+    assert.equal(restore.mock.callCount(), 0);
   });
 });
 

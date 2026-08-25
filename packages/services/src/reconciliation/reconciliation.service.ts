@@ -38,6 +38,7 @@ export class ReconciliationService {
     const results = {
       recovered: 0,
       flagged: 0,
+      restored: 0,
       failed: 0,
     };
 
@@ -131,18 +132,26 @@ export class ReconciliationService {
           }
         } else {
           console.warn(
-            `[ReconciliationService] Flagging Transaction ${tx.id} for manual refund (missing recipient data)`,
+            `[ReconciliationService] Orphan remittance ${tx.id} missing recipient data (#96)`,
           );
 
-          await prisma.transaction.update({
-            where: { id: tx.id },
-            data: {
-              status: 'REFUND_REQUIRED',
-              updatedAt: new Date(),
-            },
+          const flagged = await TransactionService.flagOrphanRefundRequired({
+            id: tx.id,
+            userId: tx.userId,
+            orderId: tx.orderId,
+            amountUsd: tx.amountUsd,
+            status: tx.status,
+            txHash: tx.txHash,
+            externalId: tx.externalId,
           });
 
-          results.flagged++;
+          if (flagged.outcome === 'flagged') {
+            results.flagged++;
+          } else if (flagged.outcome === 'restored_failed') {
+            results.restored++;
+          } else {
+            results.failed++;
+          }
         }
       } catch (error: any) {
         console.error(
@@ -165,12 +174,29 @@ export class ReconciliationService {
   }
 
   /**
-   * Full cron pass: expire abandoned pending remittances + recovery + deposits + Notify.
+   * Full cron pass: expire abandoned pendings + REFUND_REQUIRED TTL + recovery +
+   * deposits + Notify. Surfaces refundRequiredOpen for monitoring (#96).
    */
   static async reconcileAll() {
     const expiredPendings = await this.expireAbandonedPendings();
+    const expiredRefundRequired =
+      await TransactionService.expireStaleRefundRequired();
     const remittances = await this.reconcileStuckTransactions();
     const deposits = await this.reconcileDeposits();
+    const refundRequiredOpen =
+      await TransactionService.countOpenRefundRequired();
+
+    if (refundRequiredOpen > 0) {
+      console.error(
+        JSON.stringify({
+          alert: 'REFUND_REQUIRED_BACKLOG',
+          severity: 'high',
+          refundRequiredOpen,
+          message:
+            'Open REFUND_REQUIRED remittances — ops: restoreRefundRequired (write-off) or completeRefundRequiredAfterOnChainCredit (refund deposited)',
+        }),
+      );
+    }
 
     let notifyRegistered = 0;
     try {
@@ -191,7 +217,14 @@ export class ReconciliationService {
       console.error('[ReconciliationService] Notify backfill failed', err);
     }
 
-    return { expiredPendings, remittances, deposits, notifyRegistered };
+    return {
+      expiredPendings,
+      expiredRefundRequired,
+      remittances,
+      deposits,
+      notifyRegistered,
+      refundRequiredOpen,
+    };
   }
 
   /**
