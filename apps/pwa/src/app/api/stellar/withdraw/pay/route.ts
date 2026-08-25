@@ -5,7 +5,13 @@ import {
   isValidPublicKey,
   completeSep24WithdrawPayment,
 } from '@fx-remit/services';
-import { isStellarApiEnabled, parseCorridor, resolveAnchorWebAuth } from '../../_lib';
+import {
+  isStellarApiEnabled,
+  parseCorridor,
+  requirePrivyAuth,
+  requireStellarTestSecretOperator,
+  resolveAnchorWebAuth,
+} from '../../_lib';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +19,9 @@ export const dynamic = 'force-dynamic';
  * Sandbox: after SEP-24 withdraw start, poll for memo → submit USDC Payment → poll status.
  * Payment is always signed with STELLAR_TEST_SECRET. Freighter authToken / signedChallenge
  * are only accepted when `account` matches that secret’s public key (server still pays).
+ *
+ * Requires Privy Bearer JWT (#92) whose DID is in STELLAR_TEST_OPERATOR_PRIVY_DIDS —
+ * any logged-in user must not spend the shared hot wallet.
  *
  * POST {
  *   corridor, transaction_id, amount?,
@@ -25,6 +34,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Stellar rail disabled' }, { status: 404 });
   }
 
+  const auth = await requirePrivyAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
   const secret = process.env.STELLAR_TEST_SECRET?.trim();
   if (!secret) {
     return NextResponse.json(
@@ -35,6 +47,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+
+  const operatorDenied = requireStellarTestSecretOperator(auth.userId);
+  if (operatorDenied) return operatorDenied;
 
   let body: {
     corridor?: string;

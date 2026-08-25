@@ -2,11 +2,14 @@ process.env.NEXT_PUBLIC_STELLAR_ENABLED = 'true';
 process.env.STELLAR_NETWORK = 'testnet';
 process.env.DATABASE_URL ??=
   'postgresql://postgres:postgres@localhost:5432/postgres';
+process.env.NEXT_PUBLIC_PRIVY_APP_ID ??= 'test-privy-app';
+process.env.PRIVY_APP_SECRET ??= 'test-privy-secret';
 
 import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { NextRequest } from 'next/server';
 import { Keypair } from '@stellar/stellar-sdk';
+import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
 import {
   Sep10Client,
@@ -28,6 +31,7 @@ afterEach(() => {
   mock.restoreAll();
   clearAnchorTomlCache();
   delete process.env.STELLAR_TEST_SECRET;
+  delete process.env.STELLAR_TEST_OPERATOR_PRIVY_DIDS;
   prisma.user.findUnique = prismaOriginals.userFindUnique;
   prisma.transaction.findFirst = prismaOriginals.txFindFirst;
   prisma.transaction.create = prismaOriginals.txCreate;
@@ -35,6 +39,7 @@ afterEach(() => {
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_STELLAR_ENABLED = 'true';
+  process.env.STELLAR_TEST_OPERATOR_PRIVY_DIDS = 'did:privy:test';
   clearAnchorTomlCache();
   delete process.env.STELLAR_TEST_SECRET;
   seedAnchorTomlCache('testanchor.stellar.org', {
@@ -43,12 +48,19 @@ beforeEach(() => {
   });
   // Default: no app user → skip DB persist (smoke-safe)
   prisma.user.findUnique = (async () => null) as any;
+  mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
+    userId: 'did:privy:test',
+  }));
 });
 
-function postJson(body: unknown) {
+function postJson(body: unknown, opts?: { authorization?: string | null }) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (opts?.authorization !== null) {
+    headers.Authorization = opts?.authorization ?? 'Bearer test-token';
+  }
   return new NextRequest('http://localhost/api/stellar/withdraw/start', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
 }
@@ -60,6 +72,31 @@ function mockWithdrawOk() {
     type: 'interactive_customer_info_needed',
   }));
 }
+
+describe('POST /api/stellar/withdraw/start — auth (#92)', () => {
+  it('returns 401 without Authorization', async () => {
+    const res = await POST(
+      postJson({ corridor: 'NGN', amount: '1', account: ACCOUNT, authToken: 'jwt' }, {
+        authorization: null,
+      }),
+    );
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.error, 'Unauthorized');
+  });
+
+  it('returns 401 when Privy token is invalid', async () => {
+    mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => {
+      throw new Error('bad token');
+    });
+    const res = await POST(
+      postJson({ corridor: 'NGN', amount: '1', account: ACCOUNT, authToken: 'jwt' }),
+    );
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.match(body.error, /Invalid authentication/);
+  });
+});
 
 describe('POST /api/stellar/withdraw/start — Freighter authToken', () => {
   it('starts withdraw with authToken and no server secret', async () => {
@@ -110,7 +147,7 @@ describe('POST /api/stellar/withdraw/start — signedChallenge', () => {
 });
 
 describe('POST /api/stellar/withdraw/start — STELLAR_TEST_SECRET smoke', () => {
-  it('still authenticates with server secret', async () => {
+  it('still authenticates with server secret when DID is allowlisted', async () => {
     const kp = Keypair.random();
     process.env.STELLAR_TEST_SECRET = kp.secret();
     mockWithdrawOk();
@@ -124,6 +161,24 @@ describe('POST /api/stellar/withdraw/start — STELLAR_TEST_SECRET smoke', () =>
     const body = await res.json();
     assert.equal(body.transaction_id, 'tx-withdraw-1');
     assert.equal(body.persisted, false);
+  });
+
+  it('returns 403 when operator allowlist is empty', async () => {
+    delete process.env.STELLAR_TEST_OPERATOR_PRIVY_DIDS;
+    process.env.STELLAR_TEST_SECRET = Keypair.random().secret();
+    const res = await POST(postJson({ corridor: 'NGN', amount: '1' }));
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.match(body.error, /STELLAR_TEST_OPERATOR_PRIVY_DIDS/);
+  });
+
+  it('returns 403 when Privy DID is not on operator allowlist', async () => {
+    process.env.STELLAR_TEST_OPERATOR_PRIVY_DIDS = 'did:privy:operator-only';
+    process.env.STELLAR_TEST_SECRET = Keypair.random().secret();
+    const res = await POST(postJson({ corridor: 'NGN', amount: '1' }));
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.match(body.error, /Not authorized/);
   });
 });
 

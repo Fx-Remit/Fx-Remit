@@ -9,7 +9,13 @@ import {
   resolveStellarPersistUser,
   type StellarCorridor,
 } from '@fx-remit/services';
-import { isStellarApiEnabled, parseCorridor, resolveAnchorWebAuth } from '../../_lib';
+import {
+  isStellarApiEnabled,
+  parseCorridor,
+  requirePrivyAuth,
+  requireStellarTestSecretOperator,
+  resolveAnchorWebAuth,
+} from '../../_lib';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,10 +23,13 @@ export const dynamic = 'force-dynamic';
  * Start SEP-24 interactive withdraw (sandbox/dev).
  * Not wired to production cash-out confirm yet.
  *
+ * Requires Privy Bearer JWT (#92) before any SEP-10 / STELLAR_TEST_SECRET path.
+ * Server-secret smoke additionally requires STELLAR_TEST_OPERATOR_PRIVY_DIDS.
+ *
  * Auth (first match):
  * 1. authToken + account — Freighter SEP-10 JWT already obtained
  * 2. signedChallenge + account — server exchanges signed XDR for JWT
- * 3. STELLAR_TEST_SECRET — server signs (smoke / CI)
+ * 3. STELLAR_TEST_SECRET — server signs (smoke / CI; operator DID only)
  *
  * Optional persist (sandbox only): writes rail=STELLAR only when a user is
  * linked to the SEP-10 `account` (`stellar_public_key` match). Optional
@@ -33,6 +42,9 @@ export async function POST(req: NextRequest) {
   if (!isStellarApiEnabled()) {
     return NextResponse.json({ error: 'Stellar rail disabled' }, { status: 404 });
   }
+
+  const privyAuth = await requirePrivyAuth(req);
+  if (privyAuth instanceof NextResponse) return privyAuth;
 
   let body: {
     corridor?: string;
@@ -99,6 +111,9 @@ export async function POST(req: NextRequest) {
       token = await sep10.submitTokenRequest(signedChallenge);
       account = bodyAccount;
     } else if (secret) {
+      const operatorDenied = requireStellarTestSecretOperator(privyAuth.userId);
+      if (operatorDenied) return operatorDenied;
+
       const keypair = keypairFromSecret(secret);
       account = bodyAccount ?? keypair.publicKey();
       const auth = await sep10.authenticate(account, anchor.homeDomain, keypair);

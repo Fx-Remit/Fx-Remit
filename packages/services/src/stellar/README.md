@@ -38,7 +38,12 @@ Set these in `apps/pwa/.env.local` (see `apps/pwa/.env.example`). Defaults keep 
 | `NEXT_PUBLIC_STELLAR_NETWORK` | PWA client | `testnet` (default) or `public` — Freighter / Horizon |
 | `STELLAR_NETWORK` | Server | `testnet` (default) or `public` — anchor pool |
 | `STELLAR_TEST_SECRET` | Server / scripts | Dev-only `S…` seed for SEP-10/24 smoke (never commit) |
+| `STELLAR_TEST_OPERATOR_PRIVY_DIDS` | Server | Comma-separated Privy DIDs allowed to use `STELLAR_TEST_SECRET` on HTTP withdraw routes |
 | `STELLAR_TEST_AMOUNT` | Scripts | Optional SEP-24 smoke amount (default `1`) |
+
+### Security (#92)
+
+**Never** set `NEXT_PUBLIC_STELLAR_ENABLED=true` together with `STELLAR_TEST_SECRET` on a publicly reachable host without both Privy and an operator allowlist. Mutating routes (`POST /api/stellar/withdraw/start`, `POST /api/stellar/withdraw/pay`) require an `Authorization: Bearer <Privy JWT>` (**401** if missing/invalid). Paths that sign with `STELLAR_TEST_SECRET` additionally require the caller’s Privy DID in `STELLAR_TEST_OPERATOR_PRIVY_DIDS` (**403** if the list is empty or the DID is not listed) — open Privy signup alone must not spend the shared sandbox hot wallet. Prefer Freighter user-signed Payment for real flows; the server seed is sandbox-only and must not be the sole payer in production.
 
 ## Testnet USDC (important)
 
@@ -79,9 +84,9 @@ With `NEXT_PUBLIC_STELLAR_ENABLED=true`, the PWA exposes:
 | -------- | ---- | ------- |
 | `POST /api/stellar/auth/challenge` | `{ account, corridor }` | challenge `transaction` XDR + `network_passphrase` |
 | `POST /api/stellar/auth/token` | `{ signedTransaction, corridor }` | anchor `token` (JWT) |
-| `POST /api/stellar/withdraw/start` | `{ corridor, amount, account, authToken }` **or** `signedChallenge` **or** server `STELLAR_TEST_SECRET` | `transaction_id` + `interactive_url` |
+| `POST /api/stellar/withdraw/start` | Privy Bearer + `{ corridor, amount, account, authToken }` **or** `signedChallenge` **or** server `STELLAR_TEST_SECRET` | `transaction_id` + `interactive_url` |
 
-Signing stays in Freighter (`signTransactionXdr` / `authenticateWithFreighter` in `apps/pwa/src/lib/stellar/`). No product cash-out UI — call the APIs from the client when wiring cash-out.
+`withdraw/start` and `withdraw/pay` require `Authorization: Bearer <Privy JWT>` (#92). Signing stays in Freighter (`signTransactionXdr` / `authenticateWithFreighter` in `apps/pwa/src/lib/stellar/`). No product cash-out UI — call the APIs from the client when wiring cash-out.
 
 SEP-38 against testanchor returns a **USD** stand-in rate (`demo_fiat`) — not NGN/KES.
 
@@ -106,7 +111,7 @@ The UI then treats the response as “not incomplete” and lands on an **empty 
 
 Friendbot + trustline expectations: fund the account with XLM via Friendbot, then add a trustline to testanchor USDC (`USDC_TESTNET_ISSUER`). Testanchor USDC withdraw limits are typically **1–10**. Starting interactive withdraw can succeed and return a hosted URL without a prior USDC balance; completing the flow later needs USDC on that trustline.
 
-API (dev): with `NEXT_PUBLIC_STELLAR_ENABLED=true`, either set `STELLAR_TEST_SECRET` and `POST { "corridor": "NGN", "amount": "1" }`, or pass Freighter `account` + `authToken` / `signedChallenge`.
+API (dev): with `NEXT_PUBLIC_STELLAR_ENABLED=true` and a Privy Bearer JWT, either set `STELLAR_TEST_SECRET` and `POST { "corridor": "NGN", "amount": "1" }`, or pass Freighter `account` + `authToken` / `signedChallenge`.
 
 ### Persist STELLAR remittance (sandbox)
 
@@ -124,7 +129,7 @@ STELLAR_TEST_SECRET=S... pnpm --filter @fx-remit/services stellar:sep24-pay-test
 STELLAR_TEST_SECRET=S... STELLAR_SEP24_TX_ID=<id> pnpm --filter @fx-remit/services stellar:sep24-pay-test
 ```
 
-API (dev): `POST /api/stellar/withdraw/pay` with `{ corridor, transaction_id }` and `STELLAR_TEST_SECRET`. If you pass Freighter `authToken` / `signedChallenge`, `account` is required and **must** equal the test secret’s `G…` (server still signs Payment). When `waitForTerminal: false`, response `status` is `pending_anchor` (not the pre-pay `pending_user_transfer_start`).
+API (dev): `POST /api/stellar/withdraw/pay` with Privy Bearer JWT, `{ corridor, transaction_id }`, and `STELLAR_TEST_SECRET`. If you pass Freighter `authToken` / `signedChallenge`, `account` is required and **must** equal the test secret’s `G…` (server still signs Payment). When `waitForTerminal: false`, response `status` is `pending_anchor` (not the pre-pay `pending_user_transfer_start`). Unauthenticated requests return **401**.
 
 ## Incremental build
 
