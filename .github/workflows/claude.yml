@@ -47,6 +47,16 @@ jobs:
             echo "number=" >> "$GITHUB_OUTPUT"
           fi
 
+      # Never trust a verdict already present in the PR tree (planted APPROVE).
+      - name: Clear planted verdict and stamp session
+        env:
+          VERDICT_FILE: claude-review-verdict.json
+        run: |
+          rm -f "$VERDICT_FILE"
+          date +%s > "${{ runner.temp }}/claude-verdict-epoch"
+          # Ensure a new write cannot race the stamp within the same second.
+          sleep 1
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -54,49 +64,133 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
-          # Claude must write a machine-readable verdict file.
-          # A deterministic follow-up step submits the formal GitHub review —
-          # do not rely on Claude calling gh pr review itself.
+          # No gh api / gh pr review — only the CI submit step may post formal reviews.
           claude_args: |
-            --allowedTools "Write,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*)"
-            --append-system-prompt "When reviewing a pull request (including a bare @claude on a PR), you MUST write exactly one JSON file at path claude-review-verdict.json in the repository root before finishing. Schema: {\"verdict\":\"APPROVE\"|\"REQUEST_CHANGES\",\"body\":\"markdown review summary\"}. Use REQUEST_CHANGES for correctness, security, money-path, or other blocking issues. Use APPROVE when there are no blocking issues (nits may go in body). You may also post explanatory comments with gh pr comment. Do NOT run gh pr review — a CI step submits the formal review from your verdict file. If this is not a PR review request, do not write the verdict file."
+            --allowedTools "Write,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --append-system-prompt "When reviewing a pull request (including a bare @claude on a PR), you MUST write exactly one JSON file at path claude-review-verdict.json in the repository root before finishing. Schema: {\"verdict\":\"APPROVE\"|\"REQUEST_CHANGES\",\"body\":\"markdown review summary\"}. Use REQUEST_CHANGES for correctness, security, money-path, or other blocking issues. Use APPROVE when there are no blocking issues (nits may go in body). You may post explanatory comments with gh pr comment only. Do NOT run gh pr review or gh api — a CI step submits the formal review from your verdict file. If this is not a PR review request, do not write the verdict file."
 
       - name: Submit formal PR review from verdict
+        id: submit
         if: steps.pr.outputs.number != ''
         env:
-          GH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          CLAUDE_GH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           VERDICT_FILE: claude-review-verdict.json
+          EPOCH_FILE: ${{ runner.temp }}/claude-verdict-epoch
+          SENTINEL: '<!-- fx-remit-claude-formal-review -->'
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          if [ ! -f "$VERDICT_FILE" ]; then
-            echo "Claude did not write $VERDICT_FILE — defaulting to REQUEST_CHANGES."
+          started=$(cat "$EPOCH_FILE")
+          trust_verdict=false
+          if [ -f "$VERDICT_FILE" ]; then
+            mtime=$(stat -c %Y "$VERDICT_FILE")
+            if [ "$mtime" -gt "$started" ]; then
+              trust_verdict=true
+            else
+              echo "Ignoring untrusted verdict file (mtime=$mtime started=$started)."
+            fi
+          fi
+
+          if [ "$trust_verdict" != true ]; then
+            echo "No session verdict — defaulting to REQUEST_CHANGES."
             verdict="REQUEST_CHANGES"
-            body="Claude finished without writing a formal verdict file (\`$VERDICT_FILE\`). Treating this as request-changes so auto-merge cannot proceed on a comment-only review. Re-run @claude or have a human review."
+            body="Claude finished without writing a trusted verdict file in this job. Treating this as request-changes so auto-merge cannot proceed on a comment-only review."
           else
             verdict=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["verdict"].strip().upper())' "$VERDICT_FILE")
             body=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("body") or "")' "$VERDICT_FILE")
           fi
 
+          # Drop the file so it cannot be reused or committed from this workspace.
+          rm -f "$VERDICT_FILE"
+
           if [ -z "$body" ]; then
             body="Claude review verdict: $verdict"
           fi
 
-          # Write body to a file to avoid shell-escaping issues.
-          printf '%s\n' "$body" > /tmp/claude-review-body.md
+          {
+            printf '%s\n\n' "$body"
+            printf '%s\n' "$SENTINEL"
+          } > /tmp/claude-review-body.md
+
+          submit_review() {
+            local token="$1"
+            local event="$2"
+            GH_TOKEN="$token" gh pr review "$PR_NUMBER" "$event" --body-file /tmp/claude-review-body.md
+          }
 
           case "$verdict" in
             APPROVE|APPROVED)
               echo "Submitting APPROVE on PR #$PR_NUMBER"
-              gh pr review "$PR_NUMBER" --approve --body-file /tmp/claude-review-body.md
+              if ! submit_review "$CLAUDE_GH_TOKEN" --approve; then
+                echo "APPROVE via Claude OAuth failed — failing closed with REQUEST_CHANGES via GITHUB_TOKEN."
+                submit_review "$GH_TOKEN" --request-changes
+                exit 1
+              fi
+              want_state="APPROVED"
               ;;
             REQUEST_CHANGES|CHANGES_REQUESTED)
               echo "Submitting REQUEST_CHANGES on PR #$PR_NUMBER"
-              gh pr review "$PR_NUMBER" --request-changes --body-file /tmp/claude-review-body.md
+              submit_review "$GH_TOKEN" --request-changes
+              want_state="CHANGES_REQUESTED"
               ;;
             *)
               echo "Invalid verdict '$verdict' — submitting REQUEST_CHANGES."
-              gh pr review "$PR_NUMBER" --request-changes --body-file /tmp/claude-review-body.md
+              submit_review "$GH_TOKEN" --request-changes
+              want_state="CHANGES_REQUESTED"
               ;;
           esac
+
+          # Verify a sentinel-marked review exists (do not fail-open on silent auth no-ops).
+          verify() {
+            local token="$1"
+            GH_TOKEN="$token" gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate \
+              | WANT_STATE="$want_state" python3 -c '
+          import json,os,sys
+          want=os.environ["WANT_STATE"]
+          reviews=json.load(sys.stdin)
+          ok=any(
+            "<!-- fx-remit-claude-formal-review -->" in (r.get("body") or "")
+            and (r.get("state") or "").upper()==want
+            for r in reviews
+          )
+          sys.exit(0 if ok else 1)
+          '
+          }
+
+          if ! verify "$GH_TOKEN"; then
+            if [ "$want_state" = "APPROVED" ]; then
+              verify "$CLAUDE_GH_TOKEN"
+            else
+              echo "Sentinel review not found after submit."
+              exit 1
+            fi
+          fi
+
+          echo "Formal review with sentinel verified on PR #$PR_NUMBER ($want_state)."
+
+      # Fail closed: if @claude ran on a PR but submit did not succeed, block auto-merge.
+      - name: Fail closed when formal review missing
+        if: always() && steps.pr.outputs.number != '' && (failure() || cancelled())
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          SENTINEL: '<!-- fx-remit-claude-formal-review -->'
+          REPO: ${{ github.repository }}
+        run: |
+          set +e
+          body=$(printf '%s\n\n%s\n' \
+            "Claude formal-review CI failed or was cancelled. Auto-merge is blocked until a human dismisses this review or @claude completes successfully." \
+            "$SENTINEL")
+          printf '%s\n' "$body" > /tmp/claude-fail-closed.md
+          gh pr review "$PR_NUMBER" --request-changes --body-file /tmp/claude-fail-closed.md
+
+          node_id=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .node_id)
+          gh api graphql -f query='
+            mutation($id:ID!) {
+              disablePullRequestAutoMerge(input:{pullRequestId:$id}) {
+                pullRequest { number }
+              }
+            }' -f id="$node_id" || true

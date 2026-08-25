@@ -1,8 +1,3 @@
-# Blocks merge when Claude's latest formal review is not APPROVE.
-# - CHANGES_REQUESTED / COMMENTED → fail + disable auto-merge
-# - APPROVED / DISMISSED / no Claude review → pass
-# (No Claude review = @claude was never asked; do not block those PRs.)
-# After merge: Settings → Branches → require status check "claude-review-gate".
 name: Claude review gate
 
 on:
@@ -27,22 +22,30 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const pull_number = context.payload.pull_request.number;
+            const SENTINEL = '<!-- fx-remit-claude-formal-review -->';
 
             const reviews = await github.paginate(
               github.rest.pulls.listReviews,
               { owner, repo, pull_number, per_page: 100 },
             );
 
-            const isClaude = (login) => {
+            const isLegacyClaudeLogin = (login) => {
               const name = (login || '').toLowerCase();
               return name === 'claude[bot]' || name === 'claude';
             };
 
-            const claudeReviews = reviews.filter((r) => isClaude(r.user?.login));
+            const isFormalClaudeReview = (r) => {
+              const body = r.body || '';
+              if (body.includes(SENTINEL)) return true;
+              return isLegacyClaudeLogin(r.user?.login);
+            };
+
+            const claudeReviews = reviews.filter(isFormalClaudeReview);
             const latest = claudeReviews.at(-1);
             const state = (latest?.state || 'NONE').toUpperCase();
+            const login = latest?.user?.login || '(none)';
 
-            core.info(`Latest Claude review state: ${state}`);
+            core.info(`Latest formal Claude review: state=${state} user=${login}`);
 
             const passStates = new Set(['NONE', 'APPROVED', 'DISMISSED']);
             if (passStates.has(state)) {
@@ -50,7 +53,6 @@ jobs:
               return;
             }
 
-            // CHANGES_REQUESTED, COMMENTED, PENDING, or anything else incomplete.
             try {
               await github.graphql(
                 `mutation($id: ID!) {
@@ -67,11 +69,11 @@ jobs:
 
             if (state === 'CHANGES_REQUESTED') {
               core.setFailed(
-                'Claude requested changes. Fix the findings and re-run @claude (or dismiss/approve as a human).',
+                'Claude requested changes. Fix the findings and re-run @claude (or dismiss that review as a human).',
               );
               return;
             }
 
             core.setFailed(
-              `Claude's latest review is "${state}" (not a formal APPROVE). Comment-only reviews do not count. Re-run @claude so CI can submit APPROVE or REQUEST_CHANGES.`,
+              `Claude's latest formal review is "${state}" (not APPROVE). Re-run @claude so CI can submit APPROVE or REQUEST_CHANGES.`,
             );
