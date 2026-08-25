@@ -43,6 +43,40 @@ export async function requirePrivyAuth(
   }
 }
 
+/** Comma-separated Privy DIDs allowed to use STELLAR_TEST_SECRET on HTTP routes. */
+export function stellarTestOperatorPrivyDids(): string[] {
+  return (process.env.STELLAR_TEST_OPERATOR_PRIVY_DIDS ?? '')
+    .split(',')
+    .map((d) => d.trim())
+    .filter(Boolean);
+}
+
+/**
+ * STELLAR_TEST_SECRET must only be used by allowlisted Privy DIDs.
+ * Open Privy signup alone must not spend the shared sandbox hot wallet.
+ */
+export function requireStellarTestSecretOperator(
+  privyUserId: string,
+): NextResponse | null {
+  const allowed = stellarTestOperatorPrivyDids();
+  if (allowed.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          'STELLAR_TEST_SECRET payments require STELLAR_TEST_OPERATOR_PRIVY_DIDS (comma-separated Privy DIDs)',
+      },
+      { status: 403 },
+    );
+  }
+  if (!allowed.includes(privyUserId)) {
+    return NextResponse.json(
+      { error: 'Not authorized to use STELLAR_TEST_SECRET' },
+      { status: 403 },
+    );
+  }
+  return null;
+}
+
 export function parseCorridor(raw: string | undefined): StellarCorridor | null {
   const corridor = raw?.toUpperCase() as StellarCorridor;
   if (!corridor || !STELLAR_CORRIDORS.includes(corridor)) {
@@ -61,6 +95,9 @@ export async function resolveAnchorWebAuth(corridor: StellarCorridor) {
   if (!toml.webAuthEndpoint) {
     throw new Error(`Anchor ${anchor.id} missing WEB_AUTH_ENDPOINT`);
   }
+  if (!toml.signingKey) {
+    throw new Error(`Anchor ${anchor.id} missing SIGNING_KEY`);
+  }
 
   return {
     network,
@@ -68,5 +105,6 @@ export async function resolveAnchorWebAuth(corridor: StellarCorridor) {
     anchor,
     toml,
     webAuthEndpoint: toml.webAuthEndpoint,
+    signingKey: toml.signingKey,
   };
 }

@@ -4,6 +4,8 @@ export type StellarNetwork = 'public' | 'testnet';
 
 export interface StellarTomlEndpoints {
   webAuthEndpoint?: string;
+  /** Anchor SIGNING_KEY (G…) — required to verify SEP-10 challenges before signing (#93). */
+  signingKey?: string;
   transferServerSep24?: string;
   transferServerSep6?: string;
   kycServerUrl?: string;

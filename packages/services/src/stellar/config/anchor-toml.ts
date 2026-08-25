@@ -66,6 +66,7 @@ function firstTomlValue(raw: string, keys: string[]): string | undefined {
 export function parseTomlEndpoints(raw: string): StellarTomlEndpoints {
   return {
     webAuthEndpoint: getTomlValue(raw, 'WEB_AUTH_ENDPOINT'),
+    signingKey: getTomlValue(raw, 'SIGNING_KEY'),
     transferServerSep24: firstTomlValue(raw, ['TRANSFER_SERVER_SEP0024', 'TRANSFER_SERVER']),
     transferServerSep6: getTomlValue(raw, 'TRANSFER_SERVER_SEP0006'),
     kycServerUrl: firstTomlValue(raw, ['KYC_SERVER_URL', 'KYC_SERVER']),

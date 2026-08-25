@@ -33,8 +33,11 @@ async function main() {
   if (!toml.webAuthEndpoint) {
     throw new Error('Test anchor missing WEB_AUTH_ENDPOINT');
   }
+  if (!toml.signingKey) {
+    throw new Error('Test anchor missing SIGNING_KEY');
+  }
 
-  const sep10 = new Sep10Client(toml.webAuthEndpoint, passphrase);
+  const sep10 = new Sep10Client(toml.webAuthEndpoint, passphrase, toml.signingKey);
   const { token } = await sep10.authenticate(
     keypair.publicKey(),
     TEST_ANCHOR.homeDomain,

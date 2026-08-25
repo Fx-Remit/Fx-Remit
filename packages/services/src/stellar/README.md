@@ -38,11 +38,12 @@ Set these in `apps/pwa/.env.local` (see `apps/pwa/.env.example`). Defaults keep 
 | `NEXT_PUBLIC_STELLAR_NETWORK` | PWA client | `testnet` (default) or `public` — Freighter / Horizon |
 | `STELLAR_NETWORK` | Server | `testnet` (default) or `public` — anchor pool |
 | `STELLAR_TEST_SECRET` | Server / scripts | Dev-only `S…` seed for SEP-10/24 smoke (never commit) |
+| `STELLAR_TEST_OPERATOR_PRIVY_DIDS` | Server | Comma-separated Privy DIDs allowed to use `STELLAR_TEST_SECRET` on HTTP withdraw routes |
 | `STELLAR_TEST_AMOUNT` | Scripts | Optional SEP-24 smoke amount (default `1`) |
 
 ### Security (#92)
 
-**Never** set `NEXT_PUBLIC_STELLAR_ENABLED=true` together with `STELLAR_TEST_SECRET` on a publicly reachable host without Privy. Mutating routes (`POST /api/stellar/withdraw/start`, `POST /api/stellar/withdraw/pay`) require an `Authorization: Bearer <Privy JWT>` and return **401** when unauthenticated. Prefer Freighter user-signed Payment for real flows; the server seed is sandbox-only and must not be the sole payer in production.
+**Never** set `NEXT_PUBLIC_STELLAR_ENABLED=true` together with `STELLAR_TEST_SECRET` on a publicly reachable host without both Privy and an operator allowlist. Mutating routes (`POST /api/stellar/withdraw/start`, `POST /api/stellar/withdraw/pay`) require an `Authorization: Bearer <Privy JWT>` (**401** if missing/invalid). Paths that sign with `STELLAR_TEST_SECRET` additionally require the caller’s Privy DID in `STELLAR_TEST_OPERATOR_PRIVY_DIDS` (**403** if the list is empty or the DID is not listed) — open Privy signup alone must not spend the shared sandbox hot wallet. Prefer Freighter user-signed Payment for real flows; the server seed is sandbox-only and must not be the sole payer in production.
 
 ## Testnet USDC (important)
 
