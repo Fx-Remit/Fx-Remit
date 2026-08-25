@@ -34,7 +34,7 @@ export default function BankCashOutPage() {
   
   const debouncedAmount = useDebounce(amountInput, 500);
   
-  const [token, setToken] = useState('USDT');
+  const [token, setToken] = useState('USDC');
   const [currency, setCurrency] = useState('NGN');
   
   const [isTokenSheetOpen, setIsTokenSheetOpen] = useState(false);
