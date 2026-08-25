@@ -227,19 +227,50 @@ export class TransactionService {
         newStatus === "VERIFIED" &&
         !existing;
 
-      if (shouldCreditDeposit || shouldDebitRemittance) {
+      if (shouldCreditDeposit) {
         await tx.user.update({
           where: { id: user.id },
           data: {
-            ...(shouldCreditDeposit
-              ? { walletBalance: { increment: amount } }
-              : { walletBalance: { decrement: amount } }),
-            totalSentUsd: {
-              increment: shouldDebitRemittance ? amount : 0,
-            },
+            walletBalance: { increment: amount },
             transactionCount: { increment: 1 },
           },
         });
+      } else if (shouldDebitRemittance) {
+        // Same gte CAS as createPending (#97) — never drive spendable negative.
+        const reserved = await tx.user.updateMany({
+          where: {
+            id: user.id,
+            walletBalance: { gte: amount },
+          },
+          data: {
+            walletBalance: { decrement: amount },
+            totalSentUsd: { increment: amount },
+            transactionCount: { increment: 1 },
+          },
+        });
+        if (reserved.count !== 1) {
+          await tx.transaction.update({
+            where: { id: dbTx.id },
+            data: {
+              status: "REFUND_REQUIRED",
+              updatedAt: new Date(),
+            },
+          });
+          console.error(
+            JSON.stringify({
+              alert: "INDEXER_DEBIT_INSUFFICIENT_BALANCE",
+              severity: "high",
+              transactionId: dbTx.id,
+              userId: user.id,
+              orderId: data.orderId.toString(),
+              amountUsd: amount.toString(),
+              txHash: data.txHash,
+              message:
+                "Indexer remittance created but walletBalance < amount; flagged REFUND_REQUIRED without debiting (fail closed)",
+            }),
+          );
+          return await tx.transaction.findUnique({ where: { id: dbTx.id } });
+        }
       }
 
       return dbTx;
