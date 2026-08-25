@@ -31,6 +31,22 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Resolve PR number
+        id: pr
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_PR: ${{ github.event.issue.pull_request.html_url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT_NAME" = "issue_comment" ] && [ -n "$ISSUE_PR" ]; then
+            echo "number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "pull_request_review_comment" ] || [ "$EVENT_NAME" = "pull_request_review" ]; then
+            echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -38,8 +54,49 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
-          # Formal APPROVE / REQUEST_CHANGES is required for PR reviews.
-          # Comment-only reviews do not stop GitHub auto-merge.
+          # Claude must write a machine-readable verdict file.
+          # A deterministic follow-up step submits the formal GitHub review —
+          # do not rely on Claude calling gh pr review itself.
           claude_args: |
-            --allowedTools "Bash(gh pr review:*),Bash(gh pr comment:*),Bash(gh api:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
-            --append-system-prompt "When the user asks you to review a pull request (including a bare @claude on a PR), you MUST finish by submitting a formal GitHub pull request review with the gh CLI — never stop at a normal issue/PR comment. Use: gh pr review <number> --request-changes --body \"...\" when you find a correctness, security, money-path, or other blocking issue that must be fixed before merge. Use: gh pr review <number> --approve --body \"...\" when there are no blocking issues (nits and non-blocking suggestions go in the approve body or as inline comments). Do not use comment-only reviews for the final verdict. Auto-merge must not proceed past REQUEST_CHANGES."
+            --allowedTools "Write,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*)"
+            --append-system-prompt "When reviewing a pull request (including a bare @claude on a PR), you MUST write exactly one JSON file at path claude-review-verdict.json in the repository root before finishing. Schema: {\"verdict\":\"APPROVE\"|\"REQUEST_CHANGES\",\"body\":\"markdown review summary\"}. Use REQUEST_CHANGES for correctness, security, money-path, or other blocking issues. Use APPROVE when there are no blocking issues (nits may go in body). You may also post explanatory comments with gh pr comment. Do NOT run gh pr review — a CI step submits the formal review from your verdict file. If this is not a PR review request, do not write the verdict file."
+
+      - name: Submit formal PR review from verdict
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          VERDICT_FILE: claude-review-verdict.json
+        run: |
+          set -euo pipefail
+
+          if [ ! -f "$VERDICT_FILE" ]; then
+            echo "Claude did not write $VERDICT_FILE — defaulting to REQUEST_CHANGES."
+            verdict="REQUEST_CHANGES"
+            body="Claude finished without writing a formal verdict file (\`$VERDICT_FILE\`). Treating this as request-changes so auto-merge cannot proceed on a comment-only review. Re-run @claude or have a human review."
+          else
+            verdict=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["verdict"].strip().upper())' "$VERDICT_FILE")
+            body=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("body") or "")' "$VERDICT_FILE")
+          fi
+
+          if [ -z "$body" ]; then
+            body="Claude review verdict: $verdict"
+          fi
+
+          # Write body to a file to avoid shell-escaping issues.
+          printf '%s\n' "$body" > /tmp/claude-review-body.md
+
+          case "$verdict" in
+            APPROVE|APPROVED)
+              echo "Submitting APPROVE on PR #$PR_NUMBER"
+              gh pr review "$PR_NUMBER" --approve --body-file /tmp/claude-review-body.md
+              ;;
+            REQUEST_CHANGES|CHANGES_REQUESTED)
+              echo "Submitting REQUEST_CHANGES on PR #$PR_NUMBER"
+              gh pr review "$PR_NUMBER" --request-changes --body-file /tmp/claude-review-body.md
+              ;;
+            *)
+              echo "Invalid verdict '$verdict' — submitting REQUEST_CHANGES."
+              gh pr review "$PR_NUMBER" --request-changes --body-file /tmp/claude-review-body.md
+              ;;
+          esac
