@@ -389,11 +389,8 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("[CREATE_PENDING] Error:", error);
     return NextResponse.json(
-      {
-        error: "Internal Server Error",
-        details: error instanceof Error ? error.message : "Unknown",
-      },
-      { status: 500 }
+      { error: "Internal Server Error" },
+      { status: 500 },
     );
   }
 }
