@@ -53,8 +53,11 @@ async function main() {
   if (!toml.webAuthEndpoint || !toml.transferServerSep24) {
     throw new Error('Test anchor missing SEP-10 or SEP-24 endpoints');
   }
+  if (!toml.signingKey) {
+    throw new Error('Test anchor missing SIGNING_KEY');
+  }
 
-  const sep10 = new Sep10Client(toml.webAuthEndpoint, passphrase);
+  const sep10 = new Sep10Client(toml.webAuthEndpoint, passphrase, toml.signingKey);
   const { token } = await sep10.authenticate(
     keypair.publicKey(),
     anchor.homeDomain,

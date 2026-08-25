@@ -98,8 +98,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { passphrase, anchor, webAuthEndpoint } = await resolveAnchorWebAuth(corridor);
-    const sep10 = new Sep10Client(webAuthEndpoint, passphrase);
+    const { passphrase, anchor, webAuthEndpoint, signingKey } = await resolveAnchorWebAuth(corridor);
+    const sep10 = new Sep10Client(webAuthEndpoint, passphrase, signingKey);
 
     let token: string;
     let account: string;
