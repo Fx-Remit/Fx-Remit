@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
       actions: read
 
@@ -38,3 +38,6 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
+          # Formal REQUEST_CHANGES blocks GitHub auto-merge; comments alone do not.
+          claude_args: |
+            --append-system-prompt "When reviewing a pull request, submit a formal GitHub pull request review. Use REQUEST_CHANGES when you find a correctness, security, or money-path issue that must be fixed before merge. Use APPROVE only when you found no such blocking issues (nits may be comments on an APPROVE). Do not leave blocking findings as a comment-only review — that will not stop auto-merge."
