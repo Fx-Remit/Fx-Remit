@@ -1,11 +1,17 @@
 import { prisma } from '@fx-remit/database';
 import { PayoutService } from '../paycrest/payout.service';
 import { DepositService } from '../deposits/deposit.service';
+import { TransactionService } from '../transactions/transaction.service';
 
 export class ReconciliationService {
   /**
    * Identifies and recovers stuck remittance transactions.
    * Target: Transactions in 'VERIFIED' status older than 10 minutes.
+   *
+   * Dual-rail guard (#95): rows with a real on-chain RemittanceInitiated hash
+   * already funded the Paycrest gateway — never call createPaycrestOrder again
+   * (that would open a second API order). Claim VERIFIED→PROCESSING so cron
+   * does not loop; fiat completion stays on Paycrest webhooks.
    */
   static async reconcileStuckTransactions() {
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
@@ -68,8 +74,8 @@ export class ReconciliationService {
             continue;
           }
 
-          // Claim VERIFIED → PROCESSING before calling Paycrest so a later cron
-          // cannot create a second order if the DB write after create fails.
+          // Claim VERIFIED → PROCESSING before any recovery so a later cron
+          // cannot double-handle the same row.
           const claimed = await prisma.transaction.updateMany({
             where: { id: tx.id, status: 'VERIFIED' },
             data: {
@@ -78,6 +84,16 @@ export class ReconciliationService {
             },
           });
           if (claimed.count !== 1) {
+            continue;
+          }
+
+          // Gateway-funded (#95): real 0x hash means RemittanceInitiated already
+          // settled on-chain — do not open a second Paycrest API order.
+          if (TransactionService.isOnChainTxHash(tx.txHash)) {
+            console.log(
+              `[ReconciliationService] Gateway-funded remittance ${tx.id}; skipping createPaycrestOrder (await webhooks)`,
+            );
+            results.recovered++;
             continue;
           }
 
@@ -183,7 +199,6 @@ export class ReconciliationService {
    * Default TTL: 30 minutes (override with PENDING_REMITTANCE_TTL_MS).
    */
   static async expireAbandonedPendings() {
-    const { TransactionService } = await import('../transactions/transaction.service');
     const olderThanMs = Number(
       process.env.PENDING_REMITTANCE_TTL_MS ?? 30 * 60 * 1000,
     );
