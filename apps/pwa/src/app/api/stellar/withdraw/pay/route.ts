@@ -5,7 +5,13 @@ import {
   isValidPublicKey,
   completeSep24WithdrawPayment,
 } from '@fx-remit/services';
-import { isStellarApiEnabled, parseCorridor, requirePrivyAuth, resolveAnchorWebAuth } from '../../_lib';
+import {
+  isStellarApiEnabled,
+  parseCorridor,
+  requirePrivyAuth,
+  requireStellarTestSecretOperator,
+  resolveAnchorWebAuth,
+} from '../../_lib';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +20,8 @@ export const dynamic = 'force-dynamic';
  * Payment is always signed with STELLAR_TEST_SECRET. Freighter authToken / signedChallenge
  * are only accepted when `account` matches that secret’s public key (server still pays).
  *
- * Requires Privy Bearer JWT (#92) — never expose flag + STELLAR_TEST_SECRET without auth.
+ * Requires Privy Bearer JWT (#92) whose DID is in STELLAR_TEST_OPERATOR_PRIVY_DIDS —
+ * any logged-in user must not spend the shared hot wallet.
  *
  * POST {
  *   corridor, transaction_id, amount?,
@@ -40,6 +47,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+
+  const operatorDenied = requireStellarTestSecretOperator(auth.userId);
+  if (operatorDenied) return operatorDenied;
 
   let body: {
     corridor?: string;
