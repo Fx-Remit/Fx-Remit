@@ -735,9 +735,10 @@ export class TransactionService {
    * to ensure we have the recipient details (which are not stored on-chain).
    * Reserves spendable balance immediately (debit ledger) only if funds are available.
    *
-   * Idempotent on `externalId` (frontend idempotency key):
+   * Idempotent only on `externalId` (#94 — no amount-match resume):
    * - PENDING/PROCESSING → return existing (no double debit)
    * - FAILED abandoned (pending-* hash) → re-reserve and reopen
+   * Different cash-outs must use different externalIds even if USD amounts match.
    */
   static async createPending(data: {
     userId: string;
@@ -753,26 +754,9 @@ export class TransactionService {
     const amount = new Prisma.Decimal(data.amountUsd);
     const payoutFiat = new Prisma.Decimal(data.payoutFiat);
 
-    let existing = await prisma.transaction.findUnique({
+    const existing = await prisma.transaction.findUnique({
       where: { externalId: data.externalId },
     });
-
-    // Bank only: older rows remapped externalId → Paycrest order id; resume open reserve.
-    // Never amount-match crypto withdraws — that can attach a new crypto send onto a bank
-    // remittance (or another crypto row) with the same USD amount.
-    if (!existing && !this.isCryptoWithdraw(data.recipientBank)) {
-      existing = await prisma.transaction.findFirst({
-        where: {
-          userId: data.userId,
-          type: "REMITTANCE",
-          status: { in: ["PENDING", "PROCESSING"] },
-          txHash: { startsWith: "pending-" },
-          amountUsd: amount,
-          NOT: { recipientBank: { startsWith: "crypto:" } },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-    }
 
     if (existing) {
       if (existing.userId !== data.userId) {

@@ -574,38 +574,54 @@ describe('TransactionService.createPending — happy paths', () => {
     assert.equal(dollar.mock.callCount(), 0);
   });
 
-  it('resumes open PROCESSING when externalId was remapped to Paycrest order id', async () => {
-    const open = sampleTx({
-      status: 'PROCESSING',
-      txHash: 'pending-paycrest-ord',
-      externalId: 'paycrest-ord',
-      amountUsd: 25 as any,
-    });
+  it('creates a second bank row for same USD amount with a different externalId (#94)', async () => {
+    // Open bank remittance for Bank A must not be resumed by amount-match.
     prisma.transaction.findUnique = mock.fn(async () => null) as any;
-    prisma.transaction.findFirst = mock.fn(async () => open) as any;
-    const dollar = mock.fn(async () => {
-      throw new Error('should not open ledger txn');
+    const findFirst = mock.fn(async () => {
+      throw new Error('amount-match must not run (#94)');
     });
-    prisma.$transaction = dollar as any;
+    prisma.transaction.findFirst = findFirst as any;
+
+    const capture: { createArgs?: any } = {};
+    prisma.$transaction = mock.fn(async (cb: any) => {
+      const tx = {
+        user: {
+          updateMany: async () => ({ count: 1 }),
+        },
+        transaction: {
+          create: async (args: any) => {
+            capture.createArgs = args;
+            return sampleTx({
+              id: 'bank-b',
+              ...args.data,
+              status: 'PENDING',
+            });
+          },
+        },
+      };
+      return cb(tx);
+    }) as any;
 
     const result = await TransactionService.createPending({
       userId: 'user-1',
-      orderId: 99n,
-      externalId: 'new-frontend-key',
+      orderId: 100n,
+      externalId: 'ext-bank-b',
       sourceToken: 'USDC',
       amountUsd: 25,
       payoutFiat: 40000,
-      recipientName: 'Jane Doe',
-      recipientBank: '058',
-      recipientAcc: '0123456789',
+      recipientName: 'Bank B Recipient',
+      recipientBank: '033',
+      recipientAcc: '9876543210',
     });
 
-    assert.equal(result.id, open.id);
-    assert.equal(result.status, 'PROCESSING');
-    assert.equal(dollar.mock.callCount(), 0);
+    assert.equal(result.id, 'bank-b');
+    assert.equal(findFirst.mock.callCount(), 0);
+    assert.equal(capture.createArgs.data.externalId, 'ext-bank-b');
+    assert.equal(capture.createArgs.data.recipientBank, '033');
+    assert.equal(capture.createArgs.data.recipientAcc, '9876543210');
   });
 
-  it('does not amount-match open bank remittances for crypto withdraws', async () => {
+  it('does not amount-match for crypto withdraws either', async () => {
     prisma.transaction.findUnique = mock.fn(async () => null) as any;
     const findFirst = mock.fn(async () => {
       throw new Error('crypto must not amount-match');
