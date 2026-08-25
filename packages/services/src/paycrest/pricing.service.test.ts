@@ -55,6 +55,11 @@ describe('PricingService — happy paths', () => {
     // 100 * 1600 - 100 * 1588 = 1200
     assert.equal(PricingService.calculateSurplus(100, 1600, 1588), 1200);
   });
+
+  it('computePayoutFiat multiplies amount by retail rate (2dp ROUND_DOWN)', () => {
+    assert.equal(PricingService.computePayoutFiat(10, 1588), 15880);
+    assert.equal(PricingService.computePayoutFiat(1.119, 1588), 1776.97);
+  });
 });
 
 describe('PricingService — unhappy / edge paths', () => {

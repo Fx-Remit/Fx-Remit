@@ -8,7 +8,11 @@
 
 export type CreatePendingRequestBody = {
   amountUsd: string | number;
-  payoutFiat: number;
+  /** Optional display estimate only — server overwrites from live retail quote. */
+  payoutFiat?: number;
+  /** ms epoch from /api/quote `valid_until`; required for stale-quote rejection. */
+  quoteValidUntil: number;
+  destinationCurrency?: string;
   recipientName: string;
   recipientBank: string;
   recipientAcc: string;
@@ -32,10 +36,13 @@ export type PreparedSettlement = {
   resumed: boolean;
   /** Short-lived cancel capability — not a Privy JWT. */
   abandonToken?: string;
+  /** Server-bound retail fiat from create-pending (authoritative for UI / history). */
+  payoutFiat?: number;
   transaction: {
     orderId: string;
     id?: string;
     status?: string;
+    payoutFiat?: string;
   };
   paycrest: PaycrestSettlementPayload;
 };
@@ -45,7 +52,8 @@ export function buildCreatePendingBody(
 ): CreatePendingRequestBody {
   return {
     amountUsd: input.amountUsd,
-    payoutFiat: input.payoutFiat,
+    quoteValidUntil: input.quoteValidUntil,
+    destinationCurrency: input.destinationCurrency,
     recipientName: input.recipientName,
     recipientBank: input.recipientBank,
     recipientAcc: input.recipientAcc,
@@ -71,6 +79,7 @@ export function parseCreatePendingSuccess(
 
   const transaction = data.transaction as Record<string, unknown> | undefined;
   const paycrest = data.paycrest as PaycrestSettlementPayload | undefined;
+  const quote = data.quote as Record<string, unknown> | undefined;
 
   if (!transaction?.orderId) {
     throw new Error('create-pending response missing transaction.orderId');
@@ -83,15 +92,40 @@ export function parseCreatePendingSuccess(
     (typeof transaction.externalId === 'string' && transaction.externalId) ||
     fallbackExternalId;
 
+  const txPayoutRaw = transaction.payoutFiat;
+  const quotePayoutRaw = quote?.payoutFiat;
+  const payoutFiat = (() => {
+    if (typeof quotePayoutRaw === 'number' && Number.isFinite(quotePayoutRaw)) {
+      return quotePayoutRaw;
+    }
+    if (typeof quotePayoutRaw === 'string' && quotePayoutRaw.trim() !== '') {
+      const n = Number(quotePayoutRaw);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    if (typeof txPayoutRaw === 'number' && Number.isFinite(txPayoutRaw)) {
+      return txPayoutRaw;
+    }
+    if (typeof txPayoutRaw === 'string' && txPayoutRaw.trim() !== '') {
+      const n = Number(txPayoutRaw);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    return undefined;
+  })();
+
   return {
     externalId,
     resumed: data.resumed === true,
     abandonToken:
       typeof data.abandonToken === 'string' ? data.abandonToken : undefined,
+    payoutFiat,
     transaction: {
       orderId: String(transaction.orderId),
       id: typeof transaction.id === 'string' ? transaction.id : undefined,
       status: typeof transaction.status === 'string' ? transaction.status : undefined,
+      payoutFiat:
+        typeof txPayoutRaw === 'string' || typeof txPayoutRaw === 'number'
+          ? String(txPayoutRaw)
+          : undefined,
     },
     paycrest,
   };
@@ -150,6 +184,22 @@ export class SettlementPrefetchSession {
 
   get externalId(): string {
     return this.prepared?.externalId ?? this.fallbackExternalId;
+  }
+
+  /**
+   * Refresh quote TTL before a Send retry. Keeps the same externalId so
+   * create-pending can still resume a reserved row or bind a fresh quote.
+   */
+  setQuoteValidUntil(quoteValidUntil: number): void {
+    if (!Number.isFinite(quoteValidUntil) || quoteValidUntil <= 0) {
+      throw new Error('quoteValidUntil must be a positive epoch ms');
+    }
+    this.body.quoteValidUntil = quoteValidUntil;
+  }
+
+  /** Test/debug: current create-pending body (stable externalId). */
+  getCreatePendingBody(): Readonly<CreatePendingRequestBody> {
+    return { ...this.body };
   }
 
   private isPreparedFresh(): boolean {
