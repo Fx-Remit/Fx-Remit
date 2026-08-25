@@ -8,7 +8,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from '../history/TransactionDetailSheet';
-import { networkLabelFromChainId } from '@/lib/network';
+import { networkLabelForTransaction, formatTxHashLabel } from '@/lib/network';
 
 export default function HomePage() {
   const { user: privyUser, ready, authenticated, getAccessToken } = usePrivy();
@@ -81,7 +81,11 @@ export default function HomePage() {
     receivedToken: 'NGN',
     orderId: tx.orderId,
     chainId: tx.chainId,
-    network: networkLabelFromChainId(tx.chainId),
+    network: networkLabelForTransaction({
+      chainId: tx.chainId,
+      type: tx.type,
+      txHash: tx.txHash,
+    }),
     provider: tx.type === 'DEPOSIT' ? 'Wallet deposit' : 'Paycrest',
     txHash: tx.txHash,
   });
@@ -251,7 +255,7 @@ export default function HomePage() {
                     {tx.type === 'DEPOSIT' ? 'Deposit' : (tx.recipientName ? `Sent to ${tx.recipientName}` : 'Remittance Sent')}
                   </p>
                   <p className="text-gray-400 text-sm truncate">
-                    {tx.txHash ? `${tx.txHash.slice(0, 6)}...${tx.txHash.slice(-4)}` : 'Processing...'}
+                    {formatTxHashLabel(tx.txHash)}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">

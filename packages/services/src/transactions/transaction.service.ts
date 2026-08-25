@@ -1,5 +1,6 @@
 import { prisma, Status, Transaction, TransactionType, Prisma } from "@fx-remit/database";
 import { RpcClient } from "../evm/rpc.client";
+import { PAYCREST_SETTLEMENT } from "../paycrest/payout.service.js";
 
 /** Thrown when createPending cannot reserve spendable ledger. */
 export class InsufficientBalanceError extends Error {
@@ -1160,6 +1161,8 @@ export class TransactionService {
       where: { id: existing.id },
       data: {
         txHash: hash,
+        // Pending rows are created with chainId=0; stamp settlement chain on broadcast.
+        chainId: PAYCREST_SETTLEMENT.chainId,
         ...(isCrypto ? { status: 'COMPLETED' as Status } : {}),
         updatedAt: new Date(),
       },

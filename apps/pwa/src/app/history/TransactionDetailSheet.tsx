@@ -2,6 +2,7 @@
 
 import { X, Copy, ExternalLink, Check, Clock, AlertCircle } from 'lucide-react';
 import React from 'react';
+import { isPlaceholderTxHash } from '@/lib/network';
 
 interface TransactionDetailSheetProps {
   isOpen: boolean;
@@ -225,7 +226,9 @@ export function TransactionDetailSheet({
                 value={transaction.network || 'Unknown Network'}
                 showIcon
                 iconSrc={
-                  Number(transaction.chainId) === 8453
+                  Number(transaction.chainId) === 8453 ||
+                  (transaction.type !== 'DEPOSIT' &&
+                    (Number(transaction.chainId) === 0 || !transaction.chainId))
                     ? '/base.svg'
                     : Number(transaction.chainId) === 42220
                       ? '/celo.svg'
@@ -239,10 +242,30 @@ export function TransactionDetailSheet({
 
             {/* Action Buttons */}
             <div className="w-full mt-10 space-y-4">
-              <button className="w-full h-[65px] bg-[#2261FE] text-white rounded-[12px] text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
-                <ExternalLink size={20} />
-                View on Scan
-              </button>
+              {!isPlaceholderTxHash(transaction.txHash) &&
+              transaction.txHash?.startsWith('0x') ? (
+                <a
+                  href={
+                    Number(transaction.chainId) === 42220
+                      ? `https://celoscan.io/tx/${transaction.txHash}`
+                      : `https://basescan.org/tx/${transaction.txHash}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full h-[65px] bg-[#2261FE] text-white rounded-[12px] text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                  <ExternalLink size={20} />
+                  View on Scan
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full h-[65px] bg-gray-100 text-gray-400 rounded-[12px] text-[18px] font-bold cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  No on-chain receipt yet
+                </button>
+              )}
             </div>
           </div>
         </div>
