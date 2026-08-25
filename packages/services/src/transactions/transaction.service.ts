@@ -43,6 +43,28 @@ const TERMINAL_STATUSES: Status[] = [
   "REFUND_REQUIRED",
 ];
 
+/** Base columns for API/ledger paths omit rail/stellar/refund if migrations lag. */
+const TRANSACTION_API_SELECT = {
+  id: true,
+  userId: true,
+  orderId: true,
+  txHash: true,
+  chainId: true,
+  blockNumber: true,
+  logIndex: true,
+  sourceToken: true,
+  amountUsd: true,
+  payoutFiat: true,
+  status: true,
+  type: true,
+  externalId: true,
+  recipientName: true,
+  recipientBank: true,
+  recipientAcc: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export interface TransactionResponse {
   id: string;
   userId: string;
@@ -107,26 +129,7 @@ export class TransactionService {
       orderBy: { createdAt: "desc" },
       take: limit,
       skip: offset,
-      select: {
-        id: true,
-        userId: true,
-        orderId: true,
-        txHash: true,
-        chainId: true,
-        blockNumber: true,
-        logIndex: true,
-        sourceToken: true,
-        amountUsd: true,
-        payoutFiat: true,
-        status: true,
-        type: true,
-        externalId: true,
-        recipientName: true,
-        recipientBank: true,
-        recipientAcc: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: TRANSACTION_API_SELECT,
     });
 
     return transactions.map((row) => TransactionService.serialize(row as Transaction));
@@ -1104,7 +1107,10 @@ export class TransactionService {
     if (attached.count !== 1) {
       return null;
     }
-    return await prisma.transaction.findUnique({ where: { id } });
+    return await prisma.transaction.findUnique({
+      where: { id },
+      select: TRANSACTION_API_SELECT,
+    });
   }
 
   /** Extract Paycrest order id from a pending-* / abandoned-* placeholder hash. */
@@ -1141,6 +1147,7 @@ export class TransactionService {
 
     const existing = await prisma.transaction.findUnique({
       where: { externalId: data.externalId },
+      select: TRANSACTION_API_SELECT,
     });
 
     if (existing) {
@@ -1153,7 +1160,7 @@ export class TransactionService {
 
       // In-flight retry — funds already reserved
       if (existing.status === "PENDING" || existing.status === "PROCESSING") {
-        return existing;
+        return existing as Transaction;
       }
 
       // Abandoned after Paycrest failure — re-reserve and reopen same row
@@ -1196,6 +1203,7 @@ export class TransactionService {
               logIndex: 0,
               updatedAt: new Date(),
             },
+            select: TRANSACTION_API_SELECT,
           });
         });
       }
@@ -1242,8 +1250,9 @@ export class TransactionService {
           blockNumber: data.orderId,
           logIndex: 0,
         },
+        select: TRANSACTION_API_SELECT,
       });
-    });
+    }) as Promise<Transaction>;
   }
 
   /**

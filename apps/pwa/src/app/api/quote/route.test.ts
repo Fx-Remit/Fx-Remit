@@ -17,6 +17,39 @@ function quoteReq(query: string) {
 }
 
 describe('GET /api/quote — happy paths', () => {
+  it('returns retail quote using settlement USDC even when UI asks USDT', async () => {
+    const fetchRate = mock.method(PayoutService, 'fetchRate', async (
+      network: string,
+      source: string,
+      destination: string,
+      amount: string,
+    ) => {
+      assert.equal(network, 'base');
+      assert.equal(source, 'USDC');
+      assert.equal(destination, 'UGX');
+      assert.equal(amount, '1');
+      return {
+        success: true,
+        rate: {
+          source_currency: 'USDC',
+          destination_currency: 'UGX',
+          rate: 3600,
+          fixed_fee: 0,
+          variable_fee: 0,
+        },
+      };
+    });
+
+    const res = await GET(quoteReq('source=USDT&destination=UGX&amount=0.50'));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.success, true);
+    assert.equal(body.quote.settlement_token, 'USDC');
+    assert.equal(body.quote.source_currency, 'USDT');
+    assert.equal(body.quote.destination_currency, 'UGX');
+    assert.equal(fetchRate.mock.callCount(), 1);
+  });
+
   it('returns retail quote using stable reference amount of 1', async () => {
     const fetchRate = mock.method(PayoutService, 'fetchRate', async (
       network: string,

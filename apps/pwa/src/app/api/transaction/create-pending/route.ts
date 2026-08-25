@@ -36,18 +36,33 @@ const createPendingSchema = z.object({
 });
 
 function serializeTransaction(tx: {
-  orderId: bigint;
-  blockNumber: bigint;
-  amountUsd: { toString(): string };
-  payoutFiat: { toString(): string };
+  id?: string;
+  status?: string;
+  externalId?: string | null;
+  txHash?: string;
+  orderId: bigint | number | string;
+  blockNumber: bigint | number | string;
+  amountUsd: { toString(): string } | number | string;
+  payoutFiat: { toString(): string } | number | string;
 }) {
   return {
-    ...tx,
+    id: tx.id,
+    status: tx.status,
+    externalId: tx.externalId ?? null,
+    txHash: tx.txHash,
     orderId: tx.orderId.toString(),
     blockNumber: tx.blockNumber.toString(),
     amountUsd: tx.amountUsd.toString(),
     payoutFiat: tx.payoutFiat.toString(),
   };
+}
+
+function errorCode(err: unknown): string | undefined {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: unknown }).code;
+    return typeof code === 'string' ? code : undefined;
+  }
+  return undefined;
 }
 
 function paycrestPayload(
@@ -178,15 +193,22 @@ export async function POST(req: Request) {
           quoteValidUntil,
         });
       } catch (err) {
-        if (err instanceof QuoteExpiredError) {
+        const code = errorCode(err);
+        if (err instanceof QuoteExpiredError || code === 'QUOTE_EXPIRED') {
           return NextResponse.json(
-            { error: err.message, code: err.code },
+            {
+              error: err instanceof Error ? err.message : 'Quote expired',
+              code: 'QUOTE_EXPIRED',
+            },
             { status: 422 },
           );
         }
-        if (err instanceof QuoteUnavailableError) {
+        if (err instanceof QuoteUnavailableError || code === 'QUOTE_UNAVAILABLE') {
           return NextResponse.json(
-            { error: err.message, code: err.code },
+            {
+              error: err instanceof Error ? err.message : 'Quote unavailable',
+              code: 'QUOTE_UNAVAILABLE',
+            },
             { status: 502 },
           );
         }
@@ -211,12 +233,13 @@ export async function POST(req: Request) {
         recipientAcc,
       });
     } catch (err) {
-      if (err instanceof InsufficientBalanceError) {
+      const code = errorCode(err);
+      if (err instanceof InsufficientBalanceError || code === 'INSUFFICIENT_BALANCE') {
         return NextResponse.json(
           {
             error: "Insufficient balance",
-            details: err.message,
-            code: err.code,
+            details: err instanceof Error ? err.message : undefined,
+            code: 'INSUFFICIENT_BALANCE',
           },
           { status: 402 },
         );
@@ -366,7 +389,10 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("[CREATE_PENDING] Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      {
+        error: "Internal Server Error",
+        details: error instanceof Error ? error.message : "Unknown",
+      },
       { status: 500 }
     );
   }
