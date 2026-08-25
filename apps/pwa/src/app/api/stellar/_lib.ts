@@ -95,6 +95,9 @@ export async function resolveAnchorWebAuth(corridor: StellarCorridor) {
   if (!toml.webAuthEndpoint) {
     throw new Error(`Anchor ${anchor.id} missing WEB_AUTH_ENDPOINT`);
   }
+  if (!toml.signingKey) {
+    throw new Error(`Anchor ${anchor.id} missing SIGNING_KEY`);
+  }
 
   return {
     network,
@@ -102,5 +105,6 @@ export async function resolveAnchorWebAuth(corridor: StellarCorridor) {
     anchor,
     toml,
     webAuthEndpoint: toml.webAuthEndpoint,
+    signingKey: toml.signingKey,
   };
 }

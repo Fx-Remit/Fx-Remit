@@ -91,9 +91,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { network, passphrase, anchor, webAuthEndpoint } =
+    const { network, passphrase, anchor, webAuthEndpoint, signingKey } =
       await resolveAnchorWebAuth(corridor);
-    const sep10 = new Sep10Client(webAuthEndpoint, passphrase);
+    const sep10 = new Sep10Client(webAuthEndpoint, passphrase, signingKey);
     const keypair = keypairFromSecret(secret);
     const payerAccount = keypair.publicKey();
     const account = bodyAccount ?? payerAccount;

@@ -44,6 +44,7 @@ beforeEach(() => {
   delete process.env.STELLAR_TEST_SECRET;
   seedAnchorTomlCache('testanchor.stellar.org', {
     webAuthEndpoint: 'https://testanchor.stellar.org/auth',
+    signingKey: 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57',
     transferServerSep24: 'https://testanchor.stellar.org/sep24',
   });
   // Default: no app user → skip DB persist (smoke-safe)

@@ -1,7 +1,15 @@
 import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import axios from 'axios';
-import { Keypair } from '@stellar/stellar-sdk';
+import {
+  Account,
+  Asset,
+  Keypair,
+  Networks,
+  Operation,
+  TransactionBuilder,
+  WebAuth,
+} from '@stellar/stellar-sdk';
 import {
   Sep10Client,
   isValidPublicKey,
@@ -9,7 +17,25 @@ import {
   generateKeypair,
 } from './sep10.client.js';
 
-const NETWORK = 'Test SDF Network ; September 2015';
+const NETWORK = Networks.TESTNET;
+const HOME_DOMAIN = 'testanchor.stellar.org';
+const WEB_AUTH_URL = 'https://anchor.test/auth';
+const WEB_AUTH_DOMAIN = 'anchor.test';
+
+function makeClient(serverSigningKey: string, passphrase = NETWORK) {
+  return new Sep10Client(WEB_AUTH_URL, passphrase, serverSigningKey);
+}
+
+function buildValidChallenge(serverKp: Keypair, clientKp: Keypair): string {
+  return WebAuth.buildChallengeTx(
+    serverKp,
+    clientKp.publicKey(),
+    HOME_DOMAIN,
+    300,
+    NETWORK,
+    WEB_AUTH_DOMAIN,
+  );
+}
 
 afterEach(() => {
   mock.restoreAll();
@@ -17,50 +43,124 @@ afterEach(() => {
 
 describe('Sep10Client — happy paths', () => {
   it('fetchChallenge calls web auth endpoint with account and home_domain', async () => {
+    const serverKp = Keypair.random();
+    const clientKp = Keypair.random();
+    const challengeXdr = buildValidChallenge(serverKp, clientKp);
+
     const getMock = mock.fn(async () => ({
       data: {
-        transaction: 'AAAAAgAAAABmock',
+        transaction: challengeXdr,
         network_passphrase: NETWORK,
       },
     }));
     mock.method(axios, 'get', getMock);
 
-    const client = new Sep10Client('https://anchor.test/auth', NETWORK);
-    const result = await client.fetchChallenge('GABC', 'testanchor.stellar.org');
+    const client = makeClient(serverKp.publicKey());
+    const result = await client.fetchChallenge(clientKp.publicKey(), HOME_DOMAIN);
 
     assert.equal(result.network_passphrase, NETWORK);
     assert.ok(getMock.mock.calls.length >= 1);
     const firstCall = getMock.mock.calls[0] as { arguments: unknown[] };
     const calledUrl = String(firstCall.arguments[0]);
-    assert.match(calledUrl, /account=GABC/);
+    assert.match(calledUrl, new RegExp(`account=${clientKp.publicKey()}`));
     assert.match(calledUrl, /home_domain=testanchor\.stellar\.org/);
   });
 
   it('submitTokenRequest returns bearer token', async () => {
     mock.method(axios, 'post', async () => ({ data: { token: 'jwt-test-token' } }));
 
-    const client = new Sep10Client('https://anchor.test/auth', NETWORK);
+    const client = makeClient(Keypair.random().publicKey());
     const token = await client.submitTokenRequest('signed-xdr');
 
     assert.equal(token, 'jwt-test-token');
   });
 
-  it('authenticate chains challenge → sign → token', async () => {
-    const kp = Keypair.random();
-    // Minimal: mock fetchChallenge + submit; signChallenge needs real XDR so we stub the whole flow via mocks
+  it('signChallenge signs a valid SEP-10 challenge', () => {
+    const serverKp = Keypair.random();
+    const clientKp = Keypair.random();
+    const challengeXdr = buildValidChallenge(serverKp, clientKp);
+    const client = makeClient(serverKp.publicKey());
+
+    const signed = client.signChallenge(challengeXdr, clientKp, HOME_DOMAIN);
+    assert.ok(signed.length > 0);
+    assert.notEqual(signed, challengeXdr);
+  });
+
+  it('authenticate chains challenge → verify → sign → token', async () => {
+    const serverKp = Keypair.random();
+    const clientKp = Keypair.random();
+    const challengeXdr = buildValidChallenge(serverKp, clientKp);
+
     mock.method(axios, 'get', async () => ({
       data: {
-        // Will fail signChallenge — we only assert fetch + submit token path via authenticate
-        // For authenticate integration with real XDR, use a properly built challenge.
-        // Here we mock authenticate's HTTP and spy sign by testing pieces separately.
-        transaction: 'invalid',
+        transaction: challengeXdr,
         network_passphrase: NETWORK,
       },
     }));
+    mock.method(axios, 'post', async () => ({ data: { token: 'jwt-auth-ok' } }));
 
-    const client = new Sep10Client('https://anchor.test/auth', NETWORK);
+    const client = makeClient(serverKp.publicKey());
+    const result = await client.authenticate(clientKp.publicKey(), HOME_DOMAIN, clientKp);
+    assert.equal(result.token, 'jwt-auth-ok');
+    assert.equal(result.account, clientKp.publicKey());
+  });
+});
+
+describe('Sep10Client — challenge verification (#93)', () => {
+  it('rejects Payment (non-challenge) XDR before signing', () => {
+    const serverKp = Keypair.random();
+    const clientKp = Keypair.random();
+    const paymentSource = new Account(serverKp.publicKey(), '1');
+    const payment = new TransactionBuilder(paymentSource, {
+      fee: '100',
+      networkPassphrase: NETWORK,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: clientKp.publicKey(),
+          asset: Asset.native(),
+          amount: '1',
+        }),
+      )
+      .setTimeout(30)
+      .build();
+    payment.sign(serverKp);
+
+    const client = makeClient(serverKp.publicKey());
+    assert.throws(
+      () => client.signChallenge(payment.toXDR(), clientKp, HOME_DOMAIN),
+      /./,
+    );
+  });
+
+  it('rejects challenge when network passphrase mismatches (fail closed)', async () => {
+    const serverKp = Keypair.random();
+    const clientKp = Keypair.random();
+    const challengeXdr = buildValidChallenge(serverKp, clientKp);
+
+    mock.method(axios, 'get', async () => ({
+      data: {
+        transaction: challengeXdr,
+        network_passphrase: Networks.PUBLIC,
+      },
+    }));
+
+    const client = makeClient(serverKp.publicKey());
     await assert.rejects(
-      () => client.authenticate(kp.publicKey(), 'testanchor.stellar.org', kp),
+      () => client.fetchChallenge(clientKp.publicKey(), HOME_DOMAIN),
+      /network_passphrase mismatch/,
+    );
+  });
+
+  it('rejects challenge signed by unexpected SIGNING_KEY', () => {
+    const serverKp = Keypair.random();
+    const otherServer = Keypair.random();
+    const clientKp = Keypair.random();
+    const challengeXdr = buildValidChallenge(serverKp, clientKp);
+
+    const client = makeClient(otherServer.publicKey());
+    assert.throws(
+      () => client.signChallenge(challengeXdr, clientKp, HOME_DOMAIN),
       /./,
     );
   });
@@ -72,9 +172,9 @@ describe('Sep10Client — unhappy paths', () => {
       data: { network_passphrase: NETWORK },
     }));
 
-    const client = new Sep10Client('https://anchor.test/auth', NETWORK);
+    const client = makeClient(Keypair.random().publicKey());
     await assert.rejects(
-      () => client.fetchChallenge('GABC', 'testanchor.stellar.org'),
+      () => client.fetchChallenge('GABC', HOME_DOMAIN),
       /Invalid SEP-10 challenge response/,
     );
   });
@@ -84,9 +184,9 @@ describe('Sep10Client — unhappy paths', () => {
       data: { transaction: 'AAAAAgAAAABmock' },
     }));
 
-    const client = new Sep10Client('https://anchor.test/auth', NETWORK);
+    const client = makeClient(Keypair.random().publicKey());
     await assert.rejects(
-      () => client.fetchChallenge('GABC', 'testanchor.stellar.org'),
+      () => client.fetchChallenge('GABC', HOME_DOMAIN),
       /Invalid SEP-10 challenge response/,
     );
   });
@@ -96,9 +196,9 @@ describe('Sep10Client — unhappy paths', () => {
       throw new Error('ECONNREFUSED');
     });
 
-    const client = new Sep10Client('https://anchor.test/auth', NETWORK);
+    const client = makeClient(Keypair.random().publicKey());
     await assert.rejects(
-      () => client.fetchChallenge('GABC', 'testanchor.stellar.org'),
+      () => client.fetchChallenge('GABC', HOME_DOMAIN),
       /ECONNREFUSED/,
     );
   });
@@ -106,7 +206,7 @@ describe('Sep10Client — unhappy paths', () => {
   it('submitTokenRequest rejects when token is missing', async () => {
     mock.method(axios, 'post', async () => ({ data: {} }));
 
-    const client = new Sep10Client('https://anchor.test/auth', NETWORK);
+    const client = makeClient(Keypair.random().publicKey());
     await assert.rejects(
       () => client.submitTokenRequest('signed-xdr'),
       /SEP-10 token response missing token/,
@@ -120,7 +220,7 @@ describe('Sep10Client — unhappy paths', () => {
       throw err;
     });
 
-    const client = new Sep10Client('https://anchor.test/auth', NETWORK);
+    const client = makeClient(Keypair.random().publicKey());
     await assert.rejects(
       () => client.submitTokenRequest('signed-xdr'),
       /401/,
@@ -128,9 +228,16 @@ describe('Sep10Client — unhappy paths', () => {
   });
 
   it('signChallenge rejects invalid challenge XDR', () => {
-    const client = new Sep10Client('https://anchor.test/auth', NETWORK);
+    const client = makeClient(Keypair.random().publicKey());
     const kp = Keypair.random();
-    assert.throws(() => client.signChallenge('not-valid-xdr', kp));
+    assert.throws(() => client.signChallenge('not-valid-xdr', kp, HOME_DOMAIN));
+  });
+
+  it('constructor rejects invalid SIGNING_KEY', () => {
+    assert.throws(
+      () => new Sep10Client(WEB_AUTH_URL, NETWORK, 'not-a-key'),
+      /Invalid SEP-10 server SIGNING_KEY/,
+    );
   });
 });
 

@@ -19,6 +19,7 @@ afterEach(() => {
 const SAMPLE_TOML = `
 NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 WEB_AUTH_ENDPOINT="https://anchor.example/auth"
+SIGNING_KEY="GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57"
 TRANSFER_SERVER_SEP0024="https://anchor.example/sep24"
 TRANSFER_SERVER="https://anchor.example/legacy-transfer"
 TRANSFER_SERVER_SEP0006="https://anchor.example/sep6"
@@ -30,6 +31,7 @@ QUOTE_SERVER="https://anchor.example/sep38"
 const SPACED_TESTANCHOR_TOML = `
 NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 WEB_AUTH_ENDPOINT = "https://testanchor.stellar.org/auth"
+SIGNING_KEY = "GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57"
 KYC_SERVER = "https://testanchor.stellar.org/sep12"
 TRANSFER_SERVER = "https://testanchor.stellar.org/sep6"
 TRANSFER_SERVER_SEP0024 = "https://testanchor.stellar.org/sep24"
@@ -40,6 +42,7 @@ describe('parseTomlEndpoints', () => {
   it('parses KEY="value" (no spaces) fixtures', () => {
     const endpoints = parseTomlEndpoints(SAMPLE_TOML);
     assert.equal(endpoints.webAuthEndpoint, 'https://anchor.example/auth');
+    assert.equal(endpoints.signingKey, 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57');
     assert.equal(endpoints.transferServerSep24, 'https://anchor.example/sep24');
     assert.equal(endpoints.sep38QuoteServer, 'https://anchor.example/sep38');
   });
@@ -47,6 +50,7 @@ describe('parseTomlEndpoints', () => {
   it('parses KEY = "value" with spaces and ANCHOR_QUOTE_SERVER', () => {
     const endpoints = parseTomlEndpoints(SPACED_TESTANCHOR_TOML);
     assert.equal(endpoints.webAuthEndpoint, 'https://testanchor.stellar.org/auth');
+    assert.equal(endpoints.signingKey, 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57');
     assert.equal(endpoints.transferServerSep24, 'https://testanchor.stellar.org/sep24');
     assert.equal(endpoints.transferServerSep6, undefined);
     assert.equal(endpoints.kycServerUrl, 'https://testanchor.stellar.org/sep12');
