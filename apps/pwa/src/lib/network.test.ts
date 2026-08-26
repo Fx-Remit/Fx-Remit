@@ -19,11 +19,12 @@ describe('isPlaceholderTxHash / formatTxHashLabel', () => {
   it('detects placeholder hashes', () => {
     assert.equal(isPlaceholderTxHash('pending-abc'), true);
     assert.equal(isPlaceholderTxHash('abandoned-xyz'), true);
+    assert.equal(isPlaceholderTxHash('broadcasting-pc-1'), true);
     assert.equal(isPlaceholderTxHash('0x439e5f8c1234567890abcdef'), false);
   });
 
   it('formats placeholders without leaking prefixes', () => {
-    assert.equal(formatTxHashLabel('pending-fe123'), 'Awaiting broadcast');
+    assert.equal(formatTxHashLabel('pending-fe123'), 'Not sent');
     assert.equal(formatTxHashLabel('abandoned-55bc'), 'Not broadcast');
     assert.equal(
       formatTxHashLabel('0x439e5f8c1234567890abcdef1234567890abcdef'),

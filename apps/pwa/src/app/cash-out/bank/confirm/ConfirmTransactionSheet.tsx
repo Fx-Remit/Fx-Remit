@@ -1,14 +1,25 @@
-import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
-import React, { useState } from 'react';
+'use client';
+
+import { X, AlertCircle, CheckCircle2, Zap } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import {
+  useDelegatedActions,
+  usePrivy,
+  useSendTransaction,
+  useWallets,
+} from '@privy-io/react-auth';
 import { useQueryClient } from '@tanstack/react-query';
-import { parseUnits, encodeFunctionData, isAddress } from 'viem';
+import { parseUnits, encodeFunctionData, isAddress, type Hex } from 'viem';
+import { base } from 'viem/chains';
 import {
   SettlementPrefetchSession,
   type PreparedSettlement,
 } from '@/lib/cash-out/settlement-prefetch';
-import { postCreatePending } from '@/lib/cash-out/create-pending-client';
+import {
+  abandonPrefetchSession,
+  postCreatePending,
+} from '@/lib/cash-out/create-pending-client';
 import { fetchFreshQuoteValidUntil } from '@/lib/cash-out/fetch-retail-quote';
 
 export type PrefetchPhase = 'preparing' | 'ready' | 'error';
@@ -20,6 +31,17 @@ function settlementAmountHuman(
   const fromProvider = paycrest.amountToTransfer;
   if (fromProvider == null || fromProvider === '') return fallbackSendAmount;
   return String(fromProvider);
+}
+
+function isUserRejection(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('user rejected') ||
+    lower.includes('user denied') ||
+    lower.includes('rejected the request') ||
+    lower.includes('4001')
+  );
 }
 
 interface ConfirmTransactionSheetProps {
@@ -35,7 +57,7 @@ interface ConfirmTransactionSheetProps {
   accName: string;
   bankName: string;
   spreadBps?: number;
-  /** Parent sets this before close so abandon cleanup skips cancel. */
+  /** Parent tracks Send in-flight for UI; abandon still runs until consumed. */
   onSendingChange?: (sending: boolean) => void;
   /** Server-bound fiat from create-pending (prefetch or Send retry). */
   onPayoutFiatBound?: (payoutFiat: number) => void;
@@ -59,41 +81,9 @@ const BASE_TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
   USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
 };
 
-const BASE_CHAIN_ID = 8453;
-const BASE_CHAIN_ID_HEX = '0x2105';
-
-type Eip1193Provider = {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-};
-
-async function ensureBaseChain(
-  wallet: { switchChain: (chainId: number | string) => Promise<void> },
-  provider: Eip1193Provider,
-) {
-  await wallet.switchChain(BASE_CHAIN_ID);
-
-  const chainIdHex = String(
-    await provider.request({ method: 'eth_chainId' }),
-  ).toLowerCase();
-  if (chainIdHex !== BASE_CHAIN_ID_HEX) {
-    await provider.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: BASE_CHAIN_ID_HEX }],
-    });
-    const again = String(
-      await provider.request({ method: 'eth_chainId' }),
-    ).toLowerCase();
-    if (again !== BASE_CHAIN_ID_HEX) {
-      throw new Error(
-        `Wallet is on chain ${again}, but Paycrest settlement requires Base (${BASE_CHAIN_ID_HEX}). Reject and try again.`,
-      );
-    }
-  }
-}
-
 /**
  * Presentational confirm sheet. Prefetch lifecycle is owned by the parent
- * Confirm click / Close click — this component never starts work on render.
+ * Confirm click / Close click this component never starts work on render.
  */
 export function ConfirmTransactionSheet({
   session,
@@ -111,11 +101,13 @@ export function ConfirmTransactionSheet({
   onSendingChange,
   onPayoutFiatBound,
 }: ConfirmTransactionSheetProps) {
-  const [status, setStatus] = useState<'idle' | 'creating' | 'sending' | 'success'>(
-    'idle',
-  );
-  const { getAccessToken } = usePrivy();
+  const [status, setStatus] = useState<
+    'idle' | 'creating' | 'sending' | 'success' | 'granting'
+  >('idle');
+  const { getAccessToken, user: privyUser } = usePrivy();
   const { wallets } = useWallets();
+  const { sendTransaction } = useSendTransaction();
+  const { delegateWallet } = useDelegatedActions();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
@@ -127,10 +119,89 @@ export function ConfirmTransactionSheet({
 
   const displayError = error ?? prefetchError;
 
+  const embeddedWallet = useMemo(() => {
+    const fromWallets = wallets.find((w) => w.walletClientType === 'privy');
+    if (fromWallets) return fromWallets;
+    return wallets[0] ?? null;
+  }, [wallets]);
+
+  const isEmbeddedPrivy = embeddedWallet?.walletClientType === 'privy';
+
+  const [localDelegated, setLocalDelegated] = useState(false);
+
+  const isDelegated = useMemo(() => {
+    if (localDelegated) return true;
+    if (!embeddedWallet?.address || !privyUser?.linkedAccounts) return false;
+    const addr = embeddedWallet.address.toLowerCase();
+    return privyUser.linkedAccounts.some(
+      (a) =>
+        a.type === 'wallet' &&
+        (a as { walletClientType?: string }).walletClientType === 'privy' &&
+        (a as { address?: string }).address?.toLowerCase() === addr &&
+        (a as { delegated?: boolean }).delegated === true,
+    );
+  }, [embeddedWallet?.address, privyUser?.linkedAccounts, localDelegated]);
+
+  const invalidateLedgerQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+    queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
+    queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+  };
+
+  /** Restore spendable when Send fails before a real on-chain hash. */
+  const cancelUnsignedReserve = async (accessToken: string | null) => {
+    if (session.wasConsumed()) return;
+    try {
+      const result = await abandonPrefetchSession({
+        session,
+        accessToken,
+        abandonToken: session.getAbandonToken(),
+        keepalive: false,
+      });
+      if (result.cancelled) {
+        invalidateLedgerQueries();
+      }
+    } catch (cancelErr) {
+      console.error('[CONFIRM] cancel after unsigned failure failed:', cancelErr);
+    }
+  };
+
+  const enableInstantSend = async () => {
+    if (!embeddedWallet?.address || !isEmbeddedPrivy) {
+      setError('Instant Send requires a Privy embedded wallet');
+      return;
+    }
+    setStatus('granting');
+    setError(null);
+    try {
+      await delegateWallet({
+        address: embeddedWallet.address,
+        chainType: 'ethereum',
+      });
+      setLocalDelegated(true);
+      setStatus('idle');
+    } catch (err: unknown) {
+      console.error('[CONFIRM] Instant Send grant failed:', err);
+      const message = isUserRejection(err)
+        ? 'Instant Send permission was not granted'
+        : err instanceof Error
+          ? err.message
+          : 'Failed to enable Instant Send';
+      setError(message);
+      setStatus('idle');
+    }
+  };
+
   const handleSend = async () => {
-    // Never allow a second broadcast once USDC has left the wallet.
     if (session.wasConsumed()) {
       setStatus('success');
+      return;
+    }
+
+    if (isEmbeddedPrivy && !isDelegated) {
+      setError(
+        'Enable Instant Send once so FX-Remit can complete payouts when you tap Send — without a second wallet approval.',
+      );
       return;
     }
 
@@ -138,28 +209,26 @@ export function ConfirmTransactionSheet({
     setStatus('creating');
     setError(null);
     let broadcastTxHash: string | null = null;
+    let accessToken: string | null = null;
 
     try {
-      const accessToken = await getAccessToken();
+      accessToken = await getAccessToken();
       if (!accessToken) {
         throw new Error('Session expired — refresh the page and try again');
       }
-      const wallet = wallets[0];
-      if (!wallet) throw new Error('No wallet connected');
+      if (!embeddedWallet) throw new Error('No wallet connected');
 
       let orderData: PreparedSettlement;
       try {
         orderData = await session.awaitPrepared();
       } catch {
-        // Prefetch failed earlier — refresh quote TTL then retry create-pending
-        // (same externalId). Frozen valid_until would 422 after ~60s.
         const quoteValidUntil = await fetchFreshQuoteValidUntil({
           sourceToken: token,
           destinationCurrency: currency,
         });
         session.setQuoteValidUntil(quoteValidUntil);
         session.start((body, signal) =>
-          postCreatePending(body, accessToken, signal),
+          postCreatePending(body, accessToken!, signal),
         );
         orderData = await session.awaitPrepared();
       }
@@ -190,60 +259,140 @@ export function ConfirmTransactionSheet({
 
       setStatus('sending');
 
-      const provider = await wallet.getEthereumProvider();
-      await ensureBaseChain(wallet, provider);
-
-      // Prefer Paycrest's exact settlement amount when provided.
       const amountHuman = settlementAmountHuman(orderData.paycrest, sendAmount);
       const amountRaw = parseUnits(amountHuman, decimals);
+      const orderId = orderData.transaction.orderId;
 
-      const txHash = await provider.request({
-        method: 'eth_sendTransaction',
-        params: [
+      // Preferred Instant Send path: server-authorized broadcast (no Privy modal).
+      if (isEmbeddedPrivy && isDelegated) {
+        const broadcastRes = await fetch('/api/transaction/broadcast-settlement', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ orderId }),
+        });
+        const broadcastData = (await broadcastRes.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+          txHash?: string;
+        };
+
+        if (broadcastRes.ok && typeof broadcastData.txHash === 'string') {
+          broadcastTxHash = broadcastData.txHash;
+          session.markConsumed();
+          const syncRes = await fetch('/api/transaction/sync-hash', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ orderId, txHash: broadcastTxHash }),
+          });
+          if (!syncRes.ok) {
+            console.error('[CONFIRM] sync-hash after Instant Send failed:', syncRes.status);
+          }
+        } else if (
+          broadcastRes.status === 503 ||
+          broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED'
+        ) {
+          // Instant Send server signing unavailable — require wallet confirmation.
+          // No silent send (client-bound calldata) and no client claim/release endpoints.
+          const receipt = await sendTransaction(
+            {
+              to: settlementTokenAddress,
+              data: encodeFunctionData({
+                abi: ERC20_ABI,
+                functionName: 'transfer',
+                args: [receiveAddress as `0x${string}`, amountRaw],
+              }) as Hex,
+              chainId: base.id,
+            },
+            { showWalletUIs: true },
+            undefined,
+            embeddedWallet.address,
+          );
+          broadcastTxHash =
+            typeof receipt === 'object' && receipt && 'transactionHash' in receipt
+              ? String((receipt as { transactionHash: string }).transactionHash)
+              : String(receipt);
+          session.markConsumed();
+
+          const syncRes = await fetch('/api/transaction/sync-hash', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ orderId, txHash: broadcastTxHash }),
+          });
+          if (!syncRes.ok) {
+            console.error('[CONFIRM] sync-hash failed:', syncRes.status);
+          }
+        } else if (
+          broadcastData.code === 'BROADCAST_IN_PROGRESS' ||
+          broadcastData.code === 'BROADCAST_UNCERTAIN'
+        ) {
+          // Sibling request / ambiguous Privy submit — do not cancel-pending.
+          session.markConsumed();
+          invalidateLedgerQueries();
+          setStatus('success');
+          setError(
+            broadcastData.code === 'BROADCAST_UNCERTAIN'
+              ? 'Payment may have been submitted — check history before trying again.'
+              : 'Payment is already sending — check history before trying again.',
+          );
+          return;
+        } else {
+          throw new Error(
+            typeof broadcastData.error === 'string'
+              ? broadcastData.error
+              : 'Instant Send broadcast failed',
+          );
+        }
+      } else {
+        // External wallet: must use wallet UI (cannot silent-sign).
+        const receipt = await sendTransaction(
           {
-            from: wallet.address,
             to: settlementTokenAddress,
-            chainId: BASE_CHAIN_ID_HEX,
             data: encodeFunctionData({
               abi: ERC20_ABI,
               functionName: 'transfer',
               args: [receiveAddress as `0x${string}`, amountRaw],
-            }),
+            }) as Hex,
+            chainId: base.id,
           },
-        ],
-      });
+          { showWalletUIs: true },
+          undefined,
+          embeddedWallet.address,
+        );
+        broadcastTxHash =
+          typeof receipt === 'object' && receipt && 'transactionHash' in receipt
+            ? String((receipt as { transactionHash: string }).transactionHash)
+            : String(receipt);
+        session.markConsumed();
 
-      broadcastTxHash = typeof txHash === 'string' ? txHash : String(txHash);
-      session.markConsumed();
-
-      console.log('[CONFIRM] On-chain Tx Hash:', broadcastTxHash);
-
-      const syncRes = await fetch('/api/transaction/sync-hash', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          orderId: orderData.transaction.orderId,
-          txHash: broadcastTxHash,
-        }),
-      });
-
-      if (!syncRes.ok) {
-        console.error('[CONFIRM] sync-hash failed:', syncRes.status);
-        // Broadcast already succeeded do not unlock Send for a second transfer.
+        const syncRes = await fetch('/api/transaction/sync-hash', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ orderId, txHash: broadcastTxHash }),
+        });
+        if (!syncRes.ok) {
+          console.error('[CONFIRM] sync-hash failed:', syncRes.status);
+        }
       }
 
-      queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
-
+      invalidateLedgerQueries();
       setStatus('success');
     } catch (err: unknown) {
       console.error('[CONFIRM] Transaction failed:', err);
 
-      // If the wallet already broadcast, never return to a retryable idle state.
       if (broadcastTxHash || session.wasConsumed()) {
-        queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+        invalidateLedgerQueries();
         setStatus('success');
         setError(
           'Payment broadcast. Status sync may be delayed — check history before sending again.',
@@ -251,15 +400,23 @@ export function ConfirmTransactionSheet({
         return;
       }
 
-      const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+      await cancelUnsignedReserve(accessToken);
+
+      const message = isUserRejection(err)
+        ? 'Transfer cancelled — your balance has been restored'
+        : err instanceof Error
+          ? err.message
+          : 'An unexpected error occurred';
       setError(message);
       setStatus('idle');
       onSendingChange?.(false);
     }
   };
 
-  const busy = status === 'creating' || status === 'sending';
-  const sendDisabled = busy || status === 'success';
+  const busy =
+    status === 'creating' || status === 'sending' || status === 'granting';
+  const sendDisabled =
+    busy || status === 'success' || (isEmbeddedPrivy && !isDelegated);
 
   return (
     <>
@@ -300,7 +457,9 @@ export function ConfirmTransactionSheet({
               )}
               {prefetchPhase === 'ready' && status === 'idle' && !displayError && (
                 <p className="text-[12px] text-[#2261FE] mt-2 font-medium">
-                  Ready to send
+                  {isEmbeddedPrivy && isDelegated
+                    ? 'Ready to send instantly'
+                    : 'Ready to send'}
                 </p>
               )}
             </div>
@@ -360,6 +519,16 @@ export function ConfirmTransactionSheet({
           )}
 
           <div className="w-[390px] max-w-full space-y-4 mt-auto">
+            {isEmbeddedPrivy && !isDelegated && (
+              <button
+                onClick={() => void enableInstantSend()}
+                disabled={busy}
+                className="w-full h-[65px] bg-[#0F172A] text-white rounded-[7px] text-[16px] font-bold active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Zap size={18} />
+                {status === 'granting' ? 'Waiting for permission…' : 'Enable Instant Send'}
+              </button>
+            )}
             <button
               onClick={handleSend}
               disabled={sendDisabled}
@@ -383,12 +552,14 @@ export function ConfirmTransactionSheet({
           <div className="w-full max-w-[430px] flex flex-col items-center text-center">
             <div className="mb-12">
               <h2 className="text-[24px] font-bold text-[#1C1C1C]">
-                {status === 'creating' ? 'Preparing order...' : 'Confirm in wallet...'}
+                {status === 'creating'
+                  ? 'Preparing order...'
+                  : `Paying out to ${firstName}…`}
               </h2>
               <p className="text-[#888888] mt-2 font-medium">
                 {status === 'creating'
                   ? 'Connecting to Paycrest secure gateway'
-                  : 'Please sign the transaction in your wallet'}
+                  : 'Sending USDC on Base — do not close this screen'}
               </p>
             </div>
             <div className="mt-10 mb-20">
