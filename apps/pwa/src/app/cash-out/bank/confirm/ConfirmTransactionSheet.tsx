@@ -1,7 +1,7 @@
 'use client';
 
 import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   useDelegatedActions,
@@ -14,6 +14,7 @@ import { parseUnits, encodeFunctionData, isAddress, type Hex } from 'viem';
 import { base } from 'viem/chains';
 import {
   SettlementPrefetchSession,
+  StaleSettlementError,
   type PreparedSettlement,
 } from '@/lib/cash-out/settlement-prefetch';
 import {
@@ -128,6 +129,8 @@ export function ConfirmTransactionSheet({
   const isEmbeddedPrivy = embeddedWallet?.walletClientType === 'privy';
 
   const [localDelegated, setLocalDelegated] = useState(false);
+  /** Once we have a reserved order this sheet must not open a second create-pending. */
+  const reservedOrderIdRef = useRef<string | null>(null);
 
   const isDelegated = useMemo(() => {
     if (localDelegated) return true;
@@ -198,17 +201,22 @@ export function ConfirmTransactionSheet({
       return;
     }
 
+    // Mark in-flight before Privy consent so pagehide cannot cancel-pending mid-grant.
+    onSendingChange?.(true);
+    setError(null);
+
     // Use a local flag — React state won't update mid-handler after grant.
     let canServerBroadcast = isEmbeddedPrivy && isDelegated;
     if (isEmbeddedPrivy && !canServerBroadcast) {
       const granted = await enableFasterPayouts();
-      if (!granted) return;
+      if (!granted) {
+        onSendingChange?.(false);
+        return;
+      }
       canServerBroadcast = true;
     }
 
-    onSendingChange?.(true);
     setStatus('creating');
-    setError(null);
     let broadcastTxHash: string | null = null;
     let accessToken: string | null = null;
 
@@ -222,7 +230,22 @@ export function ConfirmTransactionSheet({
       let orderData: PreparedSettlement;
       try {
         orderData = await session.awaitPrepared();
-      } catch {
+      } catch (prepErr) {
+        if (session.wasAbandoned()) {
+          throw new Error(
+            'This payout was interrupted. Close Confirm and open it once — do not tap Send twice.',
+          );
+        }
+        // Stale quote TTL: safe to refresh + resume same externalId (idempotent).
+        // Other errors after a reserve already exists: do not open a second pending.
+        if (
+          !(prepErr instanceof StaleSettlementError) &&
+          reservedOrderIdRef.current
+        ) {
+          throw new Error(
+            'This payout was interrupted. Close Confirm and open it once — do not tap Send twice.',
+          );
+        }
         const quoteValidUntil = await fetchFreshQuoteValidUntil({
           sourceToken: token,
           destinationCurrency: currency,
@@ -233,6 +256,7 @@ export function ConfirmTransactionSheet({
         );
         orderData = await session.awaitPrepared();
       }
+      reservedOrderIdRef.current = orderData.transaction.orderId;
 
       if (orderData.payoutFiat != null && Number.isFinite(orderData.payoutFiat)) {
         onPayoutFiatBound?.(orderData.payoutFiat);
@@ -394,6 +418,7 @@ export function ConfirmTransactionSheet({
 
       invalidateLedgerQueries();
       setStatus('success');
+      onSendingChange?.(false);
     } catch (err: unknown) {
       console.error('[CONFIRM] Transaction failed:', err);
 
@@ -403,6 +428,7 @@ export function ConfirmTransactionSheet({
         setError(
           'Payment broadcast. Status sync may be delayed — check history before sending again.',
         );
+        onSendingChange?.(false);
         return;
       }
 

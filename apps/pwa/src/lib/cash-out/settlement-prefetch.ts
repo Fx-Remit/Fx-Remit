@@ -303,6 +303,10 @@ export class SettlementPrefetchSession {
     return this.consumed;
   }
 
+  wasAbandoned(): boolean {
+    return this.abandoned;
+  }
+
   getAbandonToken(): string | null {
     return this.abandonToken;
   }
