@@ -14,6 +14,7 @@ import { parseUnits, encodeFunctionData, isAddress, type Hex } from 'viem';
 import { base } from 'viem/chains';
 import {
   SettlementPrefetchSession,
+  StaleSettlementError,
   type PreparedSettlement,
 } from '@/lib/cash-out/settlement-prefetch';
 import {
@@ -230,7 +231,17 @@ export function ConfirmTransactionSheet({
       try {
         orderData = await session.awaitPrepared();
       } catch (prepErr) {
-        if (session.wasAbandoned() || reservedOrderIdRef.current) {
+        if (session.wasAbandoned()) {
+          throw new Error(
+            'This payout was interrupted. Close Confirm and open it once — do not tap Send twice.',
+          );
+        }
+        // Stale quote TTL: safe to refresh + resume same externalId (idempotent).
+        // Other errors after a reserve already exists: do not open a second pending.
+        if (
+          !(prepErr instanceof StaleSettlementError) &&
+          reservedOrderIdRef.current
+        ) {
           throw new Error(
             'This payout was interrupted. Close Confirm and open it once — do not tap Send twice.',
           );
@@ -407,6 +418,7 @@ export function ConfirmTransactionSheet({
 
       invalidateLedgerQueries();
       setStatus('success');
+      onSendingChange?.(false);
     } catch (err: unknown) {
       console.error('[CONFIRM] Transaction failed:', err);
 
@@ -416,6 +428,7 @@ export function ConfirmTransactionSheet({
         setError(
           'Payment broadcast. Status sync may be delayed — check history before sending again.',
         );
+        onSendingChange?.(false);
         return;
       }
 

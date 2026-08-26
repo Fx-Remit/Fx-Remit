@@ -207,6 +207,29 @@ describe('SettlementPrefetchSession', () => {
     assert.equal(await session.resolveAbandonExternalId(), null);
   });
 
+  it('wasAbandoned is true after resolveAbandonExternalId', async () => {
+    const session = new SettlementPrefetchSession({
+      amountUsd: 1,
+      quoteValidUntil: Date.now() + 60_000,
+      recipientName: 'A',
+      recipientBank: 'B',
+      recipientAcc: '1',
+      token: 'USDC',
+      externalId: 'idem-abandoned',
+    });
+
+    session.start(async () => ({
+      success: true,
+      transaction: { orderId: '8', externalId: 'idem-abandoned' },
+      paycrest: { receiveAddress: '0xR' },
+    }));
+    await session.awaitPrepared();
+
+    assert.equal(session.wasAbandoned(), false);
+    assert.equal(await session.resolveAbandonExternalId(), 'idem-abandoned');
+    assert.equal(session.wasAbandoned(), true);
+  });
+
   it('resolveAbandonExternalId returns externalId when reserved and unused', async () => {
     const session = new SettlementPrefetchSession({
       amountUsd: 1,

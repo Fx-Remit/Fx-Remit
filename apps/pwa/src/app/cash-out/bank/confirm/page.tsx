@@ -225,6 +225,7 @@ function CashOutConfirmContent() {
     if (session || closing) return;
 
     abandonEpochRef.current += 1;
+    sendingRef.current = false;
     setOpenError(null);
 
     const accessToken = await getAccessToken();
