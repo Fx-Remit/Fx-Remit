@@ -9,6 +9,7 @@ import {
   submitSep24UsdcPayment,
   type SubmitSep24UsdcPaymentResult,
 } from './stellar-payment.service.js';
+import type { ClaimStellarPaymentSlotResult } from '../persist/stellar-transaction.service.js';
 
 type StellarRemittanceRow = { id: string; stellarPaymentHash: string | null };
 
@@ -24,7 +25,10 @@ export interface CompleteSep24WithdrawPaymentInput {
   transferReadyTimeoutMs?: number;
   /** When set (>0), poll after payment until terminal */
   terminalTimeoutMs?: number;
-  /** When true and a STELLAR remittance exists, store payment hash */
+  /**
+   * When true (default on HTTP pay), require a STELLAR remittance, claim before
+   * Horizon submit, and fail closed if hash persist fails.
+   */
   persistPaymentHash?: boolean;
   /** Test seam */
   submitPayment?: typeof submitSep24UsdcPayment;
@@ -34,6 +38,9 @@ export interface CompleteSep24WithdrawPaymentInput {
     anchorTransactionId: string;
     stellarPaymentHash: string;
   }) => Promise<{ id: string }>;
+  claimPaymentSlot?: (
+    anchorTransactionId: string,
+  ) => Promise<ClaimStellarPaymentSlotResult>;
 }
 
 export interface CompleteSep24WithdrawPaymentResult {
@@ -98,8 +105,8 @@ function paymentFromSep24(
  * Sandbox Flow B: poll for memo → submit USDC Payment → optional terminal poll + persist.
  * Terminal-poll timeout does not fail the flow once Payment is on-chain.
  *
- * Mitigates double-submit via: same-process lock, DB payment-hash reuse, and a
- * final status re-check immediately before Horizon submit.
+ * Mitigates double-submit via: same-process lock, DB payment-slot claim (cross-instance),
+ * payment-hash reuse, and a final status re-check immediately before Horizon submit.
  */
 export async function completeSep24WithdrawPayment(
   input: CompleteSep24WithdrawPaymentInput,
@@ -126,6 +133,15 @@ async function defaultSetPaymentHash(params: {
   return setStellarPaymentHash(params);
 }
 
+async function defaultClaimPaymentSlot(
+  anchorTransactionId: string,
+): Promise<ClaimStellarPaymentSlotResult> {
+  const { claimStellarPaymentSlot } = await import(
+    '../persist/stellar-transaction.service.js'
+  );
+  return claimStellarPaymentSlot(anchorTransactionId);
+}
+
 async function completeSep24WithdrawPaymentLocked(
   input: CompleteSep24WithdrawPaymentInput,
 ): Promise<CompleteSep24WithdrawPaymentResult> {
@@ -133,6 +149,8 @@ async function completeSep24WithdrawPaymentLocked(
   const submitPayment = input.submitPayment ?? submitSep24UsdcPayment;
   const findRemittance = input.findRemittance ?? defaultFindRemittance;
   const setPaymentHash = input.setPaymentHash ?? defaultSetPaymentHash;
+  const claimPaymentSlot = input.claimPaymentSlot ?? defaultClaimPaymentSlot;
+  const persistPaymentHash = input.persistPaymentHash === true;
   const transferServer = await sep24.getTransferServer(input.anchor);
 
   const transferReady = await sep24.pollUntilTransferReady({
@@ -143,7 +161,47 @@ async function completeSep24WithdrawPaymentLocked(
     timeoutMs: input.transferReadyTimeoutMs,
   });
 
-  // Reuse an already-recorded payment (retry / concurrent second caller after first persisted).
+  if (persistPaymentHash) {
+    const claim = await claimPaymentSlot(input.transactionId);
+    if (claim.outcome === 'missing') {
+      throw new Error(
+        `No STELLAR remittance for anchor tx ${input.transactionId} — restart withdraw so it can be persisted before Payment`,
+      );
+    }
+    if (claim.outcome === 'reuse') {
+      const payment = paymentFromSep24(
+        transferReady,
+        claim.stellarPaymentHash,
+        input.amount,
+      );
+      const afterReuse = await pollTerminalIfNeeded(sep24, input, transferServer);
+      return {
+        transferReady,
+        payment,
+        remittanceId: claim.remittanceId,
+        paymentReused: true,
+        ...afterReuse,
+      };
+    }
+    if (claim.outcome === 'in_flight') {
+      throw new Error(
+        `SEP-24 payment already in progress for ${input.transactionId} — do not resubmit Payment`,
+      );
+    }
+    // claim.outcome === 'won' — continue to status check + submit
+    return submitAndPersist({
+      input,
+      sep24,
+      submitPayment,
+      setPaymentHash,
+      transferServer,
+      transferReady,
+      remittanceId: claim.remittanceId,
+      persistPaymentHash: true,
+    });
+  }
+
+  // Soft path (tests / explicit persistPaymentHash: false): reuse hash if present.
   const existing = await findRemittance(input.transactionId);
   if (existing?.stellarPaymentHash) {
     const payment = paymentFromSep24(
@@ -160,6 +218,30 @@ async function completeSep24WithdrawPaymentLocked(
       ...afterReuse,
     };
   }
+
+  return submitAndPersist({
+    input,
+    sep24,
+    submitPayment,
+    setPaymentHash,
+    transferServer,
+    transferReady,
+    remittanceId: existing?.id,
+    persistPaymentHash: false,
+  });
+}
+
+async function submitAndPersist(params: {
+  input: CompleteSep24WithdrawPaymentInput;
+  sep24: Sep24Client;
+  submitPayment: typeof submitSep24UsdcPayment;
+  setPaymentHash: NonNullable<CompleteSep24WithdrawPaymentInput['setPaymentHash']>;
+  transferServer: string;
+  transferReady: Sep24Transaction;
+  remittanceId?: string;
+  persistPaymentHash: boolean;
+}): Promise<CompleteSep24WithdrawPaymentResult> {
+  const { input, sep24, submitPayment, setPaymentHash, transferServer } = params;
 
   // TOCTOU: confirm still awaiting user transfer immediately before submit.
   const latest = await sep24.getTransactionReliable(
@@ -187,20 +269,14 @@ async function completeSep24WithdrawPaymentLocked(
     amount: input.amount,
   });
 
-  let remittanceId: string | undefined;
-  if (input.persistPaymentHash) {
-    try {
-      const row = await setPaymentHash({
-        anchorTransactionId: input.transactionId,
-        stellarPaymentHash: payment.hash,
-      });
-      remittanceId = row.id;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!/No STELLAR remittance/.test(msg)) {
-        throw err;
-      }
-    }
+  let remittanceId = params.remittanceId;
+  if (params.persistPaymentHash) {
+    // Fail closed: hash must be stored so retries reuse instead of double-paying.
+    const row = await setPaymentHash({
+      anchorTransactionId: input.transactionId,
+      stellarPaymentHash: payment.hash,
+    });
+    remittanceId = row.id;
   }
 
   const afterPay = await pollTerminalIfNeeded(sep24, input, transferServer);

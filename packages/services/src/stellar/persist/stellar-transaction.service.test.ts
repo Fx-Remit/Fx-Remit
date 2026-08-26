@@ -5,7 +5,9 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '@fx-remit/database';
 import {
+  claimStellarPaymentSlot,
   createStellarWithdrawStart,
+  linkStellarPublicKey,
   resolveStellarPersistUser,
   setStellarPaymentHash,
   STELLAR_RAIL_CHAIN_ID,
@@ -15,14 +17,18 @@ const originals = {
   findFirst: prisma.transaction.findFirst,
   create: prisma.transaction.create,
   update: prisma.transaction.update,
+  updateMany: prisma.transaction.updateMany,
   userFindUnique: prisma.user.findUnique,
+  userUpdateMany: prisma.user.updateMany,
 };
 
 afterEach(() => {
   prisma.transaction.findFirst = originals.findFirst;
   prisma.transaction.create = originals.create;
   prisma.transaction.update = originals.update;
+  prisma.transaction.updateMany = originals.updateMany;
   prisma.user.findUnique = originals.userFindUnique;
+  prisma.user.updateMany = originals.userUpdateMany;
 });
 
 function sampleStellarTx(overrides: Record<string, unknown> = {}) {
@@ -251,5 +257,131 @@ describe('setStellarPaymentHash', () => {
         }),
       /already has stellarPaymentHash/,
     );
+  });
+});
+
+describe('linkStellarPublicKey', () => {
+  it('links when user has no stellarPublicKey', async () => {
+    prisma.user.findUnique = (async () => ({
+      id: 'user-1',
+      stellarPublicKey: null,
+    })) as typeof prisma.user.findUnique;
+    let updated: Record<string, unknown> | null = null;
+    prisma.user.updateMany = (async (args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }) => {
+      updated = args.data;
+      assert.equal(args.where.stellarPublicKey, null);
+      return { count: 1 };
+    }) as typeof prisma.user.updateMany;
+
+    const result = await linkStellarPublicKey({
+      privyDid: 'did:privy:1',
+      account: 'GABC',
+    });
+    assert.deepEqual(result, { id: 'user-1', linked: true });
+    assert.equal(updated!.stellarPublicKey, 'GABC');
+  });
+
+  it('is idempotent when already linked to same account', async () => {
+    prisma.user.findUnique = (async () => ({
+      id: 'user-1',
+      stellarPublicKey: 'GABC',
+    })) as typeof prisma.user.findUnique;
+    let updateCalled = false;
+    prisma.user.updateMany = (async () => {
+      updateCalled = true;
+      return { count: 0 };
+    }) as typeof prisma.user.updateMany;
+
+    const result = await linkStellarPublicKey({
+      privyDid: 'did:privy:1',
+      account: 'GABC',
+    });
+    assert.deepEqual(result, { id: 'user-1', linked: false });
+    assert.equal(updateCalled, false);
+  });
+
+  it('rejects when linked to a different account', async () => {
+    prisma.user.findUnique = (async () => ({
+      id: 'user-1',
+      stellarPublicKey: 'GOTHER',
+    })) as typeof prisma.user.findUnique;
+
+    await assert.rejects(
+      () =>
+        linkStellarPublicKey({
+          privyDid: 'did:privy:1',
+          account: 'GABC',
+        }),
+      /different Stellar account/,
+    );
+  });
+
+  it('returns null when no user for Privy DID', async () => {
+    prisma.user.findUnique = (async () => null) as typeof prisma.user.findUnique;
+    const result = await linkStellarPublicKey({
+      privyDid: 'did:privy:missing',
+      account: 'GABC',
+    });
+    assert.equal(result, null);
+  });
+});
+
+describe('claimStellarPaymentSlot', () => {
+  it('returns missing when no remittance', async () => {
+    prisma.transaction.findFirst = (async () => null) as typeof prisma.transaction.findFirst;
+    const result = await claimStellarPaymentSlot('anchor-missing');
+    assert.equal(result.outcome, 'missing');
+  });
+
+  it('returns reuse when hash already stored', async () => {
+    prisma.transaction.findFirst = (async () =>
+      sampleStellarTx({
+        stellarPaymentHash: 'existing',
+      })) as typeof prisma.transaction.findFirst;
+    const result = await claimStellarPaymentSlot('anchor-1');
+    assert.equal(result.outcome, 'reuse');
+    if (result.outcome === 'reuse') {
+      assert.equal(result.stellarPaymentHash, 'existing');
+    }
+  });
+
+  it('wins claim on pending remittance', async () => {
+    prisma.transaction.findFirst = (async () => sampleStellarTx()) as typeof prisma.transaction.findFirst;
+    let claimTxHash: string | undefined;
+    prisma.transaction.updateMany = (async (args: {
+      data: { txHash: string };
+    }) => {
+      claimTxHash = args.data.txHash;
+      return { count: 1 };
+    }) as typeof prisma.transaction.updateMany;
+
+    const result = await claimStellarPaymentSlot('anchor-1');
+    assert.equal(result.outcome, 'won');
+    if (result.outcome === 'won') {
+      assert.equal(result.remittanceId, 'stx-1');
+      assert.match(result.claimToken, /^stellar-claiming-/);
+      assert.equal(claimTxHash, result.claimToken);
+    }
+  });
+
+  it('returns in_flight when another instance holds the claim', async () => {
+    let calls = 0;
+    prisma.transaction.findFirst = (async () => {
+      calls += 1;
+      return sampleStellarTx({
+        txHash: 'stellar-claiming-other',
+        stellarPaymentHash: null,
+      }) as never;
+    }) as typeof prisma.transaction.findFirst;
+    prisma.transaction.updateMany = (async () => ({
+      count: 0,
+    })) as typeof prisma.transaction.updateMany;
+
+    const result = await claimStellarPaymentSlot('anchor-1');
+    assert.equal(result.outcome, 'in_flight');
+    assert.ok(calls >= 1);
   });
 });
