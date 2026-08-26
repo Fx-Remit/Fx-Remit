@@ -1151,14 +1151,20 @@ describe('TransactionService.attachOnChainHash', () => {
       txHash: 'pending-pnd_1',
       recipientBank: '058',
     });
-    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
-    const updateMock = mock.fn(async (args: any) => {
+    const attached = { ...existing, txHash: HASH, chainId: 8453 };
+    let findCalls = 0;
+    prisma.transaction.findUnique = mock.fn(async () => {
+      findCalls += 1;
+      return findCalls === 1 ? existing : attached;
+    }) as any;
+    const updateManyMock = mock.fn(async (args: any) => {
       assert.equal(args.data.txHash, HASH);
       assert.equal(args.data.chainId, 8453);
       assert.equal(args.data.status, undefined);
-      return { ...existing, txHash: HASH, chainId: 8453 };
+      assert.ok(args.where.OR);
+      return { count: 1 };
     });
-    prisma.transaction.update = updateMock as any;
+    prisma.transaction.updateMany = updateManyMock as any;
 
     const result = await TransactionService.attachOnChainHash({
       userId: 'user-1',
@@ -1166,7 +1172,7 @@ describe('TransactionService.attachOnChainHash', () => {
       txHash: HASH,
     });
     assert.equal(result?.txHash, HASH);
-    assert.equal(updateMock.mock.callCount(), 1);
+    assert.equal(updateManyMock.mock.callCount(), 1);
   });
 
   it('rejects when userId does not own the row', async () => {
@@ -1192,12 +1198,17 @@ describe('TransactionService.attachOnChainHash', () => {
       txHash: 'pending-crypto_1',
       recipientBank: 'crypto:base',
     });
-    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
-    prisma.transaction.update = mock.fn(async (args: any) => {
+    const attached = { ...existing, status: 'COMPLETED', txHash: HASH, chainId: 8453 };
+    let findCalls = 0;
+    prisma.transaction.findUnique = mock.fn(async () => {
+      findCalls += 1;
+      return findCalls === 1 ? existing : attached;
+    }) as any;
+    prisma.transaction.updateMany = mock.fn(async (args: any) => {
       assert.equal(args.data.status, 'COMPLETED');
       assert.equal(args.data.txHash, HASH);
       assert.equal(args.data.chainId, 8453);
-      return { ...existing, ...args.data };
+      return { count: 1 };
     }) as any;
 
     const result = await TransactionService.attachOnChainHash({
