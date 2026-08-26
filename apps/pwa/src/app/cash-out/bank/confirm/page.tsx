@@ -168,6 +168,9 @@ function CashOutConfirmContent() {
   pageHideHandlerRef.current = () => {
     const current = sessionRef.current;
     if (!current || current.wasConsumed()) return;
+    // Privy consent / broadcast in flight — pagehide must not cancel-pending
+    // (would leave Paycrest live + next open creates a second reserve).
+    if (sendingRef.current) return;
     const epoch = abandonEpochRef.current;
     const capability = current.getAbandonToken();
     const bridge = bridgeAccessTokenRef.current;
@@ -196,6 +199,7 @@ function CashOutConfirmContent() {
     return () => {
       const current = sessionRef.current;
       if (!current || current.wasConsumed()) return;
+      if (sendingRef.current) return;
       const epoch = abandonEpochRef.current;
       const capability = current.getAbandonToken();
       const bridge = bridgeAccessTokenRef.current;
