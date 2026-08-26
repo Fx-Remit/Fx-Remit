@@ -803,6 +803,59 @@ export class TransactionService {
   }
 
   /**
+   * Escalate Instant Send claims stuck in broadcasting-* (ambiguous Privy / attach failure).
+   * Does NOT auto-release — releasing would reopen a double-send window if the first
+   * transfer already landed. Ops: attach known 0x hash or force-release after chain check.
+   */
+  static async escalateStaleBroadcastClaims(opts?: {
+    olderThanMs?: number;
+    limit?: number;
+  }) {
+    const olderThanMs = opts?.olderThanMs ?? 30 * 60 * 1000;
+    const limit = opts?.limit ?? 100;
+    const cutoff = new Date(Date.now() - olderThanMs);
+
+    const stale = await prisma.transaction.findMany({
+      where: {
+        type: 'REMITTANCE',
+        status: { in: ['PENDING', 'PROCESSING'] },
+        txHash: { startsWith: 'broadcasting-' },
+        updatedAt: { lte: cutoff },
+      },
+      select: {
+        id: true,
+        orderId: true,
+        externalId: true,
+        txHash: true,
+        amountUsd: true,
+        updatedAt: true,
+      },
+      take: limit,
+      orderBy: { updatedAt: 'asc' },
+    });
+
+    for (const row of stale) {
+      console.error(
+        JSON.stringify({
+          alert: 'BROADCAST_CLAIM_STUCK',
+          severity: 'high',
+          transactionId: row.id,
+          orderId: row.orderId.toString(),
+          externalId: row.externalId,
+          txHash: row.txHash,
+          amountUsd: row.amountUsd.toString(),
+          updatedAt: row.updatedAt.toISOString(),
+          olderThanMs,
+          message:
+            'Instant Send claim stuck on broadcasting-* — ops: attach on-chain hash via sync-hash / cancel-stuck-pending --attach, or --force-release only after confirming no USDC left the wallet',
+        }),
+      );
+    }
+
+    return { scanned: stale.length, escalated: stale.length };
+  }
+
+  /**
    * Load a remittance owned by `userId` for Instant Send broadcast.
    * Accepts PENDING/PROCESSING rows (create-pending may claim PROCESSING).
    */

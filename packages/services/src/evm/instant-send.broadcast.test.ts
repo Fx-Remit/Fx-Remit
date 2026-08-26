@@ -279,7 +279,7 @@ describe('broadcastSettlementTransfer', () => {
     }
   });
 
-  it('releases claim when Privy sendTransaction fails', async () => {
+  it('keeps claim on ambiguous Privy failure (no double-send window)', async () => {
     mock.method(
       TransactionService,
       'findPendingRemittanceForBroadcast',
@@ -336,7 +336,84 @@ describe('broadcastSettlementTransfer', () => {
     mock.method(PrivyClient.prototype, 'wallets', () => ({
       ethereum: () => ({
         sendTransaction: async () => {
-          throw new Error('privy down');
+          throw new Error('timeout / 502');
+        },
+      }),
+    }));
+
+    await assert.rejects(
+      () =>
+        broadcastSettlementTransfer({
+          privyDid: 'did:privy:x',
+          userId: 'u1',
+          walletAddress: WALLET,
+          orderId: 9n,
+        }),
+      (err: unknown) =>
+        err instanceof InstantSendWalletError &&
+        err.code === 'BROADCAST_UNCERTAIN',
+    );
+    assert.equal(released, false);
+  });
+
+  it('releases claim on definite Privy policy reject', async () => {
+    mock.method(
+      TransactionService,
+      'findPendingRemittanceForBroadcast',
+      async () => ({
+        id: 'tx-1',
+        userId: 'u1',
+        orderId: 9n,
+        txHash: 'pending-pc-order-9',
+        amountUsd: { toString: () => '1' },
+        externalId: 'ext-9',
+        type: 'REMITTANCE',
+      }),
+    );
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true as const,
+      order: {
+        id: 'pc-order-9',
+        providerAccount: {
+          receiveAddress: RECEIVE,
+          amountToTransfer: '1',
+        },
+      },
+      settlement: {
+        network: PAYCREST_SETTLEMENT.network,
+        chainId: PAYCREST_SETTLEMENT.chainId,
+        token: PAYCREST_SETTLEMENT.token,
+        tokenAddress: PAYCREST_SETTLEMENT.tokenAddress,
+        decimals: PAYCREST_SETTLEMENT.decimals,
+      },
+    }));
+    mock.method(PrivyClient.prototype, 'users', () => ({
+      _get: async () => ({
+        id: 'did:privy:x',
+        linked_accounts: [
+          {
+            type: 'wallet',
+            wallet_client_type: 'privy',
+            address: WALLET,
+            id: 'wallet-1',
+            delegated: true,
+          },
+        ],
+      }),
+      getByWalletAddress: async () => {
+        throw new Error('unused');
+      },
+    }));
+    mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    let released = false;
+    mock.method(TransactionService, 'releaseBroadcastClaim', async () => {
+      released = true;
+      return true;
+    });
+    mock.method(PrivyClient.prototype, 'wallets', () => ({
+      ethereum: () => ({
+        sendTransaction: async () => {
+          throw new Error('Transaction denied by policy');
         },
       }),
     }));

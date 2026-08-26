@@ -274,29 +274,41 @@ export async function broadcastSettlementTransfer(opts: {
     });
     hash = result.hash;
   } catch (err) {
-    await TransactionService.releaseBroadcastClaim({
-      userId: opts.userId,
-      orderId: opts.orderId,
-      paycrestOrderId,
-    }).catch((releaseErr) => {
-      console.error(
-        '[InstantSend] releaseBroadcastClaim failed after Privy error:',
-        releaseErr,
-      );
-    });
     const message = err instanceof Error ? err.message : String(err);
-    throw new InstantSendWalletError('BROADCAST_FAILED', message);
+    // Fail closed on ambiguous Privy errors (timeout/502 after submit): keep
+    // broadcasting-* so a retry cannot double-send. Only release on definite rejects.
+    if (isDefinitePrivyReject(message)) {
+      await TransactionService.releaseBroadcastClaim({
+        userId: opts.userId,
+        orderId: opts.orderId,
+        paycrestOrderId,
+      }).catch((releaseErr) => {
+        console.error(
+          '[InstantSend] releaseBroadcastClaim failed after definite Privy reject:',
+          releaseErr,
+        );
+      });
+      throw new InstantSendWalletError('BROADCAST_FAILED', message);
+    }
+    console.error(
+      '[InstantSend] Ambiguous Privy failure; leaving broadcasting-* claim held',
+      { orderId: opts.orderId.toString(), message },
+    );
+    throw new InstantSendWalletError(
+      'BROADCAST_UNCERTAIN',
+      'Broadcast may have been submitted — check history before sending again',
+    );
   }
 
   if (!TransactionService.isOnChainTxHash(hash)) {
-    await TransactionService.releaseBroadcastClaim({
-      userId: opts.userId,
-      orderId: opts.orderId,
-      paycrestOrderId,
-    }).catch(() => undefined);
+    // Do not release: Privy returned a response we cannot trust as "not sent".
+    console.error(
+      '[InstantSend] Invalid hash after Privy response; leaving broadcasting-* claim held',
+      { orderId: opts.orderId.toString(), hash },
+    );
     throw new InstantSendWalletError(
-      'INVALID_HASH',
-      'Privy returned an invalid transaction hash',
+      'BROADCAST_UNCERTAIN',
+      'Broadcast response was invalid — check history before sending again',
     );
   }
 
@@ -316,4 +328,101 @@ export async function broadcastSettlementTransfer(opts: {
   }
 
   return { txHash: hash, alreadyBroadcast: false };
+}
+
+/** Errors where Privy almost certainly did not submit a chain tx. */
+export function isDefinitePrivyReject(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes('policy') ||
+    m.includes('insufficient funds') ||
+    m.includes('insufficient balance') ||
+    m.includes('unauthorized') ||
+    m.includes('forbidden') ||
+    m.includes('not allowed') ||
+    m.includes('invalid authorization') ||
+    (m.includes('authorization') && m.includes('denied')) ||
+    m.includes('user rejected') ||
+    m.includes('rejected by user')
+  );
+}
+
+/**
+ * CAS claim only — used by the client Instant Send bridge before a local silent send
+ * so concurrent tabs cannot both broadcast without the server lock.
+ */
+export async function claimSettlementBroadcastSlot(opts: {
+  userId: string;
+  orderId: bigint;
+}): Promise<{ paycrestOrderId: string; alreadyBroadcast: boolean; txHash?: string }> {
+  const remittance = await TransactionService.findPendingRemittanceForBroadcast({
+    userId: opts.userId,
+    orderId: opts.orderId,
+  });
+
+  if (!remittance) {
+    throw new InstantSendWalletError('ORDER_NOT_FOUND', 'Transaction not found');
+  }
+
+  if (TransactionService.isOnChainTxHash(remittance.txHash)) {
+    return {
+      paycrestOrderId: '',
+      alreadyBroadcast: true,
+      txHash: remittance.txHash,
+    };
+  }
+
+  if (TransactionService.isBroadcastClaimHash(remittance.txHash)) {
+    throw new InstantSendWalletError(
+      'BROADCAST_IN_PROGRESS',
+      'Broadcast already in progress for this order',
+    );
+  }
+
+  if (!remittance.txHash.startsWith('pending-')) {
+    throw new InstantSendWalletError(
+      'NOT_PENDING',
+      'Remittance is not awaiting broadcast',
+    );
+  }
+
+  const paycrestOrderId =
+    TransactionService.paycrestOrderIdFromTxHash(remittance.txHash);
+  if (
+    !paycrestOrderId ||
+    TransactionService.isAppLocalPendingKey(
+      paycrestOrderId,
+      remittance.externalId,
+    )
+  ) {
+    throw new InstantSendWalletError(
+      'PAYCREST_ORDER_MISSING',
+      'Paycrest order is not linked yet — wait for create-pending to finish',
+    );
+  }
+
+  const claimed = await TransactionService.claimBroadcastSlot({
+    userId: opts.userId,
+    orderId: opts.orderId,
+    pendingTxHash: remittance.txHash,
+  });
+  if (!claimed) {
+    const again = await TransactionService.findPendingRemittanceForBroadcast({
+      userId: opts.userId,
+      orderId: opts.orderId,
+    });
+    if (again && TransactionService.isOnChainTxHash(again.txHash)) {
+      return {
+        paycrestOrderId,
+        alreadyBroadcast: true,
+        txHash: again.txHash,
+      };
+    }
+    throw new InstantSendWalletError(
+      'BROADCAST_IN_PROGRESS',
+      'Broadcast already in progress for this order',
+    );
+  }
+
+  return { paycrestOrderId, alreadyBroadcast: false };
 }

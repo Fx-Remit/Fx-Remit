@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
 import {
-  broadcastSettlementTransfer,
-  InstantSendNotConfiguredError,
+  claimSettlementBroadcastSlot,
   InstantSendWalletError,
 } from '@fx-remit/services';
 import { z } from 'zod';
@@ -19,8 +18,8 @@ const bodySchema = z.object({
 });
 
 /**
- * Instant Send: server-authorized USDC transfer for a reserved PENDING remittance.
- * Client must only send orderId recipient/amount come from Paycrest + ledger.
+ * CAS claim pending-* → broadcasting-* before a client-side Instant Send bridge send.
+ * Prevents concurrent silent sends without the server broadcast path.
  */
 export async function POST(req: Request) {
   try {
@@ -35,7 +34,7 @@ export async function POST(req: Request) {
       claims = await privy.verifyAuthToken(token);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error('[BROADCAST_SETTLEMENT] Privy verifyAuthToken failed:', message);
+      console.error('[CLAIM_BROADCAST] Privy verifyAuthToken failed:', message);
       return NextResponse.json(
         { error: 'Invalid authentication token' },
         { status: 401 },
@@ -62,10 +61,9 @@ export async function POST(req: Request) {
 
     const user = await prisma.user.findUnique({
       where: { privyDid: claims.userId },
-      select: { id: true, walletAddress: true },
+      select: { id: true },
     });
-
-    if (!user?.walletAddress) {
+    if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
@@ -77,35 +75,25 @@ export async function POST(req: Request) {
     }
 
     try {
-      const result = await broadcastSettlementTransfer({
-        privyDid: claims.userId,
+      const result = await claimSettlementBroadcastSlot({
         userId: user.id,
-        walletAddress: user.walletAddress,
         orderId,
       });
-
       return NextResponse.json({
         success: true,
-        txHash: result.txHash,
+        claimed: !result.alreadyBroadcast,
         alreadyBroadcast: result.alreadyBroadcast,
+        paycrestOrderId: result.paycrestOrderId || undefined,
+        txHash: result.txHash,
       });
     } catch (err) {
-      if (err instanceof InstantSendNotConfiguredError) {
-        return NextResponse.json(
-          { error: err.message, code: err.code },
-          { status: 503 },
-        );
-      }
       if (err instanceof InstantSendWalletError) {
         const status =
           err.code === 'ORDER_NOT_FOUND'
             ? 404
-            : err.code === 'NOT_DELEGATED' || err.code === 'WALLET_OWNERSHIP'
-              ? 403
-              : err.code === 'BROADCAST_IN_PROGRESS' ||
-                  err.code === 'BROADCAST_UNCERTAIN'
-                ? 409
-                : 400;
+            : err.code === 'BROADCAST_IN_PROGRESS'
+              ? 409
+              : 400;
         return NextResponse.json(
           { error: err.message, code: err.code },
           { status },
@@ -114,7 +102,7 @@ export async function POST(req: Request) {
       throw err;
     }
   } catch (error: unknown) {
-    console.error('[BROADCAST_SETTLEMENT] Error:', error);
+    console.error('[CLAIM_BROADCAST] Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

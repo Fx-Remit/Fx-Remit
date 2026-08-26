@@ -282,31 +282,6 @@ export function ConfirmTransactionSheet({
         if (broadcastRes.ok && typeof broadcastData.txHash === 'string') {
           broadcastTxHash = broadcastData.txHash;
           session.markConsumed();
-        } else if (
-          broadcastRes.status === 503 ||
-          broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED'
-        ) {
-          // Bridge: Confirm sheet already consented — silent client send (not global).
-          const receipt = await sendTransaction(
-            {
-              to: settlementTokenAddress,
-              data: encodeFunctionData({
-                abi: ERC20_ABI,
-                functionName: 'transfer',
-                args: [receiveAddress as `0x${string}`, amountRaw],
-              }) as Hex,
-              chainId: base.id,
-            },
-            { showWalletUIs: false },
-            undefined,
-            embeddedWallet.address,
-          );
-          broadcastTxHash =
-            typeof receipt === 'object' && receipt && 'transactionHash' in receipt
-              ? String((receipt as { transactionHash: string }).transactionHash)
-              : String(receipt);
-          session.markConsumed();
-
           const syncRes = await fetch('/api/transaction/sync-hash', {
             method: 'POST',
             headers: {
@@ -316,15 +291,122 @@ export function ConfirmTransactionSheet({
             body: JSON.stringify({ orderId, txHash: broadcastTxHash }),
           });
           if (!syncRes.ok) {
-            console.error('[CONFIRM] sync-hash failed:', syncRes.status);
+            console.error('[CONFIRM] sync-hash after Instant Send failed:', syncRes.status);
           }
-        } else if (broadcastData.code === 'BROADCAST_IN_PROGRESS') {
-          // Sibling request owns the CAS claim — do not cancel-pending (would race a live send).
+        } else if (
+          broadcastRes.status === 503 ||
+          broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED'
+        ) {
+          // Bridge: claim server CAS lock, then silent client send (no double-tab race).
+          const claimRes = await fetch('/api/transaction/claim-broadcast', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ orderId }),
+          });
+          const claimData = (await claimRes.json().catch(() => ({}))) as {
+            error?: string;
+            code?: string;
+            alreadyBroadcast?: boolean;
+            txHash?: string;
+            paycrestOrderId?: string;
+          };
+
+          if (claimRes.ok && claimData.alreadyBroadcast && typeof claimData.txHash === 'string') {
+            broadcastTxHash = claimData.txHash;
+            session.markConsumed();
+          } else if (
+            claimData.code === 'BROADCAST_IN_PROGRESS' ||
+            claimRes.status === 409
+          ) {
+            session.markConsumed();
+            invalidateLedgerQueries();
+            setStatus('success');
+            setError(
+              'Payment is already sending — check history before trying again.',
+            );
+            return;
+          } else if (!claimRes.ok) {
+            throw new Error(
+              typeof claimData.error === 'string'
+                ? claimData.error
+                : 'Failed to lock settlement for Instant Send bridge',
+            );
+          } else {
+            const paycrestOrderId = claimData.paycrestOrderId;
+            try {
+              const receipt = await sendTransaction(
+                {
+                  to: settlementTokenAddress,
+                  data: encodeFunctionData({
+                    abi: ERC20_ABI,
+                    functionName: 'transfer',
+                    args: [receiveAddress as `0x${string}`, amountRaw],
+                  }) as Hex,
+                  chainId: base.id,
+                },
+                { showWalletUIs: false },
+                undefined,
+                embeddedWallet.address,
+              );
+              broadcastTxHash =
+                typeof receipt === 'object' && receipt && 'transactionHash' in receipt
+                  ? String((receipt as { transactionHash: string }).transactionHash)
+                  : String(receipt);
+              session.markConsumed();
+
+              const syncRes = await fetch('/api/transaction/sync-hash', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({ orderId, txHash: broadcastTxHash }),
+              });
+              if (!syncRes.ok) {
+                console.error('[CONFIRM] sync-hash failed:', syncRes.status);
+              }
+            } catch (bridgeErr) {
+              if (
+                isUserRejection(bridgeErr) &&
+                typeof paycrestOrderId === 'string' &&
+                paycrestOrderId
+              ) {
+                await fetch('/api/transaction/release-broadcast', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${accessToken}`,
+                  },
+                  body: JSON.stringify({ orderId, paycrestOrderId }),
+                }).catch(() => undefined);
+                throw bridgeErr;
+              }
+              // Ambiguous after claim: do not release (may have submitted).
+              console.error('[CONFIRM] Bridge send failed after claim:', bridgeErr);
+              session.markConsumed();
+              invalidateLedgerQueries();
+              setStatus('success');
+              setError(
+                'Payment may have been submitted — check history before trying again.',
+              );
+              return;
+            }
+          }
+        } else if (
+          broadcastData.code === 'BROADCAST_IN_PROGRESS' ||
+          broadcastData.code === 'BROADCAST_UNCERTAIN'
+        ) {
+          // Sibling request / ambiguous Privy submit — do not cancel-pending.
           session.markConsumed();
           invalidateLedgerQueries();
           setStatus('success');
           setError(
-            'Payment is already sending — check history before trying again.',
+            broadcastData.code === 'BROADCAST_UNCERTAIN'
+              ? 'Payment may have been submitted — check history before trying again.'
+              : 'Payment is already sending — check history before trying again.',
           );
           return;
         } else {

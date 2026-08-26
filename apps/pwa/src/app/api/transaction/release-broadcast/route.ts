@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
-import {
-  broadcastSettlementTransfer,
-  InstantSendNotConfiguredError,
-  InstantSendWalletError,
-} from '@fx-remit/services';
+import { TransactionService } from '@fx-remit/services';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -16,11 +12,13 @@ const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
 const bodySchema = z.object({
   orderId: z.union([z.string(), z.number()]).transform((v) => String(v)),
+  /** Required — release only when the client never obtained a tx hash (definite pre-send fail). */
+  paycrestOrderId: z.string().trim().min(1),
 });
 
 /**
- * Instant Send: server-authorized USDC transfer for a reserved PENDING remittance.
- * Client must only send orderId recipient/amount come from Paycrest + ledger.
+ * Release broadcasting-* → pending-* after a definite pre-send failure on the
+ * client Instant Send bridge. Do not call after an ambiguous send error.
  */
 export async function POST(req: Request) {
   try {
@@ -35,7 +33,7 @@ export async function POST(req: Request) {
       claims = await privy.verifyAuthToken(token);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error('[BROADCAST_SETTLEMENT] Privy verifyAuthToken failed:', message);
+      console.error('[RELEASE_BROADCAST] Privy verifyAuthToken failed:', message);
       return NextResponse.json(
         { error: 'Invalid authentication token' },
         { status: 401 },
@@ -62,10 +60,9 @@ export async function POST(req: Request) {
 
     const user = await prisma.user.findUnique({
       where: { privyDid: claims.userId },
-      select: { id: true, walletAddress: true },
+      select: { id: true },
     });
-
-    if (!user?.walletAddress) {
+    if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
@@ -76,45 +73,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid orderId' }, { status: 400 });
     }
 
-    try {
-      const result = await broadcastSettlementTransfer({
-        privyDid: claims.userId,
-        userId: user.id,
-        walletAddress: user.walletAddress,
-        orderId,
-      });
+    const released = await TransactionService.releaseBroadcastClaim({
+      userId: user.id,
+      orderId,
+      paycrestOrderId: parsed.data.paycrestOrderId,
+    });
 
-      return NextResponse.json({
-        success: true,
-        txHash: result.txHash,
-        alreadyBroadcast: result.alreadyBroadcast,
-      });
-    } catch (err) {
-      if (err instanceof InstantSendNotConfiguredError) {
-        return NextResponse.json(
-          { error: err.message, code: err.code },
-          { status: 503 },
-        );
-      }
-      if (err instanceof InstantSendWalletError) {
-        const status =
-          err.code === 'ORDER_NOT_FOUND'
-            ? 404
-            : err.code === 'NOT_DELEGATED' || err.code === 'WALLET_OWNERSHIP'
-              ? 403
-              : err.code === 'BROADCAST_IN_PROGRESS' ||
-                  err.code === 'BROADCAST_UNCERTAIN'
-                ? 409
-                : 400;
-        return NextResponse.json(
-          { error: err.message, code: err.code },
-          { status },
-        );
-      }
-      throw err;
-    }
+    return NextResponse.json({ success: true, released });
   } catch (error: unknown) {
-    console.error('[BROADCAST_SETTLEMENT] Error:', error);
+    console.error('[RELEASE_BROADCAST] Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

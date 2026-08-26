@@ -179,6 +179,8 @@ export class ReconciliationService {
    */
   static async reconcileAll() {
     const expiredPendings = await this.expireAbandonedPendings();
+    const staleBroadcastClaims =
+      await TransactionService.escalateStaleBroadcastClaims();
     const expiredRefundRequired =
       await TransactionService.expireStaleRefundRequired();
     const remittances = await this.reconcileStuckTransactions();
@@ -219,11 +221,12 @@ export class ReconciliationService {
 
     return {
       expiredPendings,
+      staleBroadcastClaims,
       expiredRefundRequired,
       remittances,
       deposits,
-      notifyRegistered,
       refundRequiredOpen,
+      notifyRegistered,
     };
   }
 
