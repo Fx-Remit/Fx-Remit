@@ -803,6 +803,45 @@ export class TransactionService {
   }
 
   /**
+   * Load a remittance owned by `userId` for Instant Send broadcast.
+   * Accepts PENDING/PROCESSING rows (create-pending may claim PROCESSING).
+   */
+  static async findPendingRemittanceForBroadcast(opts: {
+    userId: string;
+    orderId: bigint;
+  }) {
+    const tx = await prisma.transaction.findUnique({
+      where: {
+        orderId_chainId: {
+          orderId: opts.orderId,
+          chainId: 0,
+        },
+      },
+    });
+
+    if (!tx) {
+      // Already stamped with Base chainId after a prior broadcast attempt.
+      const onBase = await prisma.transaction.findUnique({
+        where: {
+          orderId_chainId: {
+            orderId: opts.orderId,
+            chainId: PAYCREST_SETTLEMENT.chainId,
+          },
+        },
+      });
+      if (!onBase || onBase.userId !== opts.userId || onBase.type !== 'REMITTANCE') {
+        return null;
+      }
+      return onBase;
+    }
+
+    if (tx.userId !== opts.userId || tx.type !== 'REMITTANCE') {
+      return null;
+    }
+    return tx;
+  }
+
+  /**
    * True when `txHash` is a real EVM transaction hash (gateway / indexer funded).
    * Placeholder hashes use `pending-` / `abandoned-` prefixes instead.
    */

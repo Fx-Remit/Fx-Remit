@@ -27,9 +27,10 @@ export function isPlaceholderTxHash(txHash?: string | null): boolean {
 
 /** Short label for list rows — never show raw pending-/abandoned- prefixes. */
 export function formatTxHashLabel(txHash?: string | null): string {
-  if (!txHash) return 'Pending broadcast';
+  if (!txHash) return 'Not sent';
+  // pending-* = reserved ledger, no on-chain send yet (reject/back can leave these).
+  if (txHash.toLowerCase().startsWith('pending-')) return 'Not sent';
   if (txHash.toLowerCase().startsWith('abandoned-')) return 'Not broadcast';
-  if (txHash.toLowerCase().startsWith('pending-')) return 'Awaiting broadcast';
   if (txHash.toLowerCase().startsWith('unknown-')) return 'Unconfirmed';
   if (/^0x[a-fA-F0-9]{8,}$/.test(txHash)) {
     return `${txHash.slice(0, 6)}...${txHash.slice(-4)}`;

@@ -13,11 +13,12 @@ import {
   Lock,
   Fingerprint,
   ArrowRight,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { useDelegatedActions, usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useSecurityStore } from '@/store/security-store';
 import { hashPin, generateSalt, registerBiometrics, isBiometricSupported } from '@/lib/security';
@@ -25,6 +26,7 @@ import { SecuritySetup } from '@/components/security/SecuritySetup';
 
 export default function ProfilePage() {
   const { logout, exportWallet, user: privyUser } = usePrivy();
+  const { delegateWallet, revokeWallets } = useDelegatedActions();
   const { profile: dbUser, setProfile } = useUserStore();
   const {
     isSecurityEnabled,
@@ -38,6 +40,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const [isBioSupported, setIsBioSupported] = React.useState(false);
   const [showSetup, setShowSetup] = React.useState(false);
+  const [instantSendBusy, setInstantSendBusy] = React.useState(false);
 
   React.useEffect(() => {
     isBiometricSupported().then(setIsBioSupported);
@@ -69,6 +72,39 @@ export default function ProfilePage() {
   const hasEmbeddedWallet = privyUser?.linkedAccounts?.some(
     (a: any) => a.type === 'wallet' && a.walletClientType === 'privy'
   );
+
+  const embeddedAccount = privyUser?.linkedAccounts?.find(
+    (a: any) => a.type === 'wallet' && a.walletClientType === 'privy',
+  ) as { address?: string; delegated?: boolean } | undefined;
+
+  const instantSendEnabled = embeddedAccount?.delegated === true;
+
+  const handleToggleInstantSend = async () => {
+    if (!hasEmbeddedWallet || !embeddedAccount?.address || instantSendBusy) return;
+    setInstantSendBusy(true);
+    try {
+      if (instantSendEnabled) {
+        if (
+          !window.confirm(
+            'Revoke Instant Send? You will need to approve transfers in Privy again until you re-enable it.',
+          )
+        ) {
+          setInstantSendBusy(false);
+          return;
+        }
+        await revokeWallets();
+      } else {
+        await delegateWallet({
+          address: embeddedAccount.address,
+          chainType: 'ethereum',
+        });
+      }
+    } catch (err) {
+      console.error('[PROFILE] Instant Send toggle failed:', err);
+    } finally {
+      setInstantSendBusy(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F8FAFD] flex flex-col items-center">
@@ -192,6 +228,32 @@ export default function ProfilePage() {
                     icon={<Lock size={20} className="text-red-400" />}
                     label="Remove App Lock"
                     subLabel="Disable all security"
+                  />
+                </button>
+                <div className="h-[1px] bg-gray-50 mx-5" />
+              </>
+            )}
+
+            {hasEmbeddedWallet && (
+              <>
+                <button
+                  onClick={() => void handleToggleInstantSend()}
+                  disabled={instantSendBusy}
+                  className="w-full text-left outline-none disabled:opacity-50"
+                >
+                  <MenuButton
+                    icon={
+                      <Zap
+                        size={20}
+                        className={instantSendEnabled ? 'text-[#2261FE]' : 'text-gray-400'}
+                      />
+                    }
+                    label={instantSendEnabled ? 'Instant Send On' : 'Enable Instant Send'}
+                    subLabel={
+                      instantSendEnabled
+                        ? 'Tap to revoke payout permission'
+                        : 'Send bank payouts without a second wallet prompt'
+                    }
                   />
                 </button>
                 <div className="h-[1px] bg-gray-50 mx-5" />

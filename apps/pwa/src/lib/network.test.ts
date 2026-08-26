@@ -23,7 +23,7 @@ describe('isPlaceholderTxHash / formatTxHashLabel', () => {
   });
 
   it('formats placeholders without leaking prefixes', () => {
-    assert.equal(formatTxHashLabel('pending-fe123'), 'Awaiting broadcast');
+    assert.equal(formatTxHashLabel('pending-fe123'), 'Not sent');
     assert.equal(formatTxHashLabel('abandoned-55bc'), 'Not broadcast');
     assert.equal(
       formatTxHashLabel('0x439e5f8c1234567890abcdef1234567890abcdef'),

@@ -128,7 +128,8 @@ function CashOutConfirmContent() {
     clearUi?: boolean;
   }) => {
     const current = sessionRef.current;
-    if (!current || current.wasConsumed() || sendingRef.current) return;
+    // Gate on broadcast only never skip cancel because Privy modal is open.
+    if (!current || current.wasConsumed()) return;
 
     if (opts?.clearUi !== false) {
       generationRef.current += 1;
@@ -166,7 +167,7 @@ function CashOutConfirmContent() {
 
   pageHideHandlerRef.current = () => {
     const current = sessionRef.current;
-    if (!current || current.wasConsumed() || sendingRef.current) return;
+    if (!current || current.wasConsumed()) return;
     const epoch = abandonEpochRef.current;
     const capability = current.getAbandonToken();
     const bridge = bridgeAccessTokenRef.current;
@@ -194,7 +195,7 @@ function CashOutConfirmContent() {
   useEffect(() => {
     return () => {
       const current = sessionRef.current;
-      if (!current || current.wasConsumed() || sendingRef.current) return;
+      if (!current || current.wasConsumed()) return;
       const epoch = abandonEpochRef.current;
       const capability = current.getAbandonToken();
       const bridge = bridgeAccessTokenRef.current;
@@ -290,12 +291,12 @@ function CashOutConfirmContent() {
   };
 
   const closeConfirmSheet = async () => {
-    if (sendingRef.current) return;
+    // Allow close/abandon anytime until a real broadcast marks the session consumed.
     await abandonActiveSession({ keepalive: false, clearUi: true });
   };
 
   const handleHeaderBack = () => {
-    if (sessionRef.current && !sendingRef.current) {
+    if (sessionRef.current && !sessionRef.current.wasConsumed()) {
       void abandonActiveSession({ keepalive: true, clearUi: true }).finally(() => {
         router.back();
       });
@@ -429,8 +430,8 @@ function CashOutConfirmContent() {
             void closeConfirmSheet();
           }}
           onSendingChange={(sending) => {
+            // Only means "Send in flight" for UI abandon still runs until consumed.
             sendingRef.current = sending;
-            if (sending) unbindUnloadHandlers();
           }}
           sendAmount={sendAmount}
           receiveAmount={displayReceiveAmount}
