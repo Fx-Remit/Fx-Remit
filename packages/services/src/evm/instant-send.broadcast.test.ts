@@ -356,7 +356,7 @@ describe('broadcastSettlementTransfer', () => {
     assert.equal(released, false);
   });
 
-  it('releases claim on definite Privy policy reject', async () => {
+  it('keeps claim even on Privy policy-shaped errors (no substring release)', async () => {
     mock.method(
       TransactionService,
       'findPendingRemittanceForBroadcast',
@@ -427,8 +427,9 @@ describe('broadcastSettlementTransfer', () => {
           orderId: 9n,
         }),
       (err: unknown) =>
-        err instanceof InstantSendWalletError && err.code === 'BROADCAST_FAILED',
+        err instanceof InstantSendWalletError &&
+        err.code === 'BROADCAST_UNCERTAIN',
     );
-    assert.equal(released, true);
+    assert.equal(released, false);
   });
 });
