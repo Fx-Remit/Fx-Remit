@@ -182,4 +182,176 @@ describe('broadcastSettlementTransfer', () => {
         err instanceof InstantSendWalletError && err.code === 'AMOUNT_CAP',
     );
   });
+
+  it('CAS claim: concurrent second call must not sendTransaction', async () => {
+    mock.method(
+      TransactionService,
+      'findPendingRemittanceForBroadcast',
+      async () => ({
+        id: 'tx-1',
+        userId: 'u1',
+        orderId: 9n,
+        txHash: 'pending-pc-order-9',
+        amountUsd: { toString: () => '1' },
+        externalId: 'ext-9',
+        type: 'REMITTANCE',
+      }),
+    );
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true as const,
+      order: {
+        id: 'pc-order-9',
+        providerAccount: {
+          receiveAddress: RECEIVE,
+          amountToTransfer: '1',
+        },
+      },
+      settlement: {
+        network: PAYCREST_SETTLEMENT.network,
+        chainId: PAYCREST_SETTLEMENT.chainId,
+        token: PAYCREST_SETTLEMENT.token,
+        tokenAddress: PAYCREST_SETTLEMENT.tokenAddress,
+        decimals: PAYCREST_SETTLEMENT.decimals,
+      },
+    }));
+    mock.method(PrivyClient.prototype, 'users', () => ({
+      _get: async () => ({
+        id: 'did:privy:x',
+        linked_accounts: [
+          {
+            type: 'wallet',
+            wallet_client_type: 'privy',
+            address: WALLET,
+            id: 'wallet-1',
+            delegated: true,
+          },
+        ],
+      }),
+      getByWalletAddress: async () => {
+        throw new Error('unused');
+      },
+    }));
+
+    let claimCalls = 0;
+    mock.method(TransactionService, 'claimBroadcastSlot', async () => {
+      claimCalls += 1;
+      return claimCalls === 1;
+    });
+    mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    mock.method(TransactionService, 'attachOnChainHash', async () => null);
+
+    let sendCalls = 0;
+    mock.method(PrivyClient.prototype, 'wallets', () => ({
+      ethereum: () => ({
+        sendTransaction: async () => {
+          sendCalls += 1;
+          return { hash: HASH };
+        },
+      }),
+    }));
+
+    const opts = {
+      privyDid: 'did:privy:x',
+      userId: 'u1',
+      walletAddress: WALLET,
+      orderId: 9n,
+    };
+
+    const [first, second] = await Promise.allSettled([
+      broadcastSettlementTransfer(opts),
+      broadcastSettlementTransfer(opts),
+    ]);
+
+    assert.equal(sendCalls, 1, 'Privy sendTransaction must run once');
+    assert.equal(claimCalls, 2);
+
+    const ok = first.status === 'fulfilled' ? first : second;
+    const lost = first.status === 'rejected' ? first : second;
+    assert.equal(ok.status, 'fulfilled');
+    if (ok.status === 'fulfilled') {
+      assert.equal(ok.value.txHash, HASH);
+      assert.equal(ok.value.alreadyBroadcast, false);
+    }
+    assert.equal(lost.status, 'rejected');
+    if (lost.status === 'rejected') {
+      assert.ok(lost.reason instanceof InstantSendWalletError);
+      assert.equal(lost.reason.code, 'BROADCAST_IN_PROGRESS');
+    }
+  });
+
+  it('releases claim when Privy sendTransaction fails', async () => {
+    mock.method(
+      TransactionService,
+      'findPendingRemittanceForBroadcast',
+      async () => ({
+        id: 'tx-1',
+        userId: 'u1',
+        orderId: 9n,
+        txHash: 'pending-pc-order-9',
+        amountUsd: { toString: () => '1' },
+        externalId: 'ext-9',
+        type: 'REMITTANCE',
+      }),
+    );
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true as const,
+      order: {
+        id: 'pc-order-9',
+        providerAccount: {
+          receiveAddress: RECEIVE,
+          amountToTransfer: '1',
+        },
+      },
+      settlement: {
+        network: PAYCREST_SETTLEMENT.network,
+        chainId: PAYCREST_SETTLEMENT.chainId,
+        token: PAYCREST_SETTLEMENT.token,
+        tokenAddress: PAYCREST_SETTLEMENT.tokenAddress,
+        decimals: PAYCREST_SETTLEMENT.decimals,
+      },
+    }));
+    mock.method(PrivyClient.prototype, 'users', () => ({
+      _get: async () => ({
+        id: 'did:privy:x',
+        linked_accounts: [
+          {
+            type: 'wallet',
+            wallet_client_type: 'privy',
+            address: WALLET,
+            id: 'wallet-1',
+            delegated: true,
+          },
+        ],
+      }),
+      getByWalletAddress: async () => {
+        throw new Error('unused');
+      },
+    }));
+    mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    let released = false;
+    mock.method(TransactionService, 'releaseBroadcastClaim', async () => {
+      released = true;
+      return true;
+    });
+    mock.method(PrivyClient.prototype, 'wallets', () => ({
+      ethereum: () => ({
+        sendTransaction: async () => {
+          throw new Error('privy down');
+        },
+      }),
+    }));
+
+    await assert.rejects(
+      () =>
+        broadcastSettlementTransfer({
+          privyDid: 'did:privy:x',
+          userId: 'u1',
+          walletAddress: WALLET,
+          orderId: 9n,
+        }),
+      (err: unknown) =>
+        err instanceof InstantSendWalletError && err.code === 'BROADCAST_FAILED',
+    );
+    assert.equal(released, true);
+  });
 });

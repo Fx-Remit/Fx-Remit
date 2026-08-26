@@ -318,6 +318,15 @@ export function ConfirmTransactionSheet({
           if (!syncRes.ok) {
             console.error('[CONFIRM] sync-hash failed:', syncRes.status);
           }
+        } else if (broadcastData.code === 'BROADCAST_IN_PROGRESS') {
+          // Sibling request owns the CAS claim — do not cancel-pending (would race a live send).
+          session.markConsumed();
+          invalidateLedgerQueries();
+          setStatus('success');
+          setError(
+            'Payment is already sending — check history before trying again.',
+          );
+          return;
         } else {
           throw new Error(
             typeof broadcastData.error === 'string'

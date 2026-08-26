@@ -1154,9 +1154,74 @@ export class TransactionService {
     };
   }
 
+  /** Instant Send in-flight claim: `pending-{id}` → `broadcasting-{id}` before Privy send. */
+  static isBroadcastClaimHash(txHash: string | null | undefined): boolean {
+    return !!txHash && txHash.startsWith('broadcasting-');
+  }
+
+  static broadcastClaimHashFromPending(pendingTxHash: string): string | null {
+    if (!pendingTxHash.startsWith('pending-')) return null;
+    return `broadcasting-${pendingTxHash.slice('pending-'.length)}`;
+  }
+
+  /**
+   * CAS claim a placeholder remittance for Instant Send broadcast.
+   * Only one concurrent caller wins; loser must not call Privy.
+   */
+  static async claimBroadcastSlot(params: {
+    userId: string;
+    orderId: bigint;
+    pendingTxHash: string;
+  }): Promise<boolean> {
+    const claimHash = this.broadcastClaimHashFromPending(params.pendingTxHash);
+    if (!claimHash) return false;
+
+    const claimed = await prisma.transaction.updateMany({
+      where: {
+        orderId: params.orderId,
+        chainId: 0,
+        userId: params.userId,
+        type: 'REMITTANCE',
+        txHash: params.pendingTxHash,
+      },
+      data: {
+        txHash: claimHash,
+        updatedAt: new Date(),
+      },
+    });
+    return claimed.count === 1;
+  }
+
+  /**
+   * Release Instant Send claim back to pending-* so a failed Privy call can retry.
+   */
+  static async releaseBroadcastClaim(params: {
+    userId: string;
+    orderId: bigint;
+    paycrestOrderId: string;
+  }): Promise<boolean> {
+    const claimHash = `broadcasting-${params.paycrestOrderId}`;
+    const pendingHash = `pending-${params.paycrestOrderId}`;
+    const released = await prisma.transaction.updateMany({
+      where: {
+        orderId: params.orderId,
+        chainId: 0,
+        userId: params.userId,
+        type: 'REMITTANCE',
+        txHash: claimHash,
+      },
+      data: {
+        txHash: pendingHash,
+        updatedAt: new Date(),
+      },
+    });
+    return released.count === 1;
+  }
+
   /**
    * Attach a real on-chain hash to a pending remittance owned by `userId`.
    * Crypto withdraws (`recipientBank` starts with `crypto:`) mark COMPLETED.
+   * CAS on pending-* / broadcasting-* so concurrent attach cannot clobber.
    */
   static async attachOnChainHash(params: {
     userId: string;
@@ -1187,7 +1252,10 @@ export class TransactionService {
       throw new Error('Not a remittance');
     }
 
-    if (!existing.txHash.startsWith('pending-')) {
+    if (
+      !existing.txHash.startsWith('pending-') &&
+      !this.isBroadcastClaimHash(existing.txHash)
+    ) {
       if (existing.txHash.toLowerCase() === hash.toLowerCase()) {
         return existing;
       }
@@ -1196,8 +1264,15 @@ export class TransactionService {
 
     const isCrypto = (existing.recipientBank || '').startsWith('crypto:');
 
-    return await prisma.transaction.update({
-      where: { id: existing.id },
+    const attached = await prisma.transaction.updateMany({
+      where: {
+        id: existing.id,
+        userId: params.userId,
+        OR: [
+          { txHash: { startsWith: 'pending-' } },
+          { txHash: { startsWith: 'broadcasting-' } },
+        ],
+      },
       data: {
         txHash: hash,
         // Pending rows are created with chainId=0; stamp settlement chain on broadcast.
@@ -1206,6 +1281,16 @@ export class TransactionService {
         updatedAt: new Date(),
       },
     });
+
+    if (attached.count !== 1) {
+      const again = await prisma.transaction.findUnique({ where: { id: existing.id } });
+      if (again && again.txHash.toLowerCase() === hash.toLowerCase()) {
+        return again;
+      }
+      throw new Error('Transaction already has an on-chain hash');
+    }
+
+    return await prisma.transaction.findUnique({ where: { id: existing.id } });
   }
 
   /**
@@ -1238,10 +1323,13 @@ export class TransactionService {
     });
   }
 
-  /** Extract Paycrest order id from a pending-* / abandoned-* placeholder hash. */
+  /** Extract Paycrest order id from a pending-* / abandoned-* / broadcasting-* hash. */
   static paycrestOrderIdFromTxHash(txHash: string): string | null {
     if (txHash.startsWith("pending-")) return txHash.slice("pending-".length);
     if (txHash.startsWith("abandoned-")) return txHash.slice("abandoned-".length);
+    if (txHash.startsWith("broadcasting-")) {
+      return txHash.slice("broadcasting-".length);
+    }
     return null;
   }
 

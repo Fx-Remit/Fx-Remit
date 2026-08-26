@@ -102,7 +102,9 @@ export async function POST(req: Request) {
             ? 404
             : err.code === 'NOT_DELEGATED' || err.code === 'WALLET_OWNERSHIP'
               ? 403
-              : 400;
+              : err.code === 'BROADCAST_IN_PROGRESS'
+                ? 409
+                : 400;
         return NextResponse.json(
           { error: err.message, code: err.code },
           { status },

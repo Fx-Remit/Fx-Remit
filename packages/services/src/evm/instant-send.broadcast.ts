@@ -142,6 +142,13 @@ export async function broadcastSettlementTransfer(opts: {
     return { txHash: remittance.txHash, alreadyBroadcast: true };
   }
 
+  if (TransactionService.isBroadcastClaimHash(remittance.txHash)) {
+    throw new InstantSendWalletError(
+      'BROADCAST_IN_PROGRESS',
+      'Broadcast already in progress for this order',
+    );
+  }
+
   if (!remittance.txHash.startsWith('pending-')) {
     throw new InstantSendWalletError(
       'NOT_PENDING',
@@ -149,8 +156,9 @@ export async function broadcastSettlementTransfer(opts: {
     );
   }
 
+  const pendingTxHash = remittance.txHash;
   const paycrestOrderId =
-    TransactionService.paycrestOrderIdFromTxHash(remittance.txHash);
+    TransactionService.paycrestOrderIdFromTxHash(pendingTxHash);
   if (
     !paycrestOrderId ||
     TransactionService.isAppLocalPendingKey(
@@ -225,6 +233,26 @@ export async function broadcastSettlementTransfer(opts: {
     args: [receiveAddress as `0x${string}`, amountRaw],
   });
 
+  // Atomic claim before Privy — concurrent POSTs must not both sendTransaction.
+  const claimed = await TransactionService.claimBroadcastSlot({
+    userId: opts.userId,
+    orderId: opts.orderId,
+    pendingTxHash,
+  });
+  if (!claimed) {
+    const again = await TransactionService.findPendingRemittanceForBroadcast({
+      userId: opts.userId,
+      orderId: opts.orderId,
+    });
+    if (again && TransactionService.isOnChainTxHash(again.txHash)) {
+      return { txHash: again.txHash, alreadyBroadcast: true };
+    }
+    throw new InstantSendWalletError(
+      'BROADCAST_IN_PROGRESS',
+      'Broadcast already in progress for this order',
+    );
+  }
+
   const client = privyNodeClient();
   const authKey = authorizationPrivateKey();
 
@@ -246,22 +274,46 @@ export async function broadcastSettlementTransfer(opts: {
     });
     hash = result.hash;
   } catch (err) {
+    await TransactionService.releaseBroadcastClaim({
+      userId: opts.userId,
+      orderId: opts.orderId,
+      paycrestOrderId,
+    }).catch((releaseErr) => {
+      console.error(
+        '[InstantSend] releaseBroadcastClaim failed after Privy error:',
+        releaseErr,
+      );
+    });
     const message = err instanceof Error ? err.message : String(err);
     throw new InstantSendWalletError('BROADCAST_FAILED', message);
   }
 
   if (!TransactionService.isOnChainTxHash(hash)) {
+    await TransactionService.releaseBroadcastClaim({
+      userId: opts.userId,
+      orderId: opts.orderId,
+      paycrestOrderId,
+    }).catch(() => undefined);
     throw new InstantSendWalletError(
       'INVALID_HASH',
       'Privy returned an invalid transaction hash',
     );
   }
 
-  await TransactionService.attachOnChainHash({
-    userId: opts.userId,
-    orderId: opts.orderId,
-    txHash: hash,
-  });
+  try {
+    await TransactionService.attachOnChainHash({
+      userId: opts.userId,
+      orderId: opts.orderId,
+      txHash: hash,
+    });
+  } catch (attachErr) {
+    // Privy already broadcast — still return the hash so the client can sync-hash.
+    // Do not release the claim (would reopen a double-send window).
+    console.error(
+      '[InstantSend] attachOnChainHash failed after broadcast; returning hash for client sync',
+      attachErr,
+    );
+  }
 
   return { txHash: hash, alreadyBroadcast: false };
 }

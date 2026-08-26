@@ -19,6 +19,7 @@ describe('isPlaceholderTxHash / formatTxHashLabel', () => {
   it('detects placeholder hashes', () => {
     assert.equal(isPlaceholderTxHash('pending-abc'), true);
     assert.equal(isPlaceholderTxHash('abandoned-xyz'), true);
+    assert.equal(isPlaceholderTxHash('broadcasting-pc-1'), true);
     assert.equal(isPlaceholderTxHash('0x439e5f8c1234567890abcdef'), false);
   });
 

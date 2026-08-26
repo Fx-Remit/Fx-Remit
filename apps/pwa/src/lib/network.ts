@@ -21,6 +21,7 @@ export function isPlaceholderTxHash(txHash?: string | null): boolean {
   return (
     h.startsWith('pending-') ||
     h.startsWith('abandoned-') ||
+    h.startsWith('broadcasting-') ||
     h.startsWith('unknown-')
   );
 }
@@ -30,6 +31,7 @@ export function formatTxHashLabel(txHash?: string | null): string {
   if (!txHash) return 'Not sent';
   // pending-* = reserved ledger, no on-chain send yet (reject/back can leave these).
   if (txHash.toLowerCase().startsWith('pending-')) return 'Not sent';
+  if (txHash.toLowerCase().startsWith('broadcasting-')) return 'Sending…';
   if (txHash.toLowerCase().startsWith('abandoned-')) return 'Not broadcast';
   if (txHash.toLowerCase().startsWith('unknown-')) return 'Unconfirmed';
   if (/^0x[a-fA-F0-9]{8,}$/.test(txHash)) {
