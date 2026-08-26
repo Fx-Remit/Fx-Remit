@@ -280,7 +280,7 @@ describe('linkStellarPublicKey', () => {
       privyDid: 'did:privy:1',
       account: 'GABC',
     });
-    assert.deepEqual(result, { id: 'user-1', linked: true });
+    assert.deepEqual(result, { status: 'ok', id: 'user-1', linked: true });
     assert.equal(updated!.stellarPublicKey, 'GABC');
   });
 
@@ -299,33 +299,33 @@ describe('linkStellarPublicKey', () => {
       privyDid: 'did:privy:1',
       account: 'GABC',
     });
-    assert.deepEqual(result, { id: 'user-1', linked: false });
+    assert.deepEqual(result, { status: 'ok', id: 'user-1', linked: false });
     assert.equal(updateCalled, false);
   });
 
-  it('rejects when linked to a different account', async () => {
+  it('returns conflict when linked to a different account (no silent re-link)', async () => {
     prisma.user.findUnique = (async () => ({
       id: 'user-1',
       stellarPublicKey: 'GOTHER',
     })) as typeof prisma.user.findUnique;
 
-    await assert.rejects(
-      () =>
-        linkStellarPublicKey({
-          privyDid: 'did:privy:1',
-          account: 'GABC',
-        }),
-      /different Stellar account/,
-    );
+    const result = await linkStellarPublicKey({
+      privyDid: 'did:privy:1',
+      account: 'GABC',
+    });
+    assert.deepEqual(result, {
+      status: 'conflict',
+      reason: 'user_has_other_key',
+    });
   });
 
-  it('returns null when no user for Privy DID', async () => {
+  it('returns no_user when no row for Privy DID', async () => {
     prisma.user.findUnique = (async () => null) as typeof prisma.user.findUnique;
     const result = await linkStellarPublicKey({
       privyDid: 'did:privy:missing',
       account: 'GABC',
     });
-    assert.equal(result, null);
+    assert.deepEqual(result, { status: 'no_user' });
   });
 });
 

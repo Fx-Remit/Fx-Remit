@@ -124,14 +124,27 @@ export async function resolveStellarPersistUser(params: {
 }
 
 /**
+ * Result of linking SEP-10 `account` (G…) to the Privy user's row.
+ *
+ * `conflict` is intentionally soft: re-link UX is not productized yet, so
+ * callers should skip remittance persist rather than abort SEP-24 start.
+ */
+export type LinkStellarPublicKeyResult =
+  | { status: 'ok'; id: string; linked: boolean }
+  | { status: 'no_user' }
+  | {
+      status: 'conflict';
+      reason: 'user_has_other_key' | 'key_owned_by_other';
+    };
+
+/**
  * Link SEP-10 `account` (G…) onto the app user for this Privy DID.
- * Idempotent when already linked to the same key; rejects a different key.
- * Returns null when no User row exists yet (onboard first).
+ * Idempotent when already linked to the same key; never silently re-links.
  */
 export async function linkStellarPublicKey(params: {
   privyDid: string;
   account: string;
-}): Promise<{ id: string; linked: boolean } | null> {
+}): Promise<LinkStellarPublicKeyResult> {
   const account = params.account.trim();
   if (!account) {
     throw new Error('Stellar account required to link');
@@ -142,16 +155,15 @@ export async function linkStellarPublicKey(params: {
     select: { id: true, stellarPublicKey: true },
   });
   if (!user) {
-    return null;
+    return { status: 'no_user' };
   }
 
   if (user.stellarPublicKey === account) {
-    return { id: user.id, linked: false };
+    return { status: 'ok', id: user.id, linked: false };
   }
   if (user.stellarPublicKey && user.stellarPublicKey !== account) {
-    throw new Error(
-      'User already linked to a different Stellar account — cannot re-link',
-    );
+    // UX gap: no re-link / account-picker flow yet — caller must not persist.
+    return { status: 'conflict', reason: 'user_has_other_key' };
   }
 
   try {
@@ -160,7 +172,7 @@ export async function linkStellarPublicKey(params: {
       data: { stellarPublicKey: account },
     });
     if (updated.count === 1) {
-      return { id: user.id, linked: true };
+      return { status: 'ok', id: user.id, linked: true };
     }
   } catch (err) {
     const code =
@@ -168,9 +180,7 @@ export async function linkStellarPublicKey(params: {
         ? String((err as { code: unknown }).code)
         : '';
     if (code === 'P2002') {
-      throw new Error(
-        `Stellar account ${account} is already linked to another user`,
-      );
+      return { status: 'conflict', reason: 'key_owned_by_other' };
     }
     throw err;
   }
@@ -180,7 +190,7 @@ export async function linkStellarPublicKey(params: {
     select: { id: true, stellarPublicKey: true },
   });
   if (again?.stellarPublicKey === account) {
-    return { id: again.id, linked: false };
+    return { status: 'ok', id: again.id, linked: false };
   }
   throw new Error('Failed to link Stellar public key');
 }

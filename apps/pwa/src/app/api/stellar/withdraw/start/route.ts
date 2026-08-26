@@ -33,10 +33,11 @@ export const dynamic = 'force-dynamic';
  * 3. STELLAR_TEST_SECRET — server signs (smoke / CI; operator DID only)
  *
  * Optional persist (sandbox only): after SEP-10, links `stellar_public_key` to
- * the Privy user's row, then writes rail=STELLAR when a linked user matches the
- * SEP-10 `account`. Optional body `userId` must also have that same key — body
- * id alone is never trusted. Persist fails closed when a linked user exists.
- * Smoke without an app user still returns the interactive URL (persisted: false).
+ * the Privy user's row, then writes rail=STELLAR when link succeeds. If the user
+ * is already linked to a different G… (`stellar_account_mismatch`), interactive
+ * start still succeeds but persist is skipped — re-link UX is not wired yet.
+ * Optional body `userId` is only used when no Privy user row exists yet and must
+ * also match the SEP-10 account. Smoke without an app user returns persisted: false.
  *
  * POST { corridor, amount, account?, authToken?, signedChallenge?, userId? }
  */
@@ -138,18 +139,27 @@ export async function POST(req: NextRequest) {
 
     let persisted = false;
     let remittanceId: string | undefined;
+    let stellarAccountMismatch = false;
 
     // Link G… after successful SEP-10 so remittance persist / pay hash reuse work.
-    const linked = await linkStellarPublicKey({
+    // Conflict is a known UX gap (no re-link UI yet): still return interactive URL,
+    // but skip persist so we never attribute funds to the wrong account.
+    const linkResult = await linkStellarPublicKey({
       privyDid: privyAuth.userId,
       account,
     });
-    const user =
-      linked ??
-      (await resolveStellarPersistUser({
+
+    let user: { id: string } | null = null;
+    if (linkResult.status === 'ok') {
+      user = { id: linkResult.id };
+    } else if (linkResult.status === 'conflict') {
+      stellarAccountMismatch = true;
+    } else {
+      user = await resolveStellarPersistUser({
         userId: bodyUserId,
         account,
-      }));
+      });
+    }
 
     if (user) {
       // Fail closed: linked users must get a remittance row before interactive pay.
@@ -176,6 +186,7 @@ export async function POST(req: NextRequest) {
       interactive_url: withdraw.url,
       type: withdraw.type,
       persisted,
+      ...(stellarAccountMismatch ? { stellar_account_mismatch: true } : {}),
       ...(remittanceId ? { remittance_id: remittanceId } : {}),
     });
   } catch (error: unknown) {
