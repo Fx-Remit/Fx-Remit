@@ -1,6 +1,6 @@
 'use client';
 
-import { X, AlertCircle, CheckCircle2, Zap } from 'lucide-react';
+import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -166,10 +166,10 @@ export function ConfirmTransactionSheet({
     }
   };
 
-  const enableInstantSend = async () => {
+  const enableFasterPayouts = async (): Promise<boolean> => {
     if (!embeddedWallet?.address || !isEmbeddedPrivy) {
-      setError('Instant Send requires a Privy embedded wallet');
-      return;
+      setError('This payout needs the in-app wallet on this account');
+      return false;
     }
     setStatus('granting');
     setError(null);
@@ -179,16 +179,16 @@ export function ConfirmTransactionSheet({
         chainType: 'ethereum',
       });
       setLocalDelegated(true);
-      setStatus('idle');
+      return true;
     } catch (err: unknown) {
-      console.error('[CONFIRM] Instant Send grant failed:', err);
-      const message = isUserRejection(err)
-        ? 'Instant Send permission was not granted'
-        : err instanceof Error
-          ? err.message
-          : 'Failed to enable Instant Send';
-      setError(message);
+      console.error('[CONFIRM] Payout permission grant failed:', err);
+      setError(
+        isUserRejection(err)
+          ? 'Cancelled — tap Send to try again'
+          : 'Could not continue. Please try again.',
+      );
       setStatus('idle');
+      return false;
     }
   };
 
@@ -198,11 +198,12 @@ export function ConfirmTransactionSheet({
       return;
     }
 
-    if (isEmbeddedPrivy && !isDelegated) {
-      setError(
-        'Enable Instant Send once so FX-Remit can complete payouts when you tap Send — without a second wallet approval.',
-      );
-      return;
+    // Use a local flag — React state won't update mid-handler after grant.
+    let canServerBroadcast = isEmbeddedPrivy && isDelegated;
+    if (isEmbeddedPrivy && !canServerBroadcast) {
+      const granted = await enableFasterPayouts();
+      if (!granted) return;
+      canServerBroadcast = true;
     }
 
     onSendingChange?.(true);
@@ -263,8 +264,8 @@ export function ConfirmTransactionSheet({
       const amountRaw = parseUnits(amountHuman, decimals);
       const orderId = orderData.transaction.orderId;
 
-      // Preferred Instant Send path: server-authorized broadcast (no Privy modal).
-      if (isEmbeddedPrivy && isDelegated) {
+      // Server-authorized broadcast when payout permission is granted (no second Approve).
+      if (canServerBroadcast) {
         const broadcastRes = await fetch('/api/transaction/broadcast-settlement', {
           method: 'POST',
           headers: {
@@ -291,14 +292,13 @@ export function ConfirmTransactionSheet({
             body: JSON.stringify({ orderId, txHash: broadcastTxHash }),
           });
           if (!syncRes.ok) {
-            console.error('[CONFIRM] sync-hash after Instant Send failed:', syncRes.status);
+            console.error('[CONFIRM] sync-hash after broadcast failed:', syncRes.status);
           }
         } else if (
           broadcastRes.status === 503 ||
           broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED'
         ) {
-          // Instant Send server signing unavailable — require wallet confirmation.
-          // No silent send (client-bound calldata) and no client claim/release endpoints.
+          // Server signing unavailable — require wallet confirmation.
           const receipt = await sendTransaction(
             {
               to: settlementTokenAddress,
@@ -330,11 +330,17 @@ export function ConfirmTransactionSheet({
           if (!syncRes.ok) {
             console.error('[CONFIRM] sync-hash failed:', syncRes.status);
           }
+        } else if (broadcastData.code === 'NOT_DELEGATED') {
+          // Pre-claim / no on-chain send — consent race. Keep session + reserve; allow Send retry.
+          setError('Almost ready — tap Send again to finish.');
+          setStatus('idle');
+          onSendingChange?.(false);
+          return;
         } else if (
           broadcastData.code === 'BROADCAST_IN_PROGRESS' ||
           broadcastData.code === 'BROADCAST_UNCERTAIN'
         ) {
-          // Sibling request / ambiguous Privy submit — do not cancel-pending.
+          // May already be on-chain — do not cancel-pending.
           session.markConsumed();
           invalidateLedgerQueries();
           setStatus('success');
@@ -348,7 +354,7 @@ export function ConfirmTransactionSheet({
           throw new Error(
             typeof broadcastData.error === 'string'
               ? broadcastData.error
-              : 'Instant Send broadcast failed',
+              : 'Could not complete payout. Please try again.',
           );
         }
       } else {
@@ -415,8 +421,14 @@ export function ConfirmTransactionSheet({
 
   const busy =
     status === 'creating' || status === 'sending' || status === 'granting';
-  const sendDisabled =
-    busy || status === 'success' || (isEmbeddedPrivy && !isDelegated);
+  const sendDisabled = busy || status === 'success';
+
+  const sendLabel =
+    status === 'granting'
+      ? 'Confirming…'
+      : status === 'idle'
+        ? 'Send'
+        : 'Processing...';
 
   return (
     <>
@@ -457,9 +469,12 @@ export function ConfirmTransactionSheet({
               )}
               {prefetchPhase === 'ready' && status === 'idle' && !displayError && (
                 <p className="text-[12px] text-[#2261FE] mt-2 font-medium">
-                  {isEmbeddedPrivy && isDelegated
-                    ? 'Ready to send instantly'
-                    : 'Ready to send'}
+                  Ready to send
+                </p>
+              )}
+              {status === 'granting' && (
+                <p className="text-[12px] text-[#888888] mt-2 font-medium">
+                  Confirm once to allow payouts…
                 </p>
               )}
             </div>
@@ -519,22 +534,17 @@ export function ConfirmTransactionSheet({
           )}
 
           <div className="w-[390px] max-w-full space-y-4 mt-auto">
-            {isEmbeddedPrivy && !isDelegated && (
-              <button
-                onClick={() => void enableInstantSend()}
-                disabled={busy}
-                className="w-full h-[65px] bg-[#0F172A] text-white rounded-[7px] text-[16px] font-bold active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <Zap size={18} />
-                {status === 'granting' ? 'Waiting for permission…' : 'Enable Instant Send'}
-              </button>
+            {isEmbeddedPrivy && !isDelegated && status === 'idle' && !displayError && (
+              <p className="text-center text-[12px] text-[#888888] font-medium px-2">
+                First send may ask you to confirm payouts for this app.
+              </p>
             )}
             <button
               onClick={handleSend}
               disabled={sendDisabled}
               className="w-full h-[65px] bg-[#2261FE] text-white rounded-[7px] text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
             >
-              {status === 'idle' ? 'Send' : 'Processing...'}
+              {sendLabel}
             </button>
             <button
               onClick={onClose}
