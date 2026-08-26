@@ -330,20 +330,24 @@ export function ConfirmTransactionSheet({
           if (!syncRes.ok) {
             console.error('[CONFIRM] sync-hash failed:', syncRes.status);
           }
+        } else if (broadcastData.code === 'NOT_DELEGATED') {
+          // Pre-claim / no on-chain send — consent race. Keep session + reserve; allow Send retry.
+          setError('Almost ready — tap Send again to finish.');
+          setStatus('idle');
+          onSendingChange?.(false);
+          return;
         } else if (
           broadcastData.code === 'BROADCAST_IN_PROGRESS' ||
-          broadcastData.code === 'BROADCAST_UNCERTAIN' ||
-          broadcastData.code === 'NOT_DELEGATED'
+          broadcastData.code === 'BROADCAST_UNCERTAIN'
         ) {
+          // May already be on-chain — do not cancel-pending.
           session.markConsumed();
           invalidateLedgerQueries();
           setStatus('success');
           setError(
             broadcastData.code === 'BROADCAST_UNCERTAIN'
               ? 'Payment may have been submitted — check history before trying again.'
-              : broadcastData.code === 'NOT_DELEGATED'
-                ? 'Tap Send again to confirm payouts for this app.'
-                : 'Payment is already sending — check history before trying again.',
+              : 'Payment is already sending — check history before trying again.',
           );
           return;
         } else {
