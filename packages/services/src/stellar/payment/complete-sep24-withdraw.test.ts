@@ -238,4 +238,202 @@ describe('completeSep24WithdrawPayment', () => {
     assert.equal(b.payment.hash, 'hash-1');
     assert.equal(b.paymentReused, true);
   });
+
+  it('fails closed before submit when persist required and remittance missing', async () => {
+    const kp = Keypair.random();
+    const client = new Sep24Client();
+    mock.method(client, 'getTransferServer', async () => 'https://anchor.example/sep24');
+    mock.method(client, 'pollUntilTransferReady', async () => ({ ...READY }));
+    let submitCount = 0;
+
+    await assert.rejects(
+      () =>
+        completeSep24WithdrawPayment({
+          anchor: ANCHOR,
+          network: 'testnet',
+          authToken: 'tok',
+          transactionId: 'tx-no-rem',
+          keypair: kp,
+          terminalTimeoutMs: 0,
+          persistPaymentHash: true,
+          sep24Client: client,
+          claimPaymentSlot: async () => ({ outcome: 'missing' }),
+          submitPayment: async () => {
+            submitCount += 1;
+            throw new Error('should not submit');
+          },
+        }),
+      /No STELLAR remittance/,
+    );
+    assert.equal(submitCount, 0);
+  });
+
+  it('reuses via claim without injected findRemittance hash', async () => {
+    const kp = Keypair.random();
+    const client = new Sep24Client();
+    mock.method(client, 'getTransferServer', async () => 'https://anchor.example/sep24');
+    mock.method(client, 'pollUntilTransferReady', async () => ({ ...READY }));
+    let submitCount = 0;
+
+    const result = await completeSep24WithdrawPayment({
+      anchor: ANCHOR,
+      network: 'testnet',
+      authToken: 'tok',
+      transactionId: 'tx-claim-reuse',
+      keypair: kp,
+      terminalTimeoutMs: 0,
+      persistPaymentHash: true,
+      sep24Client: client,
+      claimPaymentSlot: async () => ({
+        outcome: 'reuse',
+        remittanceId: 'rem-claim',
+        stellarPaymentHash: 'hash-from-claim',
+      }),
+      submitPayment: async () => {
+        submitCount += 1;
+        throw new Error('should not submit');
+      },
+    });
+
+    assert.equal(submitCount, 0);
+    assert.equal(result.payment.hash, 'hash-from-claim');
+    assert.equal(result.paymentReused, true);
+    assert.equal(result.remittanceId, 'rem-claim');
+  });
+
+  it('second cross-instance claim does not double-submit', async () => {
+    const kp = Keypair.random();
+    const client = new Sep24Client();
+    mock.method(client, 'getTransferServer', async () => 'https://anchor.example/sep24');
+    mock.method(client, 'pollUntilTransferReady', async () => ({ ...READY }));
+    mock.method(client, 'getTransactionReliable', async () => ({ ...READY }));
+
+    let winner = false;
+    let storedHash: string | null = null;
+    let submitCount = 0;
+
+    const claimPaymentSlot = async () => {
+      if (storedHash) {
+        return {
+          outcome: 'reuse' as const,
+          remittanceId: 'rem-x',
+          stellarPaymentHash: storedHash,
+        };
+      }
+      if (winner) {
+        return { outcome: 'in_flight' as const, remittanceId: 'rem-x' };
+      }
+      winner = true;
+      return {
+        outcome: 'won' as const,
+        remittanceId: 'rem-x',
+        claimToken: 'stellar-claiming-1',
+      };
+    };
+
+    const pay = (transactionId: string) =>
+      completeSep24WithdrawPayment({
+        anchor: ANCHOR,
+        network: 'testnet',
+        authToken: 'tok',
+        transactionId,
+        keypair: kp,
+        terminalTimeoutMs: 0,
+        persistPaymentHash: true,
+        sep24Client: client,
+        claimPaymentSlot,
+        setPaymentHash: async ({ stellarPaymentHash }) => {
+          storedHash = stellarPaymentHash;
+          return { id: 'rem-x' };
+        },
+        submitPayment: async () => {
+          submitCount += 1;
+          await new Promise((r) => setTimeout(r, 40));
+          return {
+            hash: 'only-once',
+            amount: '1',
+            destination: 'GANCHOR',
+            memo: 'm1',
+            memoType: 'text',
+          };
+        },
+      });
+
+    // Same process lock serializes; after first persists, second reuses via claim.
+    const [a, b] = await Promise.all([pay('tx-cross'), pay('tx-cross')]);
+    assert.equal(submitCount, 1);
+    assert.equal(a.payment.hash, 'only-once');
+    assert.equal(b.payment.hash, 'only-once');
+    assert.equal(b.paymentReused, true);
+  });
+
+  it('fails closed when setPaymentHash fails after submit', async () => {
+    const kp = Keypair.random();
+    const client = new Sep24Client();
+    mock.method(client, 'getTransferServer', async () => 'https://anchor.example/sep24');
+    mock.method(client, 'pollUntilTransferReady', async () => ({ ...READY }));
+    mock.method(client, 'getTransactionReliable', async () => ({ ...READY }));
+
+    await assert.rejects(
+      () =>
+        completeSep24WithdrawPayment({
+          anchor: ANCHOR,
+          network: 'testnet',
+          authToken: 'tok',
+          transactionId: 'tx-persist-fail',
+          keypair: kp,
+          terminalTimeoutMs: 0,
+          persistPaymentHash: true,
+          sep24Client: client,
+          claimPaymentSlot: async () => ({
+            outcome: 'won',
+            remittanceId: 'rem-1',
+            claimToken: 'stellar-claiming-x',
+          }),
+          setPaymentHash: async () => {
+            throw new Error('No STELLAR remittance for anchor tx tx-persist-fail');
+          },
+          submitPayment: async () => ({
+            hash: 'paid-but-unpersisted',
+            amount: '1',
+            destination: 'GANCHOR',
+            memo: 'm1',
+            memoType: 'text',
+          }),
+        }),
+      /No STELLAR remittance/,
+    );
+  });
+
+  it('rejects in-flight claim without submitting', async () => {
+    const kp = Keypair.random();
+    const client = new Sep24Client();
+    mock.method(client, 'getTransferServer', async () => 'https://anchor.example/sep24');
+    mock.method(client, 'pollUntilTransferReady', async () => ({ ...READY }));
+    let submitCount = 0;
+
+    await assert.rejects(
+      () =>
+        completeSep24WithdrawPayment({
+          anchor: ANCHOR,
+          network: 'testnet',
+          authToken: 'tok',
+          transactionId: 'tx-inflight',
+          keypair: kp,
+          terminalTimeoutMs: 0,
+          persistPaymentHash: true,
+          sep24Client: client,
+          claimPaymentSlot: async () => ({
+            outcome: 'in_flight',
+            remittanceId: 'rem-1',
+          }),
+          submitPayment: async () => {
+            submitCount += 1;
+            throw new Error('should not submit');
+          },
+        }),
+      /already in progress/,
+    );
+    assert.equal(submitCount, 0);
+  });
 });

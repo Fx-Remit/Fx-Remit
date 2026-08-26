@@ -1,6 +1,9 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { prisma, Prisma, type Transaction } from '@fx-remit/database';
 import type { StellarCorridor } from '../types/types.js';
+
+/** Stale claim reclaim window — covers crash between claim and Horizon submit. */
+const STELLAR_PAYMENT_CLAIM_STALE_MS = 120_000;
 
 export interface CreateStellarWithdrawStartInput {
   userId: string;
@@ -118,6 +121,142 @@ export async function resolveStellarPersistUser(params: {
     select: { id: true },
   });
   return byKey;
+}
+
+/**
+ * Result of linking SEP-10 `account` (G…) to the Privy user's row.
+ *
+ * `conflict` is intentionally soft: re-link UX is not productized yet, so
+ * callers should skip remittance persist rather than abort SEP-24 start.
+ */
+export type LinkStellarPublicKeyResult =
+  | { status: 'ok'; id: string; linked: boolean }
+  | { status: 'no_user' }
+  | {
+      status: 'conflict';
+      reason: 'user_has_other_key' | 'key_owned_by_other';
+    };
+
+/**
+ * Link SEP-10 `account` (G…) onto the app user for this Privy DID.
+ * Idempotent when already linked to the same key; never silently re-links.
+ */
+export async function linkStellarPublicKey(params: {
+  privyDid: string;
+  account: string;
+}): Promise<LinkStellarPublicKeyResult> {
+  const account = params.account.trim();
+  if (!account) {
+    throw new Error('Stellar account required to link');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { privyDid: params.privyDid },
+    select: { id: true, stellarPublicKey: true },
+  });
+  if (!user) {
+    return { status: 'no_user' };
+  }
+
+  if (user.stellarPublicKey === account) {
+    return { status: 'ok', id: user.id, linked: false };
+  }
+  if (user.stellarPublicKey && user.stellarPublicKey !== account) {
+    // UX gap: no re-link / account-picker flow yet — caller must not persist.
+    return { status: 'conflict', reason: 'user_has_other_key' };
+  }
+
+  try {
+    const updated = await prisma.user.updateMany({
+      where: { id: user.id, stellarPublicKey: null },
+      data: { stellarPublicKey: account },
+    });
+    if (updated.count === 1) {
+      return { status: 'ok', id: user.id, linked: true };
+    }
+  } catch (err) {
+    const code =
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code: unknown }).code)
+        : '';
+    if (code === 'P2002') {
+      return { status: 'conflict', reason: 'key_owned_by_other' };
+    }
+    throw err;
+  }
+
+  const again = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { id: true, stellarPublicKey: true },
+  });
+  if (again?.stellarPublicKey === account) {
+    return { status: 'ok', id: again.id, linked: false };
+  }
+  throw new Error('Failed to link Stellar public key');
+}
+
+export type ClaimStellarPaymentSlotResult =
+  | { outcome: 'won'; remittanceId: string; claimToken: string }
+  | { outcome: 'reuse'; remittanceId: string; stellarPaymentHash: string }
+  | { outcome: 'in_flight'; remittanceId: string }
+  | { outcome: 'missing' };
+
+/**
+ * Cross-instance payment claim via CAS on txHash.
+ * Winner alone may Horizon-submit; losers reuse hash or fail closed (in flight).
+ */
+export async function claimStellarPaymentSlot(
+  anchorTransactionId: string,
+): Promise<ClaimStellarPaymentSlotResult> {
+  const row = await findStellarRemittanceByAnchorTx(anchorTransactionId);
+  if (!row) {
+    return { outcome: 'missing' };
+  }
+  if (row.stellarPaymentHash) {
+    return {
+      outcome: 'reuse',
+      remittanceId: row.id,
+      stellarPaymentHash: row.stellarPaymentHash,
+    };
+  }
+
+  const claimToken = `stellar-claiming-${randomUUID()}`;
+  const staleBefore = new Date(Date.now() - STELLAR_PAYMENT_CLAIM_STALE_MS);
+
+  const claimed = await prisma.transaction.updateMany({
+    where: {
+      id: row.id,
+      rail: 'STELLAR',
+      stellarPaymentHash: null,
+      OR: [
+        { txHash: { startsWith: 'stellar-pending-' } },
+        {
+          AND: [
+            { txHash: { startsWith: 'stellar-claiming-' } },
+            { updatedAt: { lt: staleBefore } },
+          ],
+        },
+      ],
+    },
+    data: {
+      txHash: claimToken,
+      updatedAt: new Date(),
+    },
+  });
+
+  if (claimed.count === 1) {
+    return { outcome: 'won', remittanceId: row.id, claimToken };
+  }
+
+  const again = await findStellarRemittanceByAnchorTx(anchorTransactionId);
+  if (again?.stellarPaymentHash) {
+    return {
+      outcome: 'reuse',
+      remittanceId: again.id,
+      stellarPaymentHash: again.stellarPaymentHash,
+    };
+  }
+  return { outcome: 'in_flight', remittanceId: again?.id ?? row.id };
 }
 
 /** Lookup sandbox STELLAR remittance by SEP-24 anchor transaction id. */

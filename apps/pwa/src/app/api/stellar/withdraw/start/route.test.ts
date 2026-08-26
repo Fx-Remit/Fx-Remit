@@ -238,6 +238,7 @@ describe('POST /api/stellar/withdraw/start — sandbox persist', () => {
     const body = await res.json();
     assert.equal(body.persisted, false);
     assert.equal(body.remittance_id, undefined);
+    assert.equal(body.stellar_account_mismatch, true);
     assert.equal(createCalled, false);
   });
 });

@@ -6,6 +6,7 @@ import {
   keypairFromSecret,
   isValidPublicKey,
   createStellarWithdrawStart,
+  linkStellarPublicKey,
   resolveStellarPersistUser,
   type StellarCorridor,
 } from '@fx-remit/services';
@@ -31,10 +32,12 @@ export const dynamic = 'force-dynamic';
  * 2. signedChallenge + account — server exchanges signed XDR for JWT
  * 3. STELLAR_TEST_SECRET — server signs (smoke / CI; operator DID only)
  *
- * Optional persist (sandbox only): writes rail=STELLAR only when a user is
- * linked to the SEP-10 `account` (`stellar_public_key` match). Optional
- * `userId` must also have that same key — body id alone is never trusted.
- * Smoke without an app user still returns the interactive URL (persisted: false).
+ * Optional persist (sandbox only): after SEP-10, links `stellar_public_key` to
+ * the Privy user's row, then writes rail=STELLAR when link succeeds. If the user
+ * is already linked to a different G… (`stellar_account_mismatch`), interactive
+ * start still succeeds but persist is skipped — re-link UX is not wired yet.
+ * Optional body `userId` is only used when no Privy user row exists yet and must
+ * also match the SEP-10 account. Smoke without an app user returns persisted: false.
  *
  * POST { corridor, amount, account?, authToken?, signedChallenge?, userId? }
  */
@@ -136,29 +139,40 @@ export async function POST(req: NextRequest) {
 
     let persisted = false;
     let remittanceId: string | undefined;
+    let stellarAccountMismatch = false;
 
-    const user = await resolveStellarPersistUser({
-      userId: bodyUserId,
+    // Link G… after successful SEP-10 so remittance persist / pay hash reuse work.
+    // Conflict is a known UX gap (no re-link UI yet): still return interactive URL,
+    // but skip persist so we never attribute funds to the wrong account.
+    const linkResult = await linkStellarPublicKey({
+      privyDid: privyAuth.userId,
       account,
     });
 
+    let user: { id: string } | null = null;
+    if (linkResult.status === 'ok') {
+      user = { id: linkResult.id };
+    } else if (linkResult.status === 'conflict') {
+      stellarAccountMismatch = true;
+    } else {
+      user = await resolveStellarPersistUser({
+        userId: bodyUserId,
+        account,
+      });
+    }
+
     if (user) {
-      try {
-        const row = await createStellarWithdrawStart({
-          userId: user.id,
-          account,
-          anchorTransactionId: withdraw.id,
-          corridor,
-          amountUsd: amount,
-          anchorId: anchor.id,
-        });
-        persisted = true;
-        remittanceId = row.id;
-      } catch (persistErr: unknown) {
-        // Do not fail SEP-24 start if sandbox DB write fails
-        const msg = persistErr instanceof Error ? persistErr.message : String(persistErr);
-        console.error('[Stellar Withdraw Start] persist skipped:', msg);
-      }
+      // Fail closed: linked users must get a remittance row before interactive pay.
+      const row = await createStellarWithdrawStart({
+        userId: user.id,
+        account,
+        anchorTransactionId: withdraw.id,
+        corridor,
+        amountUsd: amount,
+        anchorId: anchor.id,
+      });
+      persisted = true;
+      remittanceId = row.id;
     }
 
     return NextResponse.json({
@@ -172,6 +186,7 @@ export async function POST(req: NextRequest) {
       interactive_url: withdraw.url,
       type: withdraw.type,
       persisted,
+      ...(stellarAccountMismatch ? { stellar_account_mismatch: true } : {}),
       ...(remittanceId ? { remittance_id: remittanceId } : {}),
     });
   } catch (error: unknown) {
