@@ -1,9 +1,12 @@
 /**
- * Prefetch create-pending (ledger reserve + Paycrest order) while the user
- * reviews the confirm sheet so Send can jump straight to the wallet transfer.
+ * Confirm-sheet settlement session.
  *
- * Lifecycle is owned by the open/close event handlers not by useEffect.
- * If the user closes without sending, cancel using the known externalId.
+ * Holds cash-out params while the user reviews. create-pending (ledger reserve +
+ * Paycrest) starts only on Send never on sheet open so Close/Edit before Send
+ * leaves the ledger untouched.
+ *
+ * Lifecycle is owned by open/close/Send handlers, not by useEffect.
+ * After Send starts create-pending, Close uses cancel-pending on the externalId.
  */
 
 export type CreatePendingRequestBody = {
@@ -150,8 +153,8 @@ export class StaleSettlementError extends Error {
 }
 
 /**
- * One confirm-sheet prefetch lifecycle.
- * Start from the Confirm click; await on Send; abandon from the Close click.
+ * One confirm-sheet settlement lifecycle.
+ * Construct on Confirm open (review only); start(create-pending) on Send; abandon on Close after create.
  */
 export class SettlementPrefetchSession {
   private promise: Promise<PreparedSettlement> | null = null;
@@ -184,6 +187,11 @@ export class SettlementPrefetchSession {
 
   get externalId(): string {
     return this.prepared?.externalId ?? this.fallbackExternalId;
+  }
+
+  /** True after Send (or a resume) has called start() for create-pending. */
+  hasStartedCreate(): boolean {
+    return this.started;
   }
 
   /**
@@ -317,11 +325,9 @@ export class SettlementPrefetchSession {
 
   /**
    * Abort in-flight fetch, wait for it to settle, then return externalId to cancel.
-   * Uses the known idempotency key even when the client-side parse/fetch failed,
-   * because create-pending may have reserved ledger before the client saw an error.
-   * Cancel-pending is idempotent (not_found is fine).
+   * Returns null if create-pending was never started (review-only session nothing to cancel).
    *
-   * @param opts.commit When false, do not mark abandoned / clear prepared — used when
+   * @param opts.commit When false, do not mark abandoned / clear prepared used when
    *   cancel may return PROVIDER_ORDER_STILL_LIVE and the user must still tap Send.
    *   Default true preserves prior callers/tests.
    */

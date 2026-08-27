@@ -312,19 +312,19 @@ export function ConfirmTransactionSheet({
       if (!embeddedWallet) throw new Error('No wallet connected');
 
       let orderData: PreparedSettlement;
-      try {
-        orderData = await session.awaitPrepared();
-      } catch (prepErr) {
-        if (session.wasAbandoned()) {
-          throw new Error(
-            'This payout was interrupted. Close Confirm and open it once — do not tap Send twice.',
-          );
-        }
-        // Stale quote TTL: safe to refresh + resume same externalId (idempotent).
-        // Other errors after a reserve already exists: do not open a second pending.
+      // create-pending runs on Send only .
+      if (session.wasAbandoned()) {
+        throw new Error(
+          'This payout was interrupted. Close Confirm and open it once — do not tap Send twice.',
+        );
+      }
+      if (!session.isReady()) {
+        // Stale or never started. Same externalId resumes an existing reserve idempotently.
+        // If we already reserved this Send attempt and create is not restartable, fail closed.
         if (
-          !(prepErr instanceof StaleSettlementError) &&
-          reservedOrderIdRef.current
+          reservedOrderIdRef.current &&
+          session.hasStartedCreate() &&
+          !(session.getLastError() instanceof StaleSettlementError)
         ) {
           throw new Error(
             'This payout was interrupted. Close Confirm and open it once — do not tap Send twice.',
@@ -338,8 +338,8 @@ export function ConfirmTransactionSheet({
         session.start((body, signal) =>
           postCreatePending(body, accessToken!, signal),
         );
-        orderData = await session.awaitPrepared();
       }
+      orderData = await session.awaitPrepared();
       reservedOrderIdRef.current = orderData.transaction.orderId;
 
       if (orderData.payoutFiat != null && Number.isFinite(orderData.payoutFiat)) {
@@ -575,7 +575,7 @@ export function ConfirmTransactionSheet({
               <h2 className="text-[18px] font-[600] text-[#1C1C1C] leading-none text-center">
                 Confirm transaction
               </h2>
-              {prefetchPhase === 'preparing' && status === 'idle' && (
+              {status === 'creating' && (
                 <p className="text-[12px] text-[#888888] mt-2 font-medium">
                   Preparing secure payout…
                 </p>
