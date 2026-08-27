@@ -515,9 +515,13 @@ export class TransactionService {
    * Mark an abandoned remittance FAILED and restore ledger when no on-chain hash was attached.
    * Use when the user rejects the wallet send or post-createPending steps fail before Paycrest settles.
    *
-   * Never restores ledger while a linked / likely-live Paycrest order is still fundable.
+   * Never restores ledger while a linked / likely-live Paycrest order is still fundable
+   * unless `forceUnpaid` (ops only): live Paycrest amountPaid must still be 0.
    */
-  static async cancelAbandonedPending(externalId: string) {
+  static async cancelAbandonedPending(
+    externalId: string,
+    opts?: { forceUnpaid?: boolean },
+  ) {
     const tx = await this.findByPaycrestKey(externalId);
 
     if (!tx) {
@@ -539,7 +543,11 @@ export class TransactionService {
       );
     }
 
-    await this.assertProviderSafeToRestoreLedger(tx);
+    if (opts?.forceUnpaid) {
+      await this.assertPaycrestUnpaidForForceRestore(tx);
+    } else {
+      await this.assertProviderSafeToRestoreLedger(tx);
+    }
 
     // CAS on the snapshot we just validated loses to concurrent PENDING→PROCESSING claim.
     return this.failAndReleasePlaceholderCas(tx);
@@ -680,11 +688,19 @@ export class TransactionService {
   ]);
 
   /**
+   * Statuses where Paycrest has opened a receive window but has not progressed
+   * toward settlement. Do not treat pending/processing/validated as unpaid-window
+   * closable — those may already be fundable or mid-settlement.
+   */
+  private static readonly PAYCREST_INITIATED_UNPAID = new Set(['initiated']);
+
+  /**
    * Gate ledger restore on provider state (#89).
-   * - Paycrest order id in pending-* hash → must be in PAYCREST_EXPIRE_SAFE
+   * - Paycrest order id in pending-* hash → PAYCREST_EXPIRE_SAFE, OR
+   *   status=initiated + explicit amountPaid=0 + past validUntil
    * - App-local pending key + PROCESSING → order may exist before attach; refuse restore
    * - App-local + PENDING → no provider order yet; allow
-   * - Lookup failure → refuse (fail closed)
+   * - Lookup failure / missing amountPaid → refuse (fail closed)
    */
   private static async assertProviderSafeToRestoreLedger(tx: {
     externalId: string | null;
@@ -720,15 +736,116 @@ export class TransactionService {
     if (!live.success || !live.order) {
       throw new ProviderOrderStillLiveError(tx.externalId ?? placeholder);
     }
-    const status = String(
-      (live.order as { status?: string }).status || "",
-    ).toLowerCase();
-    if (!this.PAYCREST_EXPIRE_SAFE.has(status)) {
+    const order = live.order as {
+      status?: string;
+      amountPaid?: string | number | null;
+      providerAccount?: { validUntil?: string | null };
+    };
+    const status = String(order.status || "").toLowerCase();
+    if (this.PAYCREST_EXPIRE_SAFE.has(status)) {
+      return;
+    }
+    // Paycrest often leaves status=initiated after the receive window closes.
+    // Restore only for that narrow status with an explicit zero amountPaid.
+    if (this.isPaycrestReceiveWindowClosedUnpaid(order, status)) {
+      return;
+    }
+    throw new ProviderOrderStillLiveError(
+      tx.externalId ?? placeholder,
+      status || "unknown",
+    );
+  }
+
+  /**
+   * True only when status is initiated, amountPaid is an explicit numeric zero,
+   * and providerAccount.validUntil is in the past. Missing amountPaid fails closed.
+   */
+  private static isPaycrestReceiveWindowClosedUnpaid(
+    order: {
+      amountPaid?: string | number | null;
+      providerAccount?: { validUntil?: string | null };
+    },
+    status: string,
+  ): boolean {
+    if (!this.PAYCREST_INITIATED_UNPAID.has(status)) {
+      return false;
+    }
+    if (!this.isPaycrestAmountExplicitlyZero(order.amountPaid)) {
+      return false;
+    }
+    const validUntil = order.providerAccount?.validUntil;
+    if (!validUntil) {
+      return false;
+    }
+    const untilMs = Date.parse(validUntil);
+    if (!Number.isFinite(untilMs)) {
+      return false;
+    }
+    return Date.now() > untilMs;
+  }
+
+  /** Fail closed: absent / blank / non-numeric amountPaid is not treated as unpaid. */
+  private static isPaycrestAmountExplicitlyZero(
+    amountPaid?: string | number | null,
+  ): boolean {
+    if (amountPaid == null) {
+      return false;
+    }
+    if (typeof amountPaid === "string" && amountPaid.trim() === "") {
+      return false;
+    }
+    const paid = Number(
+      typeof amountPaid === "string" ? amountPaid.trim() : amountPaid,
+    );
+    return Number.isFinite(paid) && paid === 0;
+  }
+
+  /**
+   * Ops escape when Paycrest leaves status=initiated and keeps sliding validUntil.
+   * Still fail-closed unless status is initiated and amountPaid is explicitly 0.
+   */
+  private static async assertPaycrestUnpaidForForceRestore(tx: {
+    externalId: string | null;
+    txHash: string;
+    recipientBank: string | null;
+  }) {
+    if (this.isCryptoWithdraw(tx.recipientBank)) {
+      return;
+    }
+    const placeholder = this.paycrestOrderIdFromTxHash(tx.txHash);
+    if (!placeholder) {
+      return;
+    }
+    if (this.isAppLocalPendingKey(placeholder, tx.externalId)) {
+      return;
+    }
+    const { PayoutService } = await import("../paycrest/payout.service.js");
+    const live = await PayoutService.getSettlementOrder(placeholder);
+    if (!live.success || !live.order) {
+      throw new ProviderOrderStillLiveError(tx.externalId ?? placeholder);
+    }
+    const order = live.order as {
+      status?: string;
+      amountPaid?: string | number | null;
+    };
+    const status = String(order.status || "").toLowerCase();
+    if (!this.PAYCREST_INITIATED_UNPAID.has(status)) {
       throw new ProviderOrderStillLiveError(
         tx.externalId ?? placeholder,
         status || "unknown",
       );
     }
+    if (!this.isPaycrestAmountExplicitlyZero(order.amountPaid)) {
+      throw new ProviderOrderStillLiveError(
+        tx.externalId ?? placeholder,
+        `amountPaid=${order.amountPaid == null ? "missing" : String(order.amountPaid)}`,
+      );
+    }
+    console.warn(
+      `[TransactionService] forceUnpaid restore for ${tx.externalId ?? placeholder} ` +
+        `(Paycrest status=${status}, amountPaid=0) — ` +
+        "receive address may still be fundable; confirm on-chain balance first",
+    );
   }
 
   private static async touchPendingUpdatedAt(id: string) {
