@@ -33,6 +33,8 @@ function CashOutConfirmContent() {
   /** Shown on the confirm page when open fails before the sheet mounts. */
   const [openError, setOpenError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  /** Mirrors sendingRef for disabling header/edit while Send (incl. Instant Send grant) is in flight. */
+  const [sending, setSending] = useState(false);
 
   /** Bumps on every open/close so stale prefetch .then handlers cannot update UI. */
   const generationRef = useRef(0);
@@ -127,6 +129,8 @@ function CashOutConfirmContent() {
   const clearConfirmSessionUi = () => {
     generationRef.current += 1;
     sessionRef.current = null;
+    sendingRef.current = false;
+    setSending(false);
     setSession(null);
     setPrefetchPhase('preparing');
     setPrefetchError(null);
@@ -148,8 +152,13 @@ function CashOutConfirmContent() {
       return;
     }
 
-    // Review-only: create-pending never started free exit, nothing on ledger.
+    // Review-only: create-pending never started — free exit, nothing on ledger.
+    // Do NOT tear down while Send is mid-flight (e.g. awaiting Instant Send addSigners):
+    // handleSend still holds the session closure and would create+broadcast after navigate.
     if (!current.hasStartedCreate()) {
+      if (sendingRef.current) {
+        return;
+      }
       if (opts?.clearUi !== false) {
         clearConfirmSessionUi();
       }
@@ -311,6 +320,7 @@ function CashOutConfirmContent() {
 
     abandonEpochRef.current += 1;
     sendingRef.current = false;
+    setSending(false);
     setOpenError(null);
 
     const accessToken = await getAccessToken();
@@ -359,6 +369,7 @@ function CashOutConfirmContent() {
   };
 
   const handleHeaderBack = () => {
+    if (sendingRef.current) return;
     if (sessionRef.current && !sessionRef.current.wasConsumed()) {
       void abandonActiveSession({
         keepalive: false,
@@ -370,12 +381,16 @@ function CashOutConfirmContent() {
     router.back();
   };
 
+  const navigationLocked = sending || closing;
+
   return (
     <div className="min-h-screen bg-[#FDFDFD] flex flex-col">
       <div className="px-5 pt-12 pb-4 flex items-center relative border-b border-gray-100/50 bg-white">
         <button
+          type="button"
           onClick={handleHeaderBack}
-          className="w-10 h-10 rounded-full flex items-center justify-center text-gray-900 hover:bg-gray-50 transition-colors"
+          disabled={navigationLocked}
+          className="w-10 h-10 rounded-full flex items-center justify-center text-gray-900 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:pointer-events-none"
         >
           <ChevronLeft size={24} />
         </button>
@@ -459,8 +474,10 @@ function CashOutConfirmContent() {
           </div>
 
           <button
+            type="button"
             onClick={handleHeaderBack}
-            className="p-1 hover:bg-gray-50 rounded-full transition-colors flex-shrink-0"
+            disabled={navigationLocked}
+            className="p-1 hover:bg-gray-50 rounded-full transition-colors flex-shrink-0 disabled:opacity-40 disabled:pointer-events-none"
           >
             <img src="/retry.svg" alt="Edit" className="w-[36px] h-[36px]" />
           </button>
@@ -494,9 +511,10 @@ function CashOutConfirmContent() {
           onClose={() => {
             void closeConfirmSheet();
           }}
-          onSendingChange={(sending) => {
-            // Only means "Send in flight" for UI abandon still runs until consumed.
-            sendingRef.current = sending;
+          onSendingChange={(next) => {
+            // Send / Instant Send grant in flight — block free-exit and pagehide cancel.
+            sendingRef.current = next;
+            setSending(next);
           }}
           sendAmount={sendAmount}
           receiveAmount={displayReceiveAmount}

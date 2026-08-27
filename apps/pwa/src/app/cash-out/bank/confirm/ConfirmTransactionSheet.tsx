@@ -296,6 +296,13 @@ export function ConfirmTransactionSheet({
       canServerBroadcast = true;
     }
 
+    // Parent must not free-exit under us during grant; if session was abandoned anyway, stop.
+    if (session.wasAbandoned() || session.wasConsumed()) {
+      onSendingChange?.(false);
+      setStatus('idle');
+      return;
+    }
+
     logDelegationSnapshot('before create-pending / broadcast', {
       canServerBroadcast,
     });
