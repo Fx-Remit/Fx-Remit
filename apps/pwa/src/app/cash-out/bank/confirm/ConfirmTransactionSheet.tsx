@@ -636,11 +636,36 @@ export function ConfirmTransactionSheet({
           </div>
 
           {displayError && (
-            <div className="w-[390px] mb-4 p-4 bg-red-50 border border-red-100 rounded-[12px] flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                <AlertCircle size={16} className="text-red-500" />
+            <div
+              className={`w-[390px] mb-4 p-4 rounded-[12px] flex items-center gap-3 border ${
+                displayError.includes('already prepared')
+                  ? 'bg-amber-50 border-amber-100'
+                  : 'bg-red-50 border-red-100'
+              }`}
+            >
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  displayError.includes('already prepared')
+                    ? 'bg-amber-100'
+                    : 'bg-red-100'
+                }`}
+              >
+                <AlertCircle
+                  size={16}
+                  className={
+                    displayError.includes('already prepared')
+                      ? 'text-amber-600'
+                      : 'text-red-500'
+                  }
+                />
               </div>
-              <p className="text-red-600 text-[13px] font-medium leading-tight">
+              <p
+                className={`text-[13px] font-medium leading-tight ${
+                  displayError.includes('already prepared')
+                    ? 'text-amber-900'
+                    : 'text-red-600'
+                }`}
+              >
                 {displayError}
               </p>
             </div>

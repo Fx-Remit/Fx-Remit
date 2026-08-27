@@ -304,7 +304,41 @@ export async function POST(req: Request) {
 
     if (!paycrestResp.success || !paycrestResp.order || !paycrestResp.settlement) {
       const code = "code" in paycrestResp ? paycrestResp.code : undefined;
-      if (code === "ORDER_IN_FLIGHT" || code === "ORDER_LINKED") {
+      // Race: another path linked the Paycrest id while we claimed — resume, don't 409.
+      if (code === "ORDER_LINKED") {
+        const linkedRow = await prisma.transaction.findUnique({
+          where: { externalId: externalKey },
+        });
+        if (linkedRow) {
+          const hashKey = TransactionService.paycrestOrderIdFromTxHash(
+            linkedRow.txHash,
+          );
+          const canResume =
+            !!hashKey &&
+            !TransactionService.isAppLocalPendingKey(
+              hashKey,
+              linkedRow.externalId,
+            );
+          if (canResume) {
+            const resumed = await PayoutService.getSettlementOrder(hashKey!);
+            if (resumed.success && resumed.order && resumed.settlement) {
+              return NextResponse.json({
+                success: true,
+                resumed: true,
+                abandonToken,
+                quote: quoteMeta,
+                transaction: serializeTransaction(linkedRow),
+                paycrest: paycrestPayload(resumed.order, resumed.settlement),
+              });
+            }
+          }
+        }
+        return NextResponse.json(
+          { error: paycrestResp.error, code },
+          { status: 409 },
+        );
+      }
+      if (code === "ORDER_IN_FLIGHT") {
         return NextResponse.json(
           { error: paycrestResp.error, code },
           { status: 409 },
