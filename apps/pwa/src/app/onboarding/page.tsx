@@ -91,10 +91,11 @@ export default function OnboardingPage() {
   };
 
   const { login } = useLogin({
-    onComplete: async (params) => {
+    onComplete: async ({ user }) => {
+      const linkedAccounts = user.linkedAccounts ?? [];
       // Consistent wallet selection
-      const walletAddress = getPriorityWallet(params.linkedAccounts);
-      const emailAccount = params.linkedAccounts.find((a) => a.type === 'email');
+      const walletAddress = getPriorityWallet(linkedAccounts);
+      const emailAccount = linkedAccounts.find((a) => a.type === 'email');
 
       try {
         const token = await getAccessToken();
@@ -113,7 +114,7 @@ export default function OnboardingPage() {
         if (!response.ok) {
           console.error('[ONBOARD] Sync failed with status:', response.status);
 
-          if (params.id) {
+          if (user.id) {
             router.push('/home');
             return;
           }
@@ -127,7 +128,7 @@ export default function OnboardingPage() {
         if (data.user?.fullName) {
           router.push('/home');
         } else {
-          const linkedEmail = params.linkedAccounts.find(
+          const linkedEmail = linkedAccounts.find(
             (a: any) => a.type === 'email' || a.type === 'google_oauth'
           );
           if (linkedEmail) setEmail((linkedEmail as any).address ?? '');

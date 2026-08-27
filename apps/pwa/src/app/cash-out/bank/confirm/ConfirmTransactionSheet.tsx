@@ -398,8 +398,8 @@ export function ConfirmTransactionSheet({
           broadcastRes.status === 503 ||
           broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED'
         ) {
-          // Server signing unavailable — require wallet confirmation.
-          const receipt = await sendTransaction(
+          // Server signing unavailable require wallet confirmation.
+          const { hash } = await sendTransaction(
             {
               to: settlementTokenAddress,
               data: encodeFunctionData({
@@ -409,14 +409,12 @@ export function ConfirmTransactionSheet({
               }) as Hex,
               chainId: base.id,
             },
-            { showWalletUIs: true },
-            undefined,
-            embeddedWallet.address,
+            {
+              uiOptions: { showWalletUIs: true },
+              address: embeddedWallet.address,
+            },
           );
-          broadcastTxHash =
-            typeof receipt === 'object' && receipt && 'transactionHash' in receipt
-              ? String((receipt as { transactionHash: string }).transactionHash)
-              : String(receipt);
+          broadcastTxHash = hash;
           session.markConsumed();
 
           const syncRes = await fetch('/api/transaction/sync-hash', {
@@ -466,7 +464,7 @@ export function ConfirmTransactionSheet({
         }
       } else {
         // External wallet: must use wallet UI (cannot silent-sign).
-        const receipt = await sendTransaction(
+        const { hash } = await sendTransaction(
           {
             to: settlementTokenAddress,
             data: encodeFunctionData({
@@ -476,14 +474,12 @@ export function ConfirmTransactionSheet({
             }) as Hex,
             chainId: base.id,
           },
-          { showWalletUIs: true },
-          undefined,
-          embeddedWallet.address,
+          {
+            uiOptions: { showWalletUIs: true },
+            address: embeddedWallet.address,
+          },
         );
-        broadcastTxHash =
-          typeof receipt === 'object' && receipt && 'transactionHash' in receipt
-            ? String((receipt as { transactionHash: string }).transactionHash)
-            : String(receipt);
+        broadcastTxHash = hash;
         session.markConsumed();
 
         const syncRes = await fetch('/api/transaction/sync-hash', {

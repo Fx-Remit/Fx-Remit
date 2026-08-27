@@ -77,9 +77,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
           logo: '/fx remit.svg',
         },
         embeddedWallets: {
-          createOnLogin: 'users-without-wallets',
           showWalletUIs: true,
-          requireUserPasswordOnCreate: false,
+          ethereum: {
+            createOnLogin: 'users-without-wallets',
+          },
         },
       }}
     >
