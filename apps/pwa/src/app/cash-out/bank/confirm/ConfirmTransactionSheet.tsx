@@ -4,9 +4,9 @@ import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import React, { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  useDelegatedActions,
   usePrivy,
   useSendTransaction,
+  useSigners,
   useWallets,
 } from '@privy-io/react-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -108,7 +108,7 @@ export function ConfirmTransactionSheet({
   const { getAccessToken, user: privyUser } = usePrivy();
   const { wallets } = useWallets();
   const { sendTransaction } = useSendTransaction();
-  const { delegateWallet } = useDelegatedActions();
+  const { addSigners } = useSigners();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
@@ -208,20 +208,53 @@ export function ConfirmTransactionSheet({
       setError('This payout needs the in-app wallet on this account');
       return false;
     }
+    const keyQuorumId = process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID?.trim();
+    if (!keyQuorumId) {
+      setError('Instant Send is not configured (missing key quorum)');
+      console.error(
+        '[CONFIRM] NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID is missing — cannot addSigners',
+      );
+      return false;
+    }
+    const policyId = process.env.NEXT_PUBLIC_PRIVY_POLICY_ID?.trim();
+
     setStatus('granting');
     setError(null);
-    logDelegationSnapshot('before delegateWallet');
+    logDelegationSnapshot('before addSigners', {
+      keyQuorumId,
+      policyId: policyId || '(none — empty policyIds)',
+    });
     try {
-      await delegateWallet({
+      // delegateWallet alone does NOT attach our key quorum — Privy stays
+      // delegated:false / wallet id null. addSigners is required.
+      const { user: updatedUser } = await addSigners({
         address: embeddedWallet.address,
-        chainType: 'ethereum',
+        signers: [
+          {
+            signerId: keyQuorumId,
+            policyIds: policyId ? [policyId] : [],
+          },
+        ],
       });
       setLocalDelegated(true);
-      logDelegationSnapshot('after delegateWallet OK (localDelegated→true; Privy user may lag)');
+      const addr = embeddedWallet.address.toLowerCase();
+      const linked = updatedUser?.linkedAccounts?.find(
+        (a) =>
+          a.type === 'wallet' &&
+          (a as { walletClientType?: string }).walletClientType === 'privy' &&
+          (a as { address?: string }).address?.toLowerCase() === addr,
+      ) as { delegated?: boolean; id?: string } | undefined;
+      console.info('[CONFIRM][delegation] after addSigners', {
+        keyQuorumId,
+        policyId: policyId || null,
+        privyLinkedDelegated: linked?.delegated === true,
+        embeddedWalletId: linked?.id ?? null,
+      });
+      logDelegationSnapshot('after addSigners OK');
       return true;
     } catch (err: unknown) {
-      console.error('[CONFIRM] Payout permission grant failed:', err);
-      logDelegationSnapshot('after delegateWallet FAILED');
+      console.error('[CONFIRM] addSigners / payout permission failed:', err);
+      logDelegationSnapshot('after addSigners FAILED');
       setError(
         isUserRejection(err)
           ? 'Cancelled — tap Send to try again'
