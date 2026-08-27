@@ -145,6 +145,40 @@ export function ConfirmTransactionSheet({
     );
   }, [embeddedWallet?.address, privyUser?.linkedAccounts, localDelegated]);
 
+  /** Dev/ops: Privy linked-account delegated flags (server uses the same signal). */
+  const logDelegationSnapshot = (label: string, extra?: Record<string, unknown>) => {
+    const addr = embeddedWallet?.address?.toLowerCase() ?? null;
+    const wallets = (privyUser?.linkedAccounts ?? [])
+      .filter((a) => a.type === 'wallet')
+      .map((a) => {
+        const w = a as {
+          address?: string;
+          walletClientType?: string;
+          delegated?: boolean;
+          id?: string;
+        };
+        return {
+          address: w.address ?? null,
+          walletClientType: w.walletClientType ?? null,
+          delegated: w.delegated === true,
+          id: w.id ?? null,
+          matchesEmbedded: Boolean(
+            addr && w.address?.toLowerCase() === addr && w.walletClientType === 'privy',
+          ),
+        };
+      });
+    const embeddedRow = wallets.find((w) => w.matchesEmbedded) ?? null;
+    console.info('[CONFIRM][delegation]', label, {
+      embeddedAddress: embeddedWallet?.address ?? null,
+      localDelegated,
+      isDelegatedComputed: isDelegated,
+      privyLinkedDelegated: embeddedRow?.delegated ?? null,
+      embeddedWalletId: embeddedRow?.id ?? null,
+      wallets,
+      ...extra,
+    });
+  };
+
   const invalidateLedgerQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
     queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
@@ -176,15 +210,18 @@ export function ConfirmTransactionSheet({
     }
     setStatus('granting');
     setError(null);
+    logDelegationSnapshot('before delegateWallet');
     try {
       await delegateWallet({
         address: embeddedWallet.address,
         chainType: 'ethereum',
       });
       setLocalDelegated(true);
+      logDelegationSnapshot('after delegateWallet OK (localDelegated→true; Privy user may lag)');
       return true;
     } catch (err: unknown) {
       console.error('[CONFIRM] Payout permission grant failed:', err);
+      logDelegationSnapshot('after delegateWallet FAILED');
       setError(
         isUserRejection(err)
           ? 'Cancelled — tap Send to try again'
@@ -205,6 +242,8 @@ export function ConfirmTransactionSheet({
     onSendingChange?.(true);
     setError(null);
 
+    logDelegationSnapshot('Send tapped');
+
     // Use a local flag — React state won't update mid-handler after grant.
     let canServerBroadcast = isEmbeddedPrivy && isDelegated;
     if (isEmbeddedPrivy && !canServerBroadcast) {
@@ -215,6 +254,10 @@ export function ConfirmTransactionSheet({
       }
       canServerBroadcast = true;
     }
+
+    logDelegationSnapshot('before create-pending / broadcast', {
+      canServerBroadcast,
+    });
 
     setStatus('creating');
     let broadcastTxHash: string | null = null;
@@ -356,6 +399,13 @@ export function ConfirmTransactionSheet({
           }
         } else if (broadcastData.code === 'NOT_DELEGATED') {
           // Pre-claim / no on-chain send — consent race. Keep session + reserve; allow Send retry.
+          logDelegationSnapshot('server returned NOT_DELEGATED', {
+            broadcastStatus: broadcastRes.status,
+            broadcastCode: broadcastData.code,
+            broadcastError: broadcastData.error ?? null,
+            note: 'Server Privy user.delegated is false — localDelegated alone is not enough',
+          });
+          setLocalDelegated(false);
           setError('Almost ready — tap Send again to finish.');
           setStatus('idle');
           onSendingChange?.(false);
