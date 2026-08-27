@@ -217,22 +217,30 @@ export function ConfirmTransactionSheet({
       return false;
     }
     const policyId = process.env.NEXT_PUBLIC_PRIVY_POLICY_ID?.trim();
+    if (!policyId) {
+      setError('Instant Send is not configured (missing policy)');
+      console.error(
+        '[CONFIRM] NEXT_PUBLIC_PRIVY_POLICY_ID is missing — refusing unrestricted addSigners',
+      );
+      return false;
+    }
 
     setStatus('granting');
     setError(null);
     logDelegationSnapshot('before addSigners', {
       keyQuorumId,
-      policyId: policyId || '(none — empty policyIds)',
+      policyId,
     });
     try {
       // delegateWallet alone does NOT attach our key quorum — Privy stays
       // delegated:false / wallet id null. addSigners is required.
+      // Empty policyIds would grant unrestricted server signing — never do that.
       const { user: updatedUser } = await addSigners({
         address: embeddedWallet.address,
         signers: [
           {
             signerId: keyQuorumId,
-            policyIds: policyId ? [policyId] : [],
+            policyIds: [policyId],
           },
         ],
       });
@@ -246,7 +254,7 @@ export function ConfirmTransactionSheet({
       ) as { delegated?: boolean; id?: string } | undefined;
       console.info('[CONFIRM][delegation] after addSigners', {
         keyQuorumId,
-        policyId: policyId || null,
+        policyId,
         privyLinkedDelegated: linked?.delegated === true,
         embeddedWalletId: linked?.id ?? null,
       });
@@ -398,7 +406,7 @@ export function ConfirmTransactionSheet({
           broadcastRes.status === 503 ||
           broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED'
         ) {
-          // Server signing unavailable require wallet confirmation.
+          // Server signing unavailable — require wallet confirmation.
           const { hash } = await sendTransaction(
             {
               to: settlementTokenAddress,
