@@ -207,6 +207,45 @@ describe('SettlementPrefetchSession', () => {
     assert.equal(await session.resolveAbandonExternalId(), null);
   });
 
+  it('review-only session: no create started → abandon returns null', async () => {
+    const session = new SettlementPrefetchSession({
+      amountUsd: 1,
+      quoteValidUntil: Date.now() + 60_000,
+      recipientName: 'A',
+      recipientBank: 'B',
+      recipientAcc: '1',
+      token: 'USDC',
+      externalId: 'idem-review',
+    });
+
+    assert.equal(session.hasStartedCreate(), false);
+    assert.equal(await session.resolveAbandonExternalId(), null);
+    assert.equal(session.wasAbandoned(), false);
+    assert.equal(session.hasStartedCreate(), false);
+  });
+
+  it('hasStartedCreate is true only after start()', async () => {
+    const session = new SettlementPrefetchSession({
+      amountUsd: 1,
+      quoteValidUntil: Date.now() + 60_000,
+      recipientName: 'A',
+      recipientBank: 'B',
+      recipientAcc: '1',
+      token: 'USDC',
+      externalId: 'idem-started',
+    });
+
+    assert.equal(session.hasStartedCreate(), false);
+    session.start(async () => ({
+      success: true,
+      transaction: { orderId: '1', externalId: 'idem-started' },
+      paycrest: { receiveAddress: '0xR' },
+    }));
+    assert.equal(session.hasStartedCreate(), true);
+    await session.awaitPrepared();
+    assert.equal(session.hasStartedCreate(), true);
+  });
+
   it('commit:false keeps session reusable after resolveAbandonExternalId', async () => {
     const session = new SettlementPrefetchSession({
       amountUsd: 1,

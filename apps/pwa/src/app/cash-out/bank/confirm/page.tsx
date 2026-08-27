@@ -33,6 +33,8 @@ function CashOutConfirmContent() {
   /** Shown on the confirm page when open fails before the sheet mounts. */
   const [openError, setOpenError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  /** Mirrors sendingRef for disabling header/edit while Send (incl. Instant Send grant) is in flight. */
+  const [sending, setSending] = useState(false);
 
   /** Bumps on every open/close so stale prefetch .then handlers cannot update UI. */
   const generationRef = useRef(0);
@@ -127,6 +129,8 @@ function CashOutConfirmContent() {
   const clearConfirmSessionUi = () => {
     generationRef.current += 1;
     sessionRef.current = null;
+    sendingRef.current = false;
+    setSending(false);
     setSession(null);
     setPrefetchPhase('preparing');
     setPrefetchError(null);
@@ -144,6 +148,20 @@ function CashOutConfirmContent() {
     const current = sessionRef.current;
     // Gate on broadcast only — never skip cancel because Privy modal is open.
     if (!current || current.wasConsumed()) {
+      if (opts?.navigateBack) router.back();
+      return;
+    }
+
+    // Review-only: create-pending never started — free exit, nothing on ledger.
+    // Do NOT tear down while Send is mid-flight (e.g. awaiting Instant Send addSigners):
+    // handleSend still holds the session closure and would create+broadcast after navigate.
+    if (!current.hasStartedCreate()) {
+      if (sendingRef.current) {
+        return;
+      }
+      if (opts?.clearUi !== false) {
+        clearConfirmSessionUi();
+      }
       if (opts?.navigateBack) router.back();
       return;
     }
@@ -168,7 +186,7 @@ function CashOutConfirmContent() {
         queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
         queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
 
-        // If abandon aborted an in-flight create before parse, re-prefetch (same externalId → resume).
+        // If abandon aborted an in-flight create before parse, re-start create (same externalId → resume).
         try {
           await current.awaitPrepared();
           setPrefetchPhase('ready');
@@ -232,6 +250,12 @@ function CashOutConfirmContent() {
     // Privy consent / broadcast in flight — pagehide must not cancel-pending
     // (would leave Paycrest live + next open creates a second reserve).
     if (sendingRef.current) return;
+    // Review-only sheet: nothing reserved.
+    if (!current.hasStartedCreate()) {
+      sessionRef.current = null;
+      bridgeAccessTokenRef.current = null;
+      return;
+    }
     const epoch = abandonEpochRef.current;
     const capability = current.getAbandonToken();
     const bridge = bridgeAccessTokenRef.current;
@@ -255,12 +279,21 @@ function CashOutConfirmContent() {
     unloadBoundRef.current = true;
   };
 
-  // Unmount-only safety net for in-app SPA navigation (does not start prefetch).
+  // Unmount-only safety net for in-app SPA navigation (does not start create-pending).
   useEffect(() => {
     return () => {
       const current = sessionRef.current;
       if (!current || current.wasConsumed()) return;
       if (sendingRef.current) return;
+      if (!current.hasStartedCreate()) {
+        sessionRef.current = null;
+        bridgeAccessTokenRef.current = null;
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('pagehide', stablePageHide);
+          window.removeEventListener('beforeunload', stableBeforeUnload);
+        }
+        return;
+      }
       const epoch = abandonEpochRef.current;
       const capability = current.getAbandonToken();
       const bridge = bridgeAccessTokenRef.current;
@@ -287,6 +320,7 @@ function CashOutConfirmContent() {
 
     abandonEpochRef.current += 1;
     sendingRef.current = false;
+    setSending(false);
     setOpenError(null);
 
     const accessToken = await getAccessToken();
@@ -294,8 +328,6 @@ function CashOutConfirmContent() {
       setOpenError('Session expired — refresh the page and try again');
       return;
     }
-    // Bridge only until abandonToken is minted by create-pending.
-    bridgeAccessTokenRef.current = accessToken;
 
     let quoteValidUntil: number;
     try {
@@ -308,7 +340,7 @@ function CashOutConfirmContent() {
       return;
     }
 
-    const generation = ++generationRef.current;
+    generationRef.current += 1;
     const next = new SettlementPrefetchSession({
       amountUsd: sendAmount,
       quoteValidUntil,
@@ -321,39 +353,13 @@ function CashOutConfirmContent() {
       externalId: idempotencyKey || undefined,
     });
 
-    setPrefetchPhase('preparing');
+    bridgeAccessTokenRef.current = null;
+    setPrefetchPhase('ready');
     setPrefetchError(null);
     setBoundPayoutFiat(null);
     sessionRef.current = next;
     setSession(next);
     bindUnloadHandlers();
-
-    next.start(async (body, signal) => {
-      const latest = (await getAccessToken()) || accessToken;
-      if (!next.getAbandonToken()) {
-        bridgeAccessTokenRef.current = latest;
-      }
-      return postCreatePending(body, latest, signal);
-    });
-
-    void next
-      .awaitPrepared()
-      .then((prepared) => {
-        if (generationRef.current !== generation) return;
-        // Capability token is enough for unload cancel — drop the Privy bridge.
-        bridgeAccessTokenRef.current = null;
-        if (prepared.payoutFiat != null && Number.isFinite(prepared.payoutFiat)) {
-          setBoundPayoutFiat(prepared.payoutFiat);
-        }
-        setPrefetchPhase('ready');
-      })
-      .catch((err: unknown) => {
-        if (generationRef.current !== generation) return;
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        const message = err instanceof Error ? err.message : String(err);
-        setPrefetchPhase('error');
-        setPrefetchError(message);
-      });
   };
 
   const closeConfirmSheet = async () => {
@@ -363,6 +369,7 @@ function CashOutConfirmContent() {
   };
 
   const handleHeaderBack = () => {
+    if (sendingRef.current) return;
     if (sessionRef.current && !sessionRef.current.wasConsumed()) {
       void abandonActiveSession({
         keepalive: false,
@@ -374,12 +381,16 @@ function CashOutConfirmContent() {
     router.back();
   };
 
+  const navigationLocked = sending || closing;
+
   return (
     <div className="min-h-screen bg-[#FDFDFD] flex flex-col">
       <div className="px-5 pt-12 pb-4 flex items-center relative border-b border-gray-100/50 bg-white">
         <button
+          type="button"
           onClick={handleHeaderBack}
-          className="w-10 h-10 rounded-full flex items-center justify-center text-gray-900 hover:bg-gray-50 transition-colors"
+          disabled={navigationLocked}
+          className="w-10 h-10 rounded-full flex items-center justify-center text-gray-900 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:pointer-events-none"
         >
           <ChevronLeft size={24} />
         </button>
@@ -463,8 +474,10 @@ function CashOutConfirmContent() {
           </div>
 
           <button
+            type="button"
             onClick={handleHeaderBack}
-            className="p-1 hover:bg-gray-50 rounded-full transition-colors flex-shrink-0"
+            disabled={navigationLocked}
+            className="p-1 hover:bg-gray-50 rounded-full transition-colors flex-shrink-0 disabled:opacity-40 disabled:pointer-events-none"
           >
             <img src="/retry.svg" alt="Edit" className="w-[36px] h-[36px]" />
           </button>
@@ -498,9 +511,10 @@ function CashOutConfirmContent() {
           onClose={() => {
             void closeConfirmSheet();
           }}
-          onSendingChange={(sending) => {
-            // Only means "Send in flight" for UI abandon still runs until consumed.
-            sendingRef.current = sending;
+          onSendingChange={(next) => {
+            // Send / Instant Send grant in flight — block free-exit and pagehide cancel.
+            sendingRef.current = next;
+            setSending(next);
           }}
           sendAmount={sendAmount}
           receiveAmount={displayReceiveAmount}
