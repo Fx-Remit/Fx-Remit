@@ -14,6 +14,7 @@ import { SettlementPrefetchSession } from '@/lib/cash-out/settlement-prefetch';
 import {
   abandonPrefetchSession,
   postCreatePending,
+  RESERVED_STILL_LIVE_MESSAGE,
 } from '@/lib/cash-out/create-pending-client';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
 import { fetchFreshQuoteValidUntil } from '@/lib/cash-out/fetch-retail-quote';
@@ -123,24 +124,30 @@ function CashOutConfirmContent() {
     unloadBoundRef.current = false;
   };
 
+  const clearConfirmSessionUi = () => {
+    generationRef.current += 1;
+    sessionRef.current = null;
+    setSession(null);
+    setPrefetchPhase('preparing');
+    setPrefetchError(null);
+    setBoundPayoutFiat(null);
+    unbindUnloadHandlers();
+  };
+
   const abandonActiveSession = async (opts?: {
     keepalive?: boolean;
+    /** Tear down sheet only after cancel succeeds (default true). */
     clearUi?: boolean;
+    /** Header back: navigate only when the reserve was released. */
+    navigateBack?: boolean;
   }) => {
     const current = sessionRef.current;
-    // Gate on broadcast only never skip cancel because Privy modal is open.
-    if (!current || current.wasConsumed()) return;
-
-    if (opts?.clearUi !== false) {
-      generationRef.current += 1;
-      sessionRef.current = null;
-      setSession(null);
-      setPrefetchPhase('preparing');
-      setPrefetchError(null);
-      setBoundPayoutFiat(null);
+    // Gate on broadcast only — never skip cancel because Privy modal is open.
+    if (!current || current.wasConsumed()) {
+      if (opts?.navigateBack) router.back();
+      return;
     }
 
-    unbindUnloadHandlers();
     setClosing(true);
     const epoch = abandonEpochRef.current;
     try {
@@ -153,12 +160,66 @@ function CashOutConfirmContent() {
         keepalive: opts?.keepalive,
         shouldRetry: () => abandonEpochRef.current === epoch,
       });
+
+      if (result.stillLive) {
+        // Fail-closed cancel: keep sheet so user can finish Send.
+        setPrefetchError(RESERVED_STILL_LIVE_MESSAGE);
+        setOpenError(RESERVED_STILL_LIVE_MESSAGE);
+        queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
+        queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+
+        // If abandon aborted an in-flight create before parse, re-prefetch (same externalId → resume).
+        try {
+          await current.awaitPrepared();
+          setPrefetchPhase('ready');
+        } catch {
+          const access = (await resolveAbandonAccessToken()) || accessToken;
+          if (access) {
+            setPrefetchPhase('preparing');
+            current.start(async (body, signal) =>
+              postCreatePending(body, access, signal),
+            );
+            void current
+              .awaitPrepared()
+              .then((prepared) => {
+                if (sessionRef.current !== current) return;
+                if (prepared.payoutFiat != null && Number.isFinite(prepared.payoutFiat)) {
+                  setBoundPayoutFiat(prepared.payoutFiat);
+                }
+                setPrefetchPhase('ready');
+              })
+              .catch((err: unknown) => {
+                if (sessionRef.current !== current) return;
+                if (err instanceof DOMException && err.name === 'AbortError') return;
+                setPrefetchPhase('error');
+                setPrefetchError(
+                  err instanceof Error ? err.message : RESERVED_STILL_LIVE_MESSAGE,
+                );
+              });
+          } else {
+            setPrefetchPhase('error');
+          }
+        }
+        return;
+      }
+
       if (result.cancelled) {
         queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
         queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+        queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
+      }
+
+      if (opts?.clearUi !== false) {
+        clearConfirmSessionUi();
+      }
+      if (opts?.navigateBack) {
+        router.back();
       }
     } catch (e) {
       console.error('[CONFIRM] abandon cancel failed:', e);
+      setPrefetchError(
+        'Could not release this payout yet — tap Send to finish, or try again shortly.',
+      );
     } finally {
       setClosing(false);
       bridgeAccessTokenRef.current = null;
@@ -297,13 +358,16 @@ function CashOutConfirmContent() {
 
   const closeConfirmSheet = async () => {
     // Allow close/abandon anytime until a real broadcast marks the session consumed.
+    // If Paycrest is still fundable, sheet stays open with a reserved message.
     await abandonActiveSession({ keepalive: false, clearUi: true });
   };
 
   const handleHeaderBack = () => {
     if (sessionRef.current && !sessionRef.current.wasConsumed()) {
-      void abandonActiveSession({ keepalive: true, clearUi: true }).finally(() => {
-        router.back();
+      void abandonActiveSession({
+        keepalive: false,
+        clearUi: true,
+        navigateBack: true,
       });
       return;
     }

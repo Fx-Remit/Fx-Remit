@@ -320,8 +320,14 @@ export class SettlementPrefetchSession {
    * Uses the known idempotency key even when the client-side parse/fetch failed,
    * because create-pending may have reserved ledger before the client saw an error.
    * Cancel-pending is idempotent (not_found is fine).
+   *
+   * @param opts.commit When false, do not mark abandoned / clear prepared — used when
+   *   cancel may return PROVIDER_ORDER_STILL_LIVE and the user must still tap Send.
+   *   Default true preserves prior callers/tests.
    */
-  async resolveAbandonExternalId(): Promise<string | null> {
+  async resolveAbandonExternalId(opts?: {
+    commit?: boolean;
+  }): Promise<string | null> {
     if (this.consumed || this.abandoned) return null;
     if (!this.started) return null;
 
@@ -337,12 +343,21 @@ export class SettlementPrefetchSession {
 
     if (this.consumed) return null;
 
-    this.abandoned = true;
     const id = this.prepared?.externalId ?? this.fallbackExternalId;
+    if (opts?.commit === false) {
+      return id;
+    }
+
+    this.markAbandoned();
+    return id;
+  }
+
+  /** Clear prepared state after cancel released the reserve (or not_found / on-chain). */
+  markAbandoned(): void {
+    this.abandoned = true;
     this.prepared = null;
     this.preparedAtMs = null;
     this.promise = null;
     this.abortController = null;
-    return id;
   }
 }
