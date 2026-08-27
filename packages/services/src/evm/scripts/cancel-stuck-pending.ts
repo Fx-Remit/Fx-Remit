@@ -9,6 +9,10 @@
  * Stuck Instant Send claim (broadcasting-*):
  *   ... cancel-stuck-pending.ts <orderId> --attach 0x...
  *   ... cancel-stuck-pending.ts <orderId> --force-release   # only after chain check
+ *
+ * Paycrest initiated forever / sliding validUntil (still unpaid):
+ *   ... cancel-stuck-pending.ts <orderId> --force-unpaid
+ *   # only after confirming receive address USDC balance is 0
  */
 import { prisma } from '@fx-remit/database';
 import {
@@ -20,7 +24,7 @@ async function main() {
   const orderIdRaw = process.argv[2];
   if (!orderIdRaw) {
     console.error(
-      'Usage: cancel-stuck-pending.ts <orderId> [--attach 0x...] [--force-release]',
+      'Usage: cancel-stuck-pending.ts <orderId> [--attach 0x...] [--force-release] [--force-unpaid]',
     );
     process.exit(1);
   }
@@ -30,6 +34,7 @@ async function main() {
     const attachHash =
       attachIdx >= 0 ? process.argv[attachIdx + 1]?.trim() : undefined;
     const forceRelease = process.argv.includes('--force-release');
+    const forceUnpaid = process.argv.includes('--force-unpaid');
 
     const orderId = BigInt(orderIdRaw);
     const tx = await prisma.transaction.findFirst({
@@ -122,11 +127,14 @@ async function main() {
       : null;
 
     try {
-      const result = await TransactionService.cancelAbandonedPending(key);
+      const result = await TransactionService.cancelAbandonedPending(key, {
+        forceUnpaid,
+      });
       console.log('Cancelled:', {
         status: result?.status,
         txHash: result?.txHash,
         externalId: result?.externalId,
+        forceUnpaid: forceUnpaid || undefined,
       });
     } catch (err) {
       if (err instanceof ProviderOrderStillLiveError) {
@@ -147,13 +155,17 @@ async function main() {
               | { providerAccount?: { validUntil?: string } }
               | undefined
           )?.providerAccount?.validUntil;
+          const amountPaid = (
+            live.order as { amountPaid?: string | number } | undefined
+          )?.amountPaid;
           console.error(
             'Paycrest status:',
             (live.order as { status?: string } | undefined)?.status,
           );
+          console.error('amountPaid:', amountPaid ?? '(unknown)');
           console.error('validUntil:', validUntil ?? '(unknown)');
           console.error(
-            'Re-run this script after validUntil (order should be expired).',
+            'Re-run after validUntil when amountPaid is 0, or use --force-unpaid after confirming receive-address USDC is 0.',
           );
         } else {
           console.error(

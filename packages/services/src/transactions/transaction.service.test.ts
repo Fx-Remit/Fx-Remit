@@ -898,6 +898,125 @@ describe('TransactionService.cancelAbandonedPending', () => {
     assert.equal(cas.updateMany.mock.callCount(), 1);
   });
 
+  it('restores when Paycrest stays initiated but unpaid past validUntil', async () => {
+    const existing = sampleTx({
+      status: 'PROCESSING',
+      txHash: 'pending-paycrest-ord-stale-init',
+      externalId: 'ext-stale-init',
+      amountUsd: 10 as any,
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: {
+        id: 'paycrest-ord-stale-init',
+        status: 'initiated',
+        amountPaid: '0',
+        providerAccount: {
+          validUntil: new Date(Date.now() - 60_000).toISOString(),
+        },
+      },
+    }));
+
+    const cas = mockCasRelease(existing);
+    const result =
+      await TransactionService.cancelAbandonedPending('ext-stale-init');
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(cas.updateMany.mock.callCount(), 1);
+  });
+
+  it('refuses restore when initiated and validUntil still in the future', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({
+        status: 'PROCESSING',
+        txHash: 'pending-paycrest-ord-live-window',
+        externalId: 'ext-live-window',
+      }),
+    ) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: {
+        id: 'paycrest-ord-live-window',
+        status: 'initiated',
+        amountPaid: '0',
+        providerAccount: {
+          validUntil: new Date(Date.now() + 60_000).toISOString(),
+        },
+      },
+    }));
+
+    await assert.rejects(
+      () => TransactionService.cancelAbandonedPending('ext-live-window'),
+      (err: unknown) => {
+        assert.ok(err instanceof ProviderOrderStillLiveError);
+        assert.equal(err.providerStatus, 'initiated');
+        return true;
+      },
+    );
+  });
+
+  it('forceUnpaid restores initiated unpaid order even inside validUntil', async () => {
+    const existing = sampleTx({
+      status: 'PROCESSING',
+      txHash: 'pending-paycrest-ord-force',
+      externalId: 'ext-force',
+      amountUsd: 10 as any,
+    });
+    prisma.transaction.findUnique = mock.fn(async () => existing) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: {
+        id: 'paycrest-ord-force',
+        status: 'initiated',
+        amountPaid: '0',
+        providerAccount: {
+          validUntil: new Date(Date.now() + 60_000).toISOString(),
+        },
+      },
+    }));
+
+    const cas = mockCasRelease(existing);
+    const result = await TransactionService.cancelAbandonedPending('ext-force', {
+      forceUnpaid: true,
+    });
+    assert.equal(result?.status, 'FAILED');
+    assert.equal(cas.updateMany.mock.callCount(), 1);
+  });
+
+  it('forceUnpaid refuses when amountPaid is positive', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({
+        status: 'PROCESSING',
+        txHash: 'pending-paycrest-ord-paid',
+        externalId: 'ext-paid',
+      }),
+    ) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: {
+        id: 'paycrest-ord-paid',
+        status: 'initiated',
+        amountPaid: '1',
+      },
+    }));
+
+    await assert.rejects(
+      () =>
+        TransactionService.cancelAbandonedPending('ext-paid', {
+          forceUnpaid: true,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ProviderOrderStillLiveError);
+        assert.match(String(err.providerStatus), /amountPaid=1/);
+        return true;
+      },
+    );
+  });
+
   it('refundAfterFailedProviderCreate restores PROCESSING app-local hash', async () => {
     const existing = sampleTx({
       status: 'PROCESSING',
