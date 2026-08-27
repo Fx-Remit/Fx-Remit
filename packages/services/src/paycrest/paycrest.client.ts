@@ -17,6 +17,8 @@ export interface PaycrestOrderResult {
   id: string;
   payment_link?: string;
   status: string;
+  /** Present on GET order; ledger restore must not treat absence as unpaid. */
+  amountPaid?: string | number | null;
   providerAccount?: {
     receiveAddress?: string;
     validUntil?: string;

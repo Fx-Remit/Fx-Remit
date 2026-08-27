@@ -957,6 +957,67 @@ describe('TransactionService.cancelAbandonedPending', () => {
     );
   });
 
+  it('refuses restore when amountPaid is missing even past validUntil', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({
+        status: 'PROCESSING',
+        txHash: 'pending-paycrest-ord-thin',
+        externalId: 'ext-thin',
+      }),
+    ) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: {
+        id: 'paycrest-ord-thin',
+        status: 'initiated',
+        providerAccount: {
+          validUntil: new Date(Date.now() - 60_000).toISOString(),
+        },
+      },
+    }));
+
+    await assert.rejects(
+      () => TransactionService.cancelAbandonedPending('ext-thin'),
+      (err: unknown) => {
+        assert.ok(err instanceof ProviderOrderStillLiveError);
+        assert.equal(err.providerStatus, 'initiated');
+        return true;
+      },
+    );
+  });
+
+  it('refuses unpaid-window restore for non-initiated Paycrest status', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({
+        status: 'PROCESSING',
+        txHash: 'pending-paycrest-ord-pending',
+        externalId: 'ext-pending-status',
+      }),
+    ) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: {
+        id: 'paycrest-ord-pending',
+        status: 'pending',
+        amountPaid: '0',
+        providerAccount: {
+          validUntil: new Date(Date.now() - 60_000).toISOString(),
+        },
+      },
+    }));
+
+    await assert.rejects(
+      () => TransactionService.cancelAbandonedPending('ext-pending-status'),
+      (err: unknown) => {
+        assert.ok(err instanceof ProviderOrderStillLiveError);
+        assert.equal(err.providerStatus, 'pending');
+        return true;
+      },
+    );
+  });
+
   it('forceUnpaid restores initiated unpaid order even inside validUntil', async () => {
     const existing = sampleTx({
       status: 'PROCESSING',
@@ -1012,6 +1073,36 @@ describe('TransactionService.cancelAbandonedPending', () => {
       (err: unknown) => {
         assert.ok(err instanceof ProviderOrderStillLiveError);
         assert.match(String(err.providerStatus), /amountPaid=1/);
+        return true;
+      },
+    );
+  });
+
+  it('forceUnpaid refuses when amountPaid is missing', async () => {
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({
+        status: 'PROCESSING',
+        txHash: 'pending-paycrest-ord-force-thin',
+        externalId: 'ext-force-thin',
+      }),
+    ) as any;
+
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: {
+        id: 'paycrest-ord-force-thin',
+        status: 'initiated',
+      },
+    }));
+
+    await assert.rejects(
+      () =>
+        TransactionService.cancelAbandonedPending('ext-force-thin', {
+          forceUnpaid: true,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ProviderOrderStillLiveError);
+        assert.match(String(err.providerStatus), /amountPaid=missing/);
         return true;
       },
     );
