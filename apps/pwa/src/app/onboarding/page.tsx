@@ -1,34 +1,43 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Camera, Check, User as UserIcon, Loader2 } from 'lucide-react';
+import { Camera, Check, User as UserIcon, Loader2 } from 'lucide-react';
 import { useLogin, usePrivy } from '@privy-io/react-auth';
 import { createClient } from '@/utils/supabase/client';
+import {
+  OnboardingScreen,
+  ONBOARDING_HERO_PHOTO,
+  SlideHeadline,
+} from '@/components/onboarding/OnboardingIllustration';
 
-const SLIDES = [
-  {
-    title: 'Instant payouts',
-    body: 'Send money to bank accounts and mobile wallets in seconds. No borders, no delays.',
-  },
-  {
-    title: 'Real-time rates,\nzero markup',
-    body: 'Get the best exchange rates without the hidden fees. What you see is precisely what they receive.',
-  },
-  {
-    title: 'Add cash, cash out,\nstay in control',
-    body: 'Manage your wealth on the go. Non-custodial security means you are always the owner of your funds.',
-  },
-];
+const ALLOWED_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+function readImagePreview(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (
+        typeof result === 'string' &&
+        /^data:image\/(?:jpeg|png|webp|gif);base64,/.test(result)
+      ) {
+        resolve(result);
+        return;
+      }
+      resolve(null);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { ready, authenticated, user, getAccessToken } = usePrivy();
+  const { ready, user, getAccessToken } = usePrivy();
   const supabase = createClient();
 
-  const [current, setCurrent] = useState(0);
-  const [exiting, setExiting] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [fullName, setFullName] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -39,45 +48,27 @@ export default function OnboardingPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setAvatarFile(file);
-      setAvatarPreview(URL.createObjectURL(file));
+    if (!file || !ALLOWED_AVATAR_TYPES.has(file.type)) {
+      e.target.value = '';
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      return;
     }
+
+    const preview = await readImagePreview(file);
+    if (!preview) {
+      e.target.value = '';
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      return;
+    }
+
+    setAvatarFile(file);
+    setAvatarPreview(preview);
   };
 
-  // Swipe handling
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
-  const minSwipeDistance = 50;
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
-  };
-
-  const onTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
-
-    if (isLeftSwipe && current < SLIDES.length - 1) {
-      advance();
-    }
-    if (isRightSwipe && current > 0) {
-      setExiting(true);
-      setTimeout(() => {
-        setCurrent((c) => c - 1);
-        setExiting(false);
-      }, 200);
-    }
-  };
-  
-  // Helper to consistently pick the primary wallet (Privy Embedded > External)
   const getPriorityWallet = (accounts: any[]) => {
     const embeddedWallet = accounts.find(
       (a) => a.type === 'wallet' && (a as any).walletClientType === 'privy'
@@ -93,7 +84,6 @@ export default function OnboardingPage() {
   const { login } = useLogin({
     onComplete: async ({ user }) => {
       const linkedAccounts = user.linkedAccounts ?? [];
-      // Consistent wallet selection
       const walletAddress = getPriorityWallet(linkedAccounts);
       const emailAccount = linkedAccounts.find((a) => a.type === 'email');
 
@@ -136,24 +126,12 @@ export default function OnboardingPage() {
         }
       } catch (err) {
         console.error('[ONBOARD] Failed to sync user on login:', err);
-        setIsSettingUp(true); 
+        setIsSettingUp(true);
       }
     }
   });
 
-  const isLast = current === SLIDES.length - 1;
-
-  const advance = () => {
-    if (isLast) {
-      login();
-      return;
-    }
-    setExiting(true);
-    setTimeout(() => {
-      setCurrent((c) => (c >= SLIDES.length - 1 ? c : c + 1));
-      setExiting(false);
-    }, 200);
-  };
+  const handleContinue = () => login();
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,26 +204,35 @@ export default function OnboardingPage() {
 
   if (isSettingUp) {
     return (
-      <div className="h-screen w-full bg-[#11205A] px-7 py-20 flex flex-col items-center">
-        <div className="w-full max-w-[390px] flex flex-col items-center">
-          <h1 className="text-[30px] font-semibold text-[#F5F5F5] text-center mb-2">Create Profile</h1>
-          <p className="text-[16px] text-[#F6F6F6]/60 text-center mb-12">Let's personalize your account</p>
+      <OnboardingScreen
+        backgroundSrc={ONBOARDING_HERO_PHOTO}
+        objectPosition="center 22%"
+        scrim="heavy"
+        scrollContent
+      >
+        <div className="mx-auto w-full max-w-[390px]">
+          <h1 className="mb-2 text-center text-[28px] font-bold leading-tight text-[#F5F5F5]">
+            Create Profile
+          </h1>
+          <p className="mb-8 text-center text-[15px] text-[#F6F6F6]/65">
+            Let&apos;s personalize your account
+          </p>
 
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif"
             className="hidden"
           />
 
-          <div className="relative mb-12">
+          <div className="relative mx-auto mb-8 w-fit">
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="w-32 h-32 rounded-full bg-[#2261FE]/20 flex items-center justify-center border-2 border-dashed border-[#2261FE] overflow-hidden cursor-pointer active:scale-95 transition-transform"
+              className="relative flex h-32 w-32 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-[#2261FE]/80 bg-white/5 active:scale-95 transition-transform"
             >
               {avatarPreview ? (
-                <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                <img src={avatarPreview} alt="Preview" className="h-full w-full object-cover" />
               ) : (
                 <UserIcon className="text-[#2261FE]" size={48} />
               )}
@@ -253,64 +240,66 @@ export default function OnboardingPage() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="absolute bottom-0 right-0 w-10 h-10 bg-[#2261FE] rounded-full flex items-center justify-center border-4 border-[#11205A] active:scale-90 transition-transform"
+              className="absolute bottom-0 right-0 flex h-10 w-10 items-center justify-center rounded-full border-4 border-[#11205A]/80 bg-[#2261FE] active:scale-90 transition-transform"
             >
               <Camera size={20} className="text-white" />
             </button>
           </div>
 
-          <form onSubmit={handleProfileSubmit} className="w-full space-y-6">
+          <form onSubmit={handleProfileSubmit} className="w-full space-y-5">
             <div className="space-y-2">
-              <label className="text-[14px] font-medium text-[#F6F6F6]/80 px-1">Legal Full Name</label>
+              <label className="px-1 text-[14px] font-medium text-[#F6F6F6]/80">Legal Full Name</label>
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="John Doe"
-                className="w-full h-[60px] bg-white/5 border border-white/10 rounded-[12px] px-4 text-white outline-none focus:border-[#2261FE] transition-colors"
+                className="h-[56px] w-full rounded-[12px] border border-white/10 bg-white/5 px-4 text-white outline-none transition-colors focus:border-[#2261FE]"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-[14px] font-medium text-[#F6F6F6]/80 px-1">Email Address</label>
+              <label className="px-1 text-[14px] font-medium text-[#F6F6F6]/80">Email Address</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full h-[60px] bg-white/5 border border-white/10 rounded-[12px] px-4 text-white outline-none focus:border-[#2261FE] transition-colors placeholder-white/30"
+                className="h-[56px] w-full rounded-[12px] border border-white/10 bg-white/5 px-4 text-white placeholder-white/30 outline-none transition-colors focus:border-[#2261FE]"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-[14px] font-medium text-[#F6F6F6]/80 px-1">Display Name (Optional)</label>
+              <label className="px-1 text-[14px] font-medium text-[#F6F6F6]/80">
+                Display Name (Optional)
+              </label>
               <input
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Johnny"
-                className="w-full h-[60px] bg-white/5 border border-white/10 rounded-[12px] px-4 text-white outline-none focus:border-[#2261FE] transition-colors placeholder-white/30"
+                className="h-[56px] w-full rounded-[12px] border border-white/10 bg-white/5 px-4 text-white placeholder-white/30 outline-none transition-colors focus:border-[#2261FE]"
               />
             </div>
 
             {submitError && (
-              <div className="flex items-start gap-3 rounded-[12px] bg-red-500/10 border border-red-500/20 px-4 py-3">
-                <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-red-400 text-[11px] font-bold">!</span>
+              <div className="flex items-start gap-3 rounded-[12px] border border-red-500/20 bg-red-500/10 px-4 py-3">
+                <div className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-red-500/20">
+                  <span className="text-[11px] font-bold text-red-400">!</span>
                 </div>
-                <p className="text-red-400 text-[13px] font-medium leading-snug">{submitError}</p>
+                <p className="text-[13px] font-medium leading-snug text-red-400">{submitError}</p>
               </div>
             )}
 
             <button
               disabled={isSubmitting || !fullName || !email}
-              className="w-full h-[65px] bg-[#2261FE] text-white rounded-[7px] font-bold text-[17px] mt-8 flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] transition-all"
+              className="mt-4 flex h-[60px] w-full items-center justify-center gap-2 rounded-full bg-[#2261FE] text-[17px] font-semibold text-white shadow-lg shadow-[#2261FE]/25 transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="h-5 w-5 animate-spin" />
                   Saving...
                 </>
               ) : (
@@ -325,122 +314,48 @@ export default function OnboardingPage() {
 
         {isSuccess && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#11205A]/90 backdrop-blur-md">
-            <div className="flex flex-col items-center gap-6 rounded-[24px] bg-white/10 p-10 text-center text-white shadow-2xl ring-1 ring-white/20 max-w-[80%] animate-in fade-in zoom-in duration-300">
+            <div className="flex max-w-[80%] flex-col items-center gap-6 rounded-[24px] bg-white/10 p-10 text-center text-white shadow-2xl ring-1 ring-white/20">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)]">
                 <Check size={40} strokeWidth={3} className="text-white" />
               </div>
               <div className="space-y-2">
                 <h2 className="text-[28px] font-bold tracking-tight">Success!</h2>
-                <p className="text-[16px] text-[#F6F6F6]/80 leading-relaxed">Profile Created Successfully!</p>
+                <p className="text-[16px] leading-relaxed text-[#F6F6F6]/80">
+                  Profile Created Successfully!
+                </p>
               </div>
               <div className="flex flex-col items-center gap-2 pt-4">
-                <Loader2 className="w-5 h-5 animate-spin text-[#2261FE]" />
-                <p className="text-[12px] text-[#F6F6F6]/40 uppercase tracking-widest font-medium">Redirecting to home</p>
+                <Loader2 className="h-5 w-5 animate-spin text-[#2261FE]" />
+                <p className="text-[12px] font-medium uppercase tracking-widest text-[#F6F6F6]/40">
+                  Redirecting to home
+                </p>
               </div>
             </div>
           </div>
         )}
-      </div>
+      </OnboardingScreen>
     );
   }
 
-  const slide = SLIDES[current];
-
   return (
-    <div
-      className="relative h-screen w-full overflow-hidden select-none"
-      style={{ background: 'var(--Blue-Colors-Blue-950, #11205A)' }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
+    <OnboardingScreen
+      backgroundSrc={ONBOARDING_HERO_PHOTO}
+      objectPosition="center 22%"
     >
-      <div className="overflow-hidden" style={{ height: '600px' }}>
-        <img
-          src="/onbarding 2.svg"
-          alt=""
-          style={{
-            position: 'absolute',
-            height: '480px',
-            top: '75px',
-            display: 'block',
-            opacity: 1,
-          }}
-        />
-        <img
-          src="/onbarding.svg"
-          alt=""
-          style={{
-            position: 'absolute',
-            height: '480px',
-            top: '-60px',
-            left: '7px',
-            display: 'block',
-            opacity: 1,
-          }}
-        />
-      </div>
+      <div>
+        <SlideHeadline lines={['Instant payouts']} />
+        <p className="mx-auto mb-8 max-w-[320px] text-center text-[15px] leading-relaxed text-[#F6F6F6]/75">
+          Send money to bank accounts and mobile wallets in seconds. No borders, no delays.
+        </p>
 
-      <div
-        className="absolute bottom-0 left-0 right-0 z-10 px-7 pb-16 flex flex-col justify-end"
-        style={{ height: '55%' }}
-      >
-        <div
-          key={current}
-          className={`transition-opacity duration-200 flex flex-col items-center ${exiting ? 'opacity-0' : 'opacity-100'}`}
+        <button
+          type="button"
+          onClick={handleContinue}
+          className="flex h-[60px] w-full items-center justify-center rounded-full bg-[#2261FE] text-[17px] font-semibold text-white shadow-lg shadow-[#2261FE]/30 transition-transform active:scale-[0.98]"
         >
-          <h1
-            className="text-[30px] font-semibold leading-[100%] mb-4 text-[#F5F5F5] text-center"
-            style={{ fontFamily: "'Inter', sans-serif" }}
-          >
-            {slide.title}
-          </h1>
-          <p
-            className="text-[16px] font-normal leading-[100%] mb-8 text-[#F6F6F6] text-center"
-            style={{ fontFamily: "'Inter', sans-serif" }}
-          >
-            {slide.body}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 mb-10">
-          {SLIDES.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrent(i)}
-              className="rounded-full transition-all duration-300"
-              style={{
-                width: i === current ? 22 : 8,
-                height: 8,
-                background: i === current ? '#FFFFFF' : 'rgba(255,255,255,0.3)',
-              }}
-            />
-          ))}
-        </div>
-
-        <div className="w-full flex justify-center">
-          <button
-            onClick={advance}
-            className="flex items-center justify-center font-semibold text-white transition-transform duration-100 active:scale-[0.98]"
-            style={{
-              width: '100%',
-              maxWidth: '390px',
-              height: '65px',
-              background: '#2261FE',
-              borderRadius: '7px',
-              paddingTop: '20px',
-              paddingRight: '10px',
-              paddingBottom: '20px',
-              paddingLeft: '10px',
-              gap: '10px',
-              opacity: 1
-            }}
-          >
-            <span className="text-[17px]">{isLast ? 'Get Started' : 'Skip'}</span>
-            <ArrowRight size={20} strokeWidth={2.5} />
-          </button>
-        </div>
+          Continue
+        </button>
       </div>
-    </div>
+    </OnboardingScreen>
   );
 }
-
