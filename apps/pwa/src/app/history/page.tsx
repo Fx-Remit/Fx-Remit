@@ -138,12 +138,22 @@ export default function HistoryPage() {
                 >
                   <div
                     className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      tx.status === 'FAILED' ? 'bg-red-50' : 'bg-green-50'
+                      tx.status === 'FAILED'
+                        ? 'bg-red-50'
+                        : tx.status === 'COMPLETED' || tx.status === 'VERIFIED'
+                          ? 'bg-emerald-50'
+                          : 'bg-blue-50'
                     }`}
                   >
                     <ArrowUpRight 
                       size={22} 
-                      className={`${tx.status === 'FAILED' ? 'text-red-400' : 'text-blue-500'} ${tx.type === 'DEPOSIT' ? 'rotate-180' : 'rotate-0'}`} 
+                      className={`${
+                        tx.status === 'FAILED'
+                          ? 'text-red-400'
+                          : tx.status === 'COMPLETED' || tx.status === 'VERIFIED'
+                            ? 'text-emerald-600'
+                            : 'text-blue-500'
+                      } ${tx.type === 'DEPOSIT' ? 'rotate-180' : 'rotate-0'}`} 
                     />
                   </div>
                   <div className="flex-1 min-w-0">

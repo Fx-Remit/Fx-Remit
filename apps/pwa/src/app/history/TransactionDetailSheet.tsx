@@ -58,6 +58,58 @@ export function TransactionDetailSheet({
       })} ${transaction.receivedToken}`;
     })();
 
+  const isCompleted = transaction.status === 'completed';
+  const isPending = transaction.status === 'pending';
+  const isFailed = transaction.status === 'failed';
+
+  const steps = [
+    {
+      key: 'initiated',
+      label: 'Initiated',
+      state: 'done' as const,
+    },
+    {
+      key: 'processing',
+      label: 'Processing',
+      state: isCompleted ? ('done' as const) : isPending ? ('active' as const) : isFailed ? ('done' as const) : ('idle' as const),
+    },
+    {
+      key: 'success',
+      label: isFailed ? 'Failed' : 'Success',
+      state: isCompleted ? ('done' as const) : isFailed ? ('failed' as const) : ('idle' as const),
+    },
+  ];
+
+  const segmentColor = (leftIndex: number) => {
+    const right = steps[leftIndex + 1]?.state;
+    if (right === 'done' || (isCompleted && leftIndex < 2)) return 'bg-emerald-500';
+    if (right === 'active' || (isPending && leftIndex === 0)) return 'bg-[#2261FE]';
+    if (right === 'failed' && leftIndex === 1) return 'bg-red-400';
+    return 'bg-gray-200';
+  };
+
+  const nodeClass = (state: 'done' | 'active' | 'idle' | 'failed') => {
+    if (state === 'done') {
+      return isCompleted
+        ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/25'
+        : 'bg-[#2261FE] border-[#2261FE] text-white shadow-lg shadow-[#2261FE]/20';
+    }
+    if (state === 'active') {
+      return 'bg-white border-[#2261FE] text-[#2261FE] ring-4 ring-[#2261FE]/10';
+    }
+    if (state === 'failed') {
+      return 'bg-red-50 border-red-500 text-red-500';
+    }
+    return 'bg-white border-gray-200 text-gray-300';
+  };
+
+  const labelClass = (state: 'done' | 'active' | 'idle' | 'failed', label: string) => {
+    if (state === 'failed' || label === 'Failed') return 'text-red-500';
+    if (state === 'done' && isCompleted && label === 'Success') return 'text-emerald-600';
+    if (state === 'done' || state === 'active') return 'text-[#1C1C1C]';
+    return 'text-gray-300';
+  };
+
   return (
     <>
       <div className="fixed inset-0 z-[100] flex items-end justify-center">
@@ -105,90 +157,42 @@ export function TransactionDetailSheet({
                 {transaction.type === 'DEPOSIT' ? '+' : ''}{transaction.sentAmount} {transaction.sentToken}
               </h1>
 
-              {/* Fluid Progress Tracker */}
-              <div className="w-full pt-4 flex items-center justify-between relative px-2 sm:px-4 mt-2">
-                {/* Progress Line Background */}
-                <div className="absolute top-[18px] left-[15%] right-[15%] h-[2px] bg-gray-100 -z-0" />
-
-                {/* Progress Line Active */}
-                <div
-                  className="absolute top-[18px] left-[15%] h-[2px] bg-[#2261FE] transition-all duration-1000 origin-left ease-out"
-                  style={{
-                    width:
-                      transaction.status === 'completed'
-                        ? '70%'
-                        : transaction.status === 'pending'
-                          ? '35%'
-                          : '0%',
-                  }}
-                />
-
-                {/* Steps */}
-                <div className="flex flex-col items-center gap-2 relative z-10 w-1/3">
-                  <div className="w-9 h-9 rounded-full bg-[#2261FE] flex items-center justify-center text-white shadow-lg shadow-[#2261FE]/20">
-                    <Check size={18} strokeWidth={3} />
-                  </div>
-                  <span className="text-[11px] sm:text-[12px] font-bold text-[#1C1C1C] whitespace-nowrap">
-                    Initiated
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center gap-2 relative z-10 w-1/3 text-center">
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
-                      transaction.status === 'completed'
-                        ? 'bg-[#2261FE] border-[#2261FE] text-white'
-                        : transaction.status === 'pending'
-                          ? 'bg-white border-[#2261FE] text-[#2261FE]'
-                          : 'bg-white border-gray-100 text-gray-300'
-                    }`}
-                  >
-                    {transaction.status === 'completed' ? (
-                      <Check size={18} strokeWidth={3} />
-                    ) : (
-                      <Clock size={18} />
-                    )}
-                  </div>
-                  <span
-                    className={`text-[11px] sm:text-[12px] font-bold ${
-                      transaction.status === 'pending' || transaction.status === 'completed'
-                        ? 'text-[#1C1C1C]'
-                        : 'text-gray-300'
-                    } whitespace-nowrap`}
-                  >
-                    Processing
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center gap-2 relative z-10 w-1/3">
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
-                      transaction.status === 'completed'
-                        ? 'bg-[#2261FE] border-[#2261FE] text-white'
-                        : transaction.status === 'failed'
-                          ? 'bg-red-50 border-red-500 text-red-500'
-                          : 'bg-white border-gray-100 text-gray-300'
-                    }`}
-                  >
-                    {transaction.status === 'completed' ? (
-                      <Check size={18} strokeWidth={3} />
-                    ) : transaction.status === 'failed' ? (
-                      <AlertCircle size={18} />
-                    ) : (
-                      <Clock size={18} />
-                    )}
-                  </div>
-                  <span
-                    className={`text-[11px] sm:text-[12px] font-bold ${
-                      transaction.status === 'completed'
-                        ? 'text-[#1C1C1C]'
-                        : transaction.status === 'failed'
-                          ? 'text-red-500'
-                          : 'text-gray-300'
-                    } whitespace-nowrap`}
-                  >
-                    {transaction.status === 'failed' ? 'Failed' : 'Success'}
-                  </span>
+              <div className="w-full px-2 sm:px-4 mt-2 pt-2">
+                <div className="flex w-full">
+                  {steps.map((step, index) => (
+                    <div key={step.key} className="flex flex-1 min-w-0 flex-col items-center">
+                      <div className="relative flex h-9 w-full items-center justify-center">
+                        {index > 0 && (
+                          <div
+                            className={`absolute right-1/2 left-0 top-1/2 h-0.5 -translate-y-1/2 ${segmentColor(index - 1)}`}
+                          />
+                        )}
+                        {index < steps.length - 1 && (
+                          <div
+                            className={`absolute left-1/2 right-0 top-1/2 h-0.5 -translate-y-1/2 ${segmentColor(index)}`}
+                          />
+                        )}
+                        <div
+                          className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all ${nodeClass(step.state)}`}
+                        >
+                          {step.state === 'failed' ? (
+                            <AlertCircle size={18} />
+                          ) : step.state === 'done' ? (
+                            <Check size={18} strokeWidth={3} />
+                          ) : step.state === 'active' ? (
+                            <Clock size={18} />
+                          ) : (
+                            <Clock size={18} />
+                          )}
+                        </div>
+                      </div>
+                      <span
+                        className={`mt-2 text-[11px] font-bold whitespace-nowrap sm:text-[12px] ${labelClass(step.state, step.label)}`}
+                      >
+                        {step.label}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
