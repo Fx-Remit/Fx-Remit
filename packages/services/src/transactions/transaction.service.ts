@@ -507,27 +507,38 @@ export class TransactionService {
     });
 
     const results = { completed: 0, failed: 0 };
-    for (const tx of rows) {
-      if (!this.isOnChainTxHash(tx.txHash)) continue;
-      try {
-        const updated = await this.tryMarkCompletedFromPaycrest({
-          externalId: tx.externalId,
-          anchorTransactionId: tx.anchorTransactionId,
-        });
-        if (updated?.status === 'COMPLETED') results.completed += 1;
-      } catch (err) {
-        console.error(
-          `[TransactionService] Paycrest sync failed for ${tx.id}:`,
-          err instanceof Error ? err.message : err,
-        );
-        results.failed += 1;
-      }
-    }
+    const eligible = rows.filter((tx) => this.isOnChainTxHash(tx.txHash));
+    const outcomes = await Promise.all(
+      eligible.map(async (tx) => {
+        try {
+          const updated = await this.tryMarkCompletedFromPaycrest({
+            externalId: tx.externalId,
+            anchorTransactionId: tx.anchorTransactionId,
+          });
+          return updated?.status === 'COMPLETED' ? ('completed' as const) : ('noop' as const);
+        } catch (err) {
+          console.error(
+            `[TransactionService] Paycrest sync failed for ${tx.id}:`,
+            err instanceof Error ? err.message : err,
+          );
+          return 'failed' as const;
+        }
+      }),
+    );
+    results.completed = outcomes.filter((o) => o === 'completed').length;
+    results.failed = outcomes.filter((o) => o === 'failed').length;
     return results;
   }
 
-  static async syncProcessingRemittancesFromPaycrest(userId: string, limit = 5) {
-    await this.syncFundedProcessingFromPaycrest({ userId, limit });
+  static async syncProcessingRemittancesFromPaycrest(
+    userId: string,
+    opts?: { limit?: number; minAgeMs?: number },
+  ) {
+    await this.syncFundedProcessingFromPaycrest({
+      userId,
+      limit: opts?.limit ?? 5,
+      minAgeMs: opts?.minAgeMs ?? 30_000,
+    });
   }
 
   static async updateFromPaycrest(externalId: string, status: Status) {

@@ -81,9 +81,6 @@ export async function POST(req: Request) {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (message === 'Forbidden') {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
       if (message === 'Invalid txHash') {
         return NextResponse.json({ error: message }, { status: 400 });
       }

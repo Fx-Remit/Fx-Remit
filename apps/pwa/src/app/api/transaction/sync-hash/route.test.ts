@@ -100,17 +100,15 @@ describe('POST /api/transaction/sync-hash', () => {
     assert.equal(attach.mock.callCount(), 1);
   });
 
-  it('returns 403 when attachOnChainHash rejects ownership', async () => {
+  it('returns 404 when attachOnChainHash finds no owned row', async () => {
     mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
       userId: 'did:privy:attacker',
     }));
     prisma.user.findUnique = mock.fn(async () => ({ id: 'attacker' })) as any;
-    mock.method(TransactionService, 'attachOnChainHash', async () => {
-      throw new Error('Forbidden');
-    });
+    mock.method(TransactionService, 'attachOnChainHash', async () => null);
 
     const res = await POST(authRequest({ orderId: '99', txHash: HASH }));
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 404);
   });
 
   it('returns 401 without Bearer token', async () => {
