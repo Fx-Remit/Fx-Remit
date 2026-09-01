@@ -11,6 +11,9 @@ import {
 } from './transaction.service.js';
 import { PayoutService } from '../paycrest/payout.service.js';
 
+const ON_CHAIN =
+  '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
 const originals = {
   findUnique: prisma.transaction.findUnique,
   findFirst: prisma.transaction.findFirst,
@@ -1350,6 +1353,65 @@ describe('TransactionService.expireStalePendingRemittances', () => {
   });
 });
 
+describe('TransactionService.tryMarkCompletedFromPaycrest', () => {
+  it('marks COMPLETED when Paycrest reports settled', async () => {
+    const updated = sampleTx({ status: 'COMPLETED' });
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: { id: 'pc-1', status: 'settled' },
+    }));
+    prisma.transaction.findUnique = mock.fn(async () =>
+      sampleTx({ status: 'PROCESSING', txHash: ON_CHAIN }),
+    ) as any;
+    prisma.transaction.update = mock.fn(async () => updated) as any;
+
+    const result = await TransactionService.tryMarkCompletedFromPaycrest({
+      externalId: 'ref-1',
+      anchorTransactionId: 'pc-1',
+    });
+    assert.equal(result?.status, 'COMPLETED');
+  });
+
+  it('no-ops when Paycrest order is still processing', async () => {
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: { id: 'pc-2', status: 'processing' },
+    }));
+
+    const result = await TransactionService.tryMarkCompletedFromPaycrest({
+      externalId: 'ref-2',
+      anchorTransactionId: 'pc-2',
+    });
+    assert.equal(result, null);
+  });
+});
+
+describe('TransactionService.findByPaycrestKey', () => {
+  it('resolves by externalId (Paycrest reference)', async () => {
+    const row = sampleTx({ externalId: 'ref-uuid' });
+    prisma.transaction.findUnique = mock.fn(async () => row) as any;
+    const result = await TransactionService.findByPaycrestKey('ref-uuid');
+    assert.equal(result?.id, row.id);
+  });
+
+  it('resolves by anchorTransactionId after on-chain hash attached', async () => {
+    const row = sampleTx({
+      externalId: 'ref-uuid',
+      anchorTransactionId: '2e15d59e-e62e-492a-bc8c-6f478b11d044',
+      txHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    });
+    prisma.transaction.findUnique = mock.fn(async () => null) as any;
+    prisma.transaction.findFirst = mock.fn(async (args: any) => {
+      if (args?.where?.anchorTransactionId) return row;
+      return null;
+    }) as any;
+    const result = await TransactionService.findByPaycrestKey(
+      '2e15d59e-e62e-492a-bc8c-6f478b11d044',
+    );
+    assert.equal(result?.id, row.id);
+  });
+});
+
 describe('TransactionService.attachOnChainHash', () => {
   const HASH =
     '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -1362,11 +1424,8 @@ describe('TransactionService.attachOnChainHash', () => {
       recipientBank: '058',
     });
     const attached = { ...existing, txHash: HASH, chainId: 8453 };
-    let findCalls = 0;
-    prisma.transaction.findUnique = mock.fn(async () => {
-      findCalls += 1;
-      return findCalls === 1 ? existing : attached;
-    }) as any;
+    prisma.transaction.findFirst = mock.fn(async () => existing) as any;
+    prisma.transaction.findUnique = mock.fn(async () => attached) as any;
     const updateManyMock = mock.fn(async (args: any) => {
       assert.equal(args.data.txHash, HASH);
       assert.equal(args.data.chainId, 8453);
@@ -1385,20 +1444,61 @@ describe('TransactionService.attachOnChainHash', () => {
     assert.equal(updateManyMock.mock.callCount(), 1);
   });
 
-  it('rejects when userId does not own the row', async () => {
-    prisma.transaction.findUnique = mock.fn(async () =>
-      sampleTx({ userId: 'owner', txHash: 'pending-x' }),
-    ) as any;
+  it('returns null when userId does not own the row', async () => {
+    prisma.transaction.findFirst = mock.fn(async () => null) as any;
 
-    await assert.rejects(
-      () =>
-        TransactionService.attachOnChainHash({
-          userId: 'attacker',
-          orderId: 42n,
-          txHash: HASH,
-        }),
-      /Forbidden/,
-    );
+    const result = await TransactionService.attachOnChainHash({
+      userId: 'attacker',
+      orderId: 42n,
+      txHash: HASH,
+    });
+    assert.equal(result, null);
+  });
+
+  it('is idempotent when hash already attached after chainId stamp', async () => {
+    const existing = sampleTx({
+      userId: 'user-1',
+      status: 'PROCESSING',
+      txHash: HASH,
+      chainId: 8453,
+      recipientBank: '058',
+    });
+    prisma.transaction.findFirst = mock.fn(async () => existing) as any;
+    const updateMany = mock.fn(async () => ({ count: 0 }));
+    prisma.transaction.updateMany = updateMany as any;
+
+    const result = await TransactionService.attachOnChainHash({
+      userId: 'user-1',
+      orderId: 42n,
+      txHash: HASH,
+    });
+    assert.equal(result?.txHash, HASH);
+    assert.equal(updateMany.mock.callCount(), 0);
+  });
+
+  it('preserves Paycrest order id on anchorTransactionId when attaching', async () => {
+    const existing = sampleTx({
+      userId: 'user-1',
+      status: 'PROCESSING',
+      txHash: 'pending-ord_paycrest_1',
+      recipientBank: '058',
+      anchorTransactionId: null,
+    });
+    const attached = { ...existing, txHash: HASH, chainId: 8453 };
+    prisma.transaction.findFirst = mock.fn(async () => existing) as any;
+    prisma.transaction.findUnique = mock.fn(async () => attached) as any;
+    const updateManyMock = mock.fn(async (args: any) => {
+      assert.equal(args.data.anchorTransactionId, 'ord_paycrest_1');
+      return { count: 1 };
+    });
+    prisma.transaction.updateMany = updateManyMock as any;
+
+    await TransactionService.attachOnChainHash({
+      userId: 'user-1',
+      orderId: 42n,
+      txHash: HASH,
+    });
+    assert.equal(updateManyMock.mock.callCount(), 1);
   });
 
   it('marks crypto withdraw COMPLETED', async () => {
@@ -1409,11 +1509,8 @@ describe('TransactionService.attachOnChainHash', () => {
       recipientBank: 'crypto:base',
     });
     const attached = { ...existing, status: 'COMPLETED', txHash: HASH, chainId: 8453 };
-    let findCalls = 0;
-    prisma.transaction.findUnique = mock.fn(async () => {
-      findCalls += 1;
-      return findCalls === 1 ? existing : attached;
-    }) as any;
+    prisma.transaction.findFirst = mock.fn(async () => existing) as any;
+    prisma.transaction.findUnique = mock.fn(async () => attached) as any;
     prisma.transaction.updateMany = mock.fn(async (args: any) => {
       assert.equal(args.data.status, 'COMPLETED');
       assert.equal(args.data.txHash, HASH);

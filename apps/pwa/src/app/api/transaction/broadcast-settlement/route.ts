@@ -5,6 +5,7 @@ import {
   broadcastSettlementTransfer,
   InstantSendNotConfiguredError,
   InstantSendWalletError,
+  TransactionService,
 } from '@fx-remit/services';
 import { z } from 'zod';
 
@@ -81,6 +82,11 @@ export async function POST(req: Request) {
         privyDid: claims.userId,
         userId: user.id,
         walletAddress: user.walletAddress,
+        orderId,
+      });
+
+      await TransactionService.syncPaycrestStatusForRemittance({
+        userId: user.id,
         orderId,
       });
 

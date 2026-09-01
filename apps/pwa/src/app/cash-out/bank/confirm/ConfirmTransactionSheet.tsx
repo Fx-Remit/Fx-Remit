@@ -181,6 +181,7 @@ export function ConfirmTransactionSheet({
 
   const invalidateLedgerQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+    queryClient.invalidateQueries({ queryKey: ['transaction-history-full'] });
     queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
     queryClient.invalidateQueries({ queryKey: ['user-profile'] });
   };

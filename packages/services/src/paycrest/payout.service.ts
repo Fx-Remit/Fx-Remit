@@ -196,6 +196,7 @@ export class PayoutService {
             status: "PROCESSING",
             sourceToken: settlementToken,
             txHash: `pending-${order.id}`,
+            anchorTransactionId: String(order.id),
             updatedAt: new Date(),
           },
         });

@@ -185,6 +185,7 @@ function CashOutConfirmContent() {
         setOpenError(RESERVED_STILL_LIVE_MESSAGE);
         queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
         queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+        queryClient.invalidateQueries({ queryKey: ['transaction-history-full'] });
 
         // If abandon aborted an in-flight create before parse, re-start create (same externalId → resume).
         try {
@@ -223,6 +224,7 @@ function CashOutConfirmContent() {
 
       if (result.cancelled) {
         queryClient.invalidateQueries({ queryKey: ['transaction-history'] });
+        queryClient.invalidateQueries({ queryKey: ['transaction-history-full'] });
         queryClient.invalidateQueries({ queryKey: ['user-profile'] });
         queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
       }

@@ -401,9 +401,6 @@ export class TransactionService {
    * FAILED / REFUNDING restore spendable ledger only for unfunded placeholder hashes
    * (pending-* / abandoned-*). Funded remittances wait for the on-chain refund deposit (#90).
    */
-  /**
-   * Resolve a remittance by Paycrest order id, our reference (externalId), or pending-{orderId} hash.
-   */
   static async findByPaycrestKey(key: string) {
     if (!key) return null;
 
@@ -411,6 +408,15 @@ export class TransactionService {
       where: { externalId: key },
     });
     if (byExternal) return byExternal;
+
+    const byAnchor = await prisma.transaction.findFirst({
+      where: {
+        type: "REMITTANCE",
+        anchorTransactionId: key,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (byAnchor) return byAnchor;
 
     return await prisma.transaction.findFirst({
       where: {
@@ -422,6 +428,106 @@ export class TransactionService {
       },
       orderBy: { createdAt: "desc" },
     });
+  }
+
+  private static readonly PAYCREST_FIAT_DELIVERED = new Set([
+    'settled',
+    'validated',
+  ]);
+
+  static async tryMarkCompletedFromPaycrest(params: {
+    externalId: string | null;
+    anchorTransactionId?: string | null;
+  }) {
+    const lookupKeys = [params.anchorTransactionId, params.externalId].filter(
+      (k): k is string => typeof k === 'string' && k.length > 0,
+    );
+    if (lookupKeys.length === 0) return null;
+
+    const { PayoutService } = await import('../paycrest/payout.service.js');
+    for (const key of lookupKeys) {
+      const live = await PayoutService.getSettlementOrder(key);
+      if (!live.success || !live.order?.status) continue;
+      const paycrestStatus = String(live.order.status).toLowerCase();
+      if (!this.PAYCREST_FIAT_DELIVERED.has(paycrestStatus)) continue;
+      const matchKey = params.externalId ?? key;
+      return await this.updateFromPaycrest(matchKey, 'COMPLETED');
+    }
+    return null;
+  }
+
+  static async syncPaycrestStatusForRemittance(params: {
+    userId: string;
+    orderId: bigint;
+  }) {
+    const tx = await prisma.transaction.findFirst({
+      where: {
+        orderId: params.orderId,
+        userId: params.userId,
+        type: 'REMITTANCE',
+      },
+    });
+    if (!tx) return null;
+    if (tx.status === 'COMPLETED' || tx.status === 'FAILED') return tx;
+    if (this.isCryptoWithdraw(tx.recipientBank)) return tx;
+    const updated = await this.tryMarkCompletedFromPaycrest({
+      externalId: tx.externalId,
+      anchorTransactionId: tx.anchorTransactionId,
+    });
+    return updated ?? tx;
+  }
+
+  static async syncFundedProcessingFromPaycrest(opts?: {
+    userId?: string;
+    minAgeMs?: number;
+    limit?: number;
+  }) {
+    const minAgeMs = opts?.minAgeMs ?? 0;
+    const limit = opts?.limit ?? 50;
+    const rows = await prisma.transaction.findMany({
+      where: {
+        type: 'REMITTANCE',
+        status: 'PROCESSING',
+        externalId: { not: null },
+        NOT: { recipientBank: { startsWith: 'crypto:' } },
+        ...(opts?.userId ? { userId: opts.userId } : {}),
+        ...(minAgeMs > 0
+          ? { updatedAt: { lte: new Date(Date.now() - minAgeMs) } }
+          : {}),
+      },
+      select: {
+        id: true,
+        externalId: true,
+        anchorTransactionId: true,
+        txHash: true,
+        orderId: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+    });
+
+    const results = { completed: 0, failed: 0 };
+    for (const tx of rows) {
+      if (!this.isOnChainTxHash(tx.txHash)) continue;
+      try {
+        const updated = await this.tryMarkCompletedFromPaycrest({
+          externalId: tx.externalId,
+          anchorTransactionId: tx.anchorTransactionId,
+        });
+        if (updated?.status === 'COMPLETED') results.completed += 1;
+      } catch (err) {
+        console.error(
+          `[TransactionService] Paycrest sync failed for ${tx.id}:`,
+          err instanceof Error ? err.message : err,
+        );
+        results.failed += 1;
+      }
+    }
+    return results;
+  }
+
+  static async syncProcessingRemittancesFromPaycrest(userId: string, limit = 5) {
+    await this.syncFundedProcessingFromPaycrest({ userId, limit });
   }
 
   static async updateFromPaycrest(externalId: string, status: Status) {
@@ -1403,23 +1509,16 @@ export class TransactionService {
       throw new Error('Invalid txHash');
     }
 
-    const existing = await prisma.transaction.findUnique({
+    const existing = await prisma.transaction.findFirst({
       where: {
-        orderId_chainId: {
-          orderId: params.orderId,
-          chainId: 0,
-        },
+        orderId: params.orderId,
+        userId: params.userId,
+        type: 'REMITTANCE',
       },
     });
 
     if (!existing) {
       return null;
-    }
-    if (existing.userId !== params.userId) {
-      throw new Error('Forbidden');
-    }
-    if (existing.type !== 'REMITTANCE') {
-      throw new Error('Not a remittance');
     }
 
     if (
@@ -1433,6 +1532,10 @@ export class TransactionService {
     }
 
     const isCrypto = (existing.recipientBank || '').startsWith('crypto:');
+    const paycrestOrderId = this.paycrestOrderIdFromTxHash(existing.txHash);
+    const preservePaycrestId =
+      !!paycrestOrderId &&
+      !this.isAppLocalPendingKey(paycrestOrderId, existing.externalId);
 
     const attached = await prisma.transaction.updateMany({
       where: {
@@ -1447,6 +1550,9 @@ export class TransactionService {
         txHash: hash,
         // Pending rows are created with chainId=0; stamp settlement chain on broadcast.
         chainId: PAYCREST_SETTLEMENT.chainId,
+        ...(preservePaycrestId && !existing.anchorTransactionId
+          ? { anchorTransactionId: paycrestOrderId }
+          : {}),
         ...(isCrypto ? { status: 'COMPLETED' as Status } : {}),
         updatedAt: new Date(),
       },
@@ -1465,8 +1571,8 @@ export class TransactionService {
 
   /**
    * Link a Paycrest order id onto the pending placeholder hash.
-   * Keeps `externalId` as the frontend idempotency / Paycrest reference so retries still match.
-   * Webhooks resolve via reference, order id, or `pending-{orderId}` (see findByPaycrestKey).
+   * Keeps `externalId` as the Paycrest reference. Provider order id stored on
+   * `anchorTransactionId` once linked (survives on-chain hash attach).
    */
   static async attachPaycrestOrder(
     id: string,
@@ -1481,6 +1587,7 @@ export class TransactionService {
       },
       data: {
         txHash: `pending-${paycrestOrderId}`,
+        anchorTransactionId: paycrestOrderId,
         updatedAt: new Date(),
       },
     });

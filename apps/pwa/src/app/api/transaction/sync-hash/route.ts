@@ -97,9 +97,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
+    const synced = await TransactionService.syncPaycrestStatusForRemittance({
+      userId: user.id,
+      orderId,
+    });
+
     return NextResponse.json({
       success: true,
-      transaction: TransactionService.serialize(updated),
+      transaction: TransactionService.serialize(synced ?? updated),
     });
   } catch (error: unknown) {
     console.error('[SYNC_HASH] Error:', error);

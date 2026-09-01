@@ -63,13 +63,14 @@ describe('PayoutService — happy paths', () => {
         status: { in: string[] };
         txHash: { startsWith: string };
       };
-      data: { status: string; txHash: string };
+      data: { status: string; txHash: string; anchorTransactionId: string };
     };
     assert.equal(args.where.externalId, 'ext-1');
     assert.deepEqual(args.where.status, { in: ['PENDING', 'PROCESSING'] });
     assert.equal(args.where.txHash.startsWith, 'pending-');
     assert.equal(args.data.status, 'PROCESSING');
     assert.equal(args.data.txHash, 'pending-ord_1');
+    assert.equal(args.data.anchorTransactionId, 'ord_1');
   });
 
   it('createPaycrestOrder skips DB update when externalId omitted', async () => {
