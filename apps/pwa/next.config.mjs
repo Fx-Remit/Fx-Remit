@@ -4,6 +4,8 @@ const require = createRequire(import.meta.url);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Allow ngrok (or other tunnel) to load `/_next/*` assets in dev without cross-origin warnings.
+  allowedDevOrigins: ['championless-thermogenetic-ariane.ngrok-free.dev'],
   transpilePackages: [
     '@fx-remit/ui-components',
     '@fx-remit/services',
@@ -12,12 +14,6 @@ const nextConfig = {
     'jose',
     '@privy-io/node',
   ],
-  experimental: {
-    allowedDevOrigins: [
-      'championless-thermogenetic-ariane.ngrok-free.dev',
-      'localhost:3000',
-    ],
-  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals = [...(config.externals || []), 'utf-8-validate', 'bufferutil'];
