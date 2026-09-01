@@ -68,6 +68,31 @@ describe('POST /api/transaction/sync-hash', () => {
       txHash: HASH,
     }));
 
+    mock.method(
+      TransactionService,
+      'syncPaycrestStatusForRemittance',
+      async () => ({
+        id: 'tx-1',
+        userId: 'user-1',
+        orderId: 99n,
+        txHash: HASH,
+        chainId: 8453,
+        blockNumber: 0n,
+        logIndex: 0,
+        sourceToken: 'USDC',
+        amountUsd: 10,
+        payoutFiat: 10,
+        status: 'COMPLETED',
+        type: 'REMITTANCE',
+        externalId: 'idem-1',
+        recipientName: null,
+        recipientBank: null,
+        recipientAcc: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    );
+
     const res = await POST(authRequest({ orderId: '99', txHash: HASH }));
     assert.equal(res.status, 200);
     const json = await res.json();
