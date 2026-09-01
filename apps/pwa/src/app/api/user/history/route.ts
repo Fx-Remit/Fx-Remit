@@ -31,7 +31,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 });
     }
 
-    // 1. Resolve internal DB user ID from Privy DID
     const user = await prisma.user.findUnique({
       where: { privyDid: claims.userId },
       select: { id: true }
@@ -41,16 +40,16 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
-    // 2. Fetch transaction history from indexer/database
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '20', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
+    await TransactionService.syncProcessingRemittancesFromPaycrest(user.id);
     const transactions = await TransactionService.getHistory(user.id, limit, offset);
 
     return NextResponse.json({ 
       success: true, 
-      transactions 
+      transactions,
     });
 
   } catch (error) {

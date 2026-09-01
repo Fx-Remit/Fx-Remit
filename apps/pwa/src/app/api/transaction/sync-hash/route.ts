@@ -81,9 +81,6 @@ export async function POST(req: Request) {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (message === 'Forbidden') {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
       if (message === 'Invalid txHash') {
         return NextResponse.json({ error: message }, { status: 400 });
       }
@@ -97,9 +94,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
+    const synced = await TransactionService.syncPaycrestStatusForRemittance({
+      userId: user.id,
+      orderId,
+    });
+
     return NextResponse.json({
       success: true,
-      transaction: TransactionService.serialize(updated),
+      transaction: TransactionService.serialize(synced ?? updated),
     });
   } catch (error: unknown) {
     console.error('[SYNC_HASH] Error:', error);

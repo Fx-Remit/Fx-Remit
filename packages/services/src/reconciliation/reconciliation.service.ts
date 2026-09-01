@@ -4,8 +4,13 @@ import { DepositService } from '../deposits/deposit.service';
 import { TransactionService } from '../transactions/transaction.service';
 
 export class ReconciliationService {
+  static async reconcileFundedProcessingRemittances() {
+    return TransactionService.syncFundedProcessingFromPaycrest({
+      minAgeMs: 30_000,
+    });
+  }
+
   /**
-   * Identifies and recovers stuck remittance transactions.
    * Target: Transactions in 'VERIFIED' status older than 10 minutes.
    *
    * Dual-rail guard (#95): rows with a real on-chain RemittanceInitiated hash
@@ -183,6 +188,7 @@ export class ReconciliationService {
       await TransactionService.escalateStaleBroadcastClaims();
     const expiredRefundRequired =
       await TransactionService.expireStaleRefundRequired();
+    const fundedProcessing = await this.reconcileFundedProcessingRemittances();
     const remittances = await this.reconcileStuckTransactions();
     const deposits = await this.reconcileDeposits();
     const refundRequiredOpen =
@@ -223,6 +229,7 @@ export class ReconciliationService {
       expiredPendings,
       staleBroadcastClaims,
       expiredRefundRequired,
+      fundedProcessing,
       remittances,
       deposits,
       refundRequiredOpen,

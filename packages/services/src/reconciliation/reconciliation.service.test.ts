@@ -6,6 +6,7 @@ import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '@fx-remit/database';
 import { PayoutService } from '../paycrest/payout.service.js';
+import { TransactionService } from '../transactions/transaction.service.js';
 import { ReconciliationService } from './reconciliation.service.js';
 
 const originals = {
@@ -313,5 +314,20 @@ describe('ReconciliationService — unhappy paths', () => {
     const results = await ReconciliationService.reconcileStuckTransactions();
     assert.deepEqual(results, { recovered: 0, flagged: 0, restored: 0, failed: 0 });
     assert.equal(createOrder.mock.callCount(), 0);
+  });
+});
+
+describe('ReconciliationService.reconcileFundedProcessingRemittances', () => {
+  it('delegates to TransactionService.syncFundedProcessingFromPaycrest', async () => {
+    const sync = mock.method(
+      TransactionService,
+      'syncFundedProcessingFromPaycrest',
+      async () => ({ completed: 1, failed: 0 }),
+    );
+
+    const results =
+      await ReconciliationService.reconcileFundedProcessingRemittances();
+    assert.deepEqual(results, { completed: 1, failed: 0 });
+    assert.deepEqual(sync.mock.calls[0].arguments[0], { minAgeMs: 30_000 });
   });
 });

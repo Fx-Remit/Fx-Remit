@@ -24,6 +24,16 @@ export default function HistoryPage() {
       return res.json();
     },
     enabled: !!dbUser?.id && !!authenticated,
+    refetchInterval: (query) => {
+      const txs = query.state.data?.transactions ?? [];
+      const hasProcessing = txs.some(
+        (tx: { status?: string; txHash?: string }) =>
+          tx.status === 'PROCESSING' &&
+          typeof tx.txHash === 'string' &&
+          tx.txHash.startsWith('0x'),
+      );
+      return hasProcessing ? 15_000 : false;
+    },
   });
 
   const transactions = historyData?.transactions || [];
