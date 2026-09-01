@@ -11,6 +11,27 @@ import {
   SlideHeadline,
 } from '@/components/onboarding/OnboardingIllustration';
 
+const ALLOWED_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+function readImagePreview(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (
+        typeof result === 'string' &&
+        /^data:image\/(?:jpeg|png|webp|gif);base64,/.test(result)
+      ) {
+        resolve(result);
+        return;
+      }
+      resolve(null);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -27,12 +48,25 @@ export default function OnboardingPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setAvatarFile(file);
-      setAvatarPreview(URL.createObjectURL(file));
+    if (!file || !ALLOWED_AVATAR_TYPES.has(file.type)) {
+      e.target.value = '';
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      return;
     }
+
+    const preview = await readImagePreview(file);
+    if (!preview) {
+      e.target.value = '';
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      return;
+    }
+
+    setAvatarFile(file);
+    setAvatarPreview(preview);
   };
 
   const getPriorityWallet = (accounts: any[]) => {
@@ -188,7 +222,7 @@ export default function OnboardingPage() {
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif"
             className="hidden"
           />
 
