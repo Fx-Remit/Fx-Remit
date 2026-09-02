@@ -61,7 +61,7 @@ describe('GET /api/user/recipients', () => {
         },
       ];
     });
-    prisma.savedRecipient = { findMany } as any;
+    prisma.savedRecipient.findMany = findMany as any;
 
     const res = await GET(
       new Request('http://localhost/api/user/recipients?currency=NGN&type=BANK', {

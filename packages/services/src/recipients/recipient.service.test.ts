@@ -12,7 +12,7 @@ describe('RecipientService.upsert', () => {
     const upsert = mock.fn(async () => {
       throw new Error('should not upsert');
     });
-    prisma.savedRecipient = { upsert } as any;
+    prisma.savedRecipient.upsert = upsert as any;
 
     const result = await RecipientService.upsert({
       userId: 'user-1',
@@ -58,7 +58,7 @@ describe('RecipientService.upsert', () => {
         updatedAt: now,
       };
     });
-    prisma.savedRecipient = { upsert } as any;
+    prisma.savedRecipient.upsert = upsert as any;
 
     const result = await RecipientService.upsert({
       userId: 'user-1',
@@ -93,7 +93,7 @@ describe('RecipientService.listForUser', () => {
       assert.equal(args.orderBy.lastUsedAt, 'desc');
       return [];
     });
-    prisma.savedRecipient = { findMany } as any;
+    prisma.savedRecipient.findMany = findMany as any;
 
     const rows = await RecipientService.listForUser('user-1', {
       currency: 'ngn',
