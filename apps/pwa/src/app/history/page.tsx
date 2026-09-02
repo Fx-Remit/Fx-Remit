@@ -85,7 +85,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFD] flex flex-col">
+    <div className="flex min-h-screen flex-col bg-[#F8FAFD] pb-28">
       {/* Header */}
       <div className="pt-16 px-6 pb-6 bg-white shrink-0">
         <div className="flex items-center justify-between mb-6">

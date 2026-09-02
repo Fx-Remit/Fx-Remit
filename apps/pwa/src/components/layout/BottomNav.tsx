@@ -14,7 +14,7 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <div className="pointer-events-none sticky bottom-0 z-50 mt-auto w-full px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+    <div className="pointer-events-none fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 z-50 w-full max-w-[430px] -translate-x-1/2 px-5">
       <div className="pointer-events-auto mx-auto flex h-[75px] w-full max-w-[320px] items-center justify-between rounded-[70px] bg-[#D8E9FF] px-[30px] py-[15px] shadow-[0px_4px_4px_0px_#00000040]">
         {TABS.map(({ href, label, Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
