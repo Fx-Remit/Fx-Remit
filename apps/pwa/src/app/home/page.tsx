@@ -54,7 +54,7 @@ export default function HomePage() {
   });
 
   const { data: notifData } = useQuery({
-    queryKey: ['notifications'],
+    queryKey: ['notifications', 'summary'],
     queryFn: async () => {
       const token = await getAccessToken();
       const res = await fetch('/api/user/notifications?limit=20', {

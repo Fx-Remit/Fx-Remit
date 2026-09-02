@@ -9,6 +9,35 @@ afterEach(() => {
   mock.restoreAll();
 });
 
+describe('isAllowedWebPushEndpoint', () => {
+  it('allows known HTTPS push providers', async () => {
+    const { isAllowedWebPushEndpoint } = await import('./notification.service');
+    assert.equal(
+      isAllowedWebPushEndpoint('https://fcm.googleapis.com/fcm/send/abc'),
+      true,
+    );
+    assert.equal(
+      isAllowedWebPushEndpoint('https://updates.push.services.mozilla.com/wpush/v2/xyz'),
+      true,
+    );
+    assert.equal(
+      isAllowedWebPushEndpoint('https://web.push.apple.com/abc'),
+      true,
+    );
+  });
+
+  it('rejects http, arbitrary hosts, and credentialed URLs', async () => {
+    const { isAllowedWebPushEndpoint } = await import('./notification.service');
+    assert.equal(isAllowedWebPushEndpoint('http://fcm.googleapis.com/fcm/send/abc'), false);
+    assert.equal(isAllowedWebPushEndpoint('https://evil.example/hook'), false);
+    assert.equal(
+      isAllowedWebPushEndpoint('https://user:pass@fcm.googleapis.com/fcm/send/abc'),
+      false,
+    );
+    assert.equal(isAllowedWebPushEndpoint('not-a-url'), false);
+  });
+});
+
 describe('NotificationService.notify', () => {
   it('creates once and is idempotent on unique conflict', async () => {
     const create = mock.fn(async () => ({

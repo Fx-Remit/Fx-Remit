@@ -41,7 +41,8 @@ export async function GET(req: Request) {
     if ('error' in auth) return auth.error;
 
     const { searchParams } = new URL(req.url);
-    const limit = Number(searchParams.get('limit') || 50);
+    const rawLimit = Number(searchParams.get('limit') || 50);
+    const limit = Number.isFinite(rawLimit) ? rawLimit : 50;
 
     const result = await NotificationService.listForUser(auth.user.id, { limit });
     return NextResponse.json({ success: true, ...result });

@@ -31,7 +31,7 @@ export function NotificationsSheet({ isOpen, onClose }: NotificationsSheetProps)
   const [pushBusy, setPushBusy] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['notifications'],
+    queryKey: ['notifications', 'inbox', 50],
     queryFn: async () => {
       const token = await getAccessToken();
       const res = await fetch('/api/user/notifications?limit=50', {

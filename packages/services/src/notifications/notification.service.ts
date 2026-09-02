@@ -61,6 +61,33 @@ function vapidConfigured(): boolean {
   );
 }
 
+/**
+ * Reject non-HTTPS / non-push hosts so subscribe cannot turn sendWebPush into SSRF.
+ * Covers FCM, Mozilla Autopush, Apple Web Push, and WNS.
+ */
+export function isAllowedWebPushEndpoint(endpoint: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:') return false;
+  if (url.username || url.password) return false;
+  const host = url.hostname.toLowerCase();
+  return (
+    host === 'fcm.googleapis.com' ||
+    host === 'fcmregistrations.googleapis.com' ||
+    host.endsWith('.fcm.googleapis.com') ||
+    host === 'updates.push.services.mozilla.com' ||
+    host.endsWith('.push.services.mozilla.com') ||
+    host === 'web.push.apple.com' ||
+    host.endsWith('.push.apple.com') ||
+    host.endsWith('.notify.windows.com') ||
+    host.endsWith('.push.windows.com')
+  );
+}
+
 function configureWebPush() {
   if (!vapidConfigured()) return false;
   webpush.setVapidDetails(
@@ -146,7 +173,8 @@ export class NotificationService {
     userId: string,
     opts?: { limit?: number },
   ): Promise<{ notifications: NotificationResponse[]; unreadCount: number }> {
-    const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
+    const raw = opts?.limit;
+    const limit = Number.isFinite(raw) ? Math.min(Math.max(raw as number, 1), 100) : 50;
     const [rows, unreadCount] = await Promise.all([
       prisma.notification.findMany({
         where: { userId },
@@ -181,6 +209,9 @@ export class NotificationService {
   }
 
   static async upsertPushSubscription(input: PushSubscribeInput): Promise<PushSubscription> {
+    if (!isAllowedWebPushEndpoint(input.endpoint)) {
+      throw new Error('Push endpoint host is not allowed');
+    }
     return prisma.pushSubscription.upsert({
       where: { endpoint: input.endpoint },
       create: {
