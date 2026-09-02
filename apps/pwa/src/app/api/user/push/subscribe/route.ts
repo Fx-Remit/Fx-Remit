@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
-import { NotificationService } from '@fx-remit/services';
+import { NotificationService, isAllowedWebPushEndpoint } from '@fx-remit/services';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +52,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!isAllowedWebPushEndpoint(endpoint)) {
+      return NextResponse.json(
+        { error: 'Push endpoint host is not allowed' },
+        { status: 400 },
+      );
+    }
+
     await NotificationService.upsertPushSubscription({
       userId: auth.user.id,
       endpoint,
@@ -63,10 +70,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[PUSH_SUBSCRIBE] Unhandled error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown';
+    if (message.includes('not allowed')) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
     return NextResponse.json(
       {
         error: 'Internal Server Error',
-        details: error instanceof Error ? error.message : 'Unknown',
+        details: message,
       },
       { status: 500 },
     );
