@@ -96,7 +96,7 @@
   }
 }
 
-/* Safe area for mobile PWA */
+/* Safe area handled by AppShell; keep body flush for the phone column */
 body {
-  padding-bottom: env(safe-area-inset-bottom);
+  margin: 0;
 }

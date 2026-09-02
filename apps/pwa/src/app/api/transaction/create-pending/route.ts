@@ -9,6 +9,7 @@ import {
   QuoteUnavailableError,
   mintAbandonToken,
   InsufficientBalanceError,
+  RecipientService,
 } from '@fx-remit/services';
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,8 @@ const createPendingSchema = z.object({
   recipientAcc: z.string().trim().min(1, "recipientAcc is required"),
   token: z.string().trim().min(1, "token is required"),
   bankCode: z.string().optional(),
+  /** bank | mobile — stored on SavedRecipient after successful Paycrest create */
+  recipientType: z.enum(['bank', 'mobile', 'BANK', 'MOBILE']).optional(),
   externalId: z.string().optional(),
 });
 
@@ -89,6 +92,31 @@ function paycrestPayload(
   };
 }
 
+function saveRecipientBestEffort(input: {
+  userId: string;
+  bankCode?: string;
+  recipientType?: string;
+  destinationCurrency?: string;
+  recipientBank: string;
+  recipientAcc: string;
+  recipientName: string;
+}) {
+  const code = input.bankCode?.trim();
+  if (!code) return;
+  // Fire-and-forget: address-book write must never delay or fail create-pending.
+  void RecipientService.upsert({
+    userId: input.userId,
+    type: (input.recipientType as 'bank' | 'mobile' | undefined) || 'BANK',
+    currency: (input.destinationCurrency || 'NGN').toUpperCase(),
+    institutionCode: code,
+    institutionName: input.recipientBank,
+    accountIdentifier: input.recipientAcc,
+    accountName: input.recipientName,
+  }).catch((e) =>
+    console.error('[CREATE_PENDING] SavedRecipient upsert failed:', e),
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -141,6 +169,7 @@ export async function POST(req: Request) {
       destinationCurrency,
       token: sourceToken,
       bankCode,
+      recipientType,
       externalId: frontendId,
     } = validationResult.data;
 
@@ -231,6 +260,7 @@ export async function POST(req: Request) {
         recipientName,
         recipientBank,
         recipientAcc,
+        recipientBankCode: bankCode?.trim() || null,
       });
     } catch (err) {
       const code = errorCode(err);
@@ -275,6 +305,16 @@ export async function POST(req: Request) {
             { status: 400 },
           );
         }
+
+        saveRecipientBestEffort({
+          userId: user.id,
+          bankCode,
+          recipientType,
+          destinationCurrency,
+          recipientBank,
+          recipientAcc,
+          recipientName,
+        });
 
         return NextResponse.json({
           success: true,
@@ -322,6 +362,15 @@ export async function POST(req: Request) {
           if (canResume) {
             const resumed = await PayoutService.getSettlementOrder(hashKey!);
             if (resumed.success && resumed.order && resumed.settlement) {
+              saveRecipientBestEffort({
+                userId: user.id,
+                bankCode,
+                recipientType,
+                destinationCurrency,
+                recipientBank,
+                recipientAcc,
+                recipientName,
+              });
               return NextResponse.json({
                 success: true,
                 resumed: true,
@@ -412,6 +461,16 @@ export async function POST(req: Request) {
     }
 
     const { settlement } = paycrestResp;
+
+    saveRecipientBestEffort({
+      userId: user.id,
+      bankCode,
+      recipientType,
+      destinationCurrency,
+      recipientBank,
+      recipientAcc,
+      recipientName,
+    });
 
     return NextResponse.json({
       success: true,

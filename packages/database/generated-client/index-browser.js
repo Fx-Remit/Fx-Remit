@@ -137,6 +137,20 @@ exports.Prisma.UserScalarFieldEnum = {
   walletBalance: 'walletBalance'
 };
 
+exports.Prisma.SavedRecipientScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  type: 'type',
+  currency: 'currency',
+  institutionCode: 'institutionCode',
+  institutionName: 'institutionName',
+  accountIdentifier: 'accountIdentifier',
+  accountName: 'accountName',
+  lastUsedAt: 'lastUsedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.TransactionScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -153,6 +167,7 @@ exports.Prisma.TransactionScalarFieldEnum = {
   recipientName: 'recipientName',
   recipientBank: 'recipientBank',
   recipientAcc: 'recipientAcc',
+  recipientBankCode: 'recipientBankCode',
   createdAt: 'createdAt',
   blockNumber: 'blockNumber',
   chainId: 'chainId',
@@ -177,6 +192,11 @@ exports.Prisma.NullsOrder = {
   first: 'first',
   last: 'last'
 };
+exports.RecipientType = exports.$Enums.RecipientType = {
+  BANK: 'BANK',
+  MOBILE: 'MOBILE'
+};
+
 exports.RemittanceRail = exports.$Enums.RemittanceRail = {
   EVM: 'EVM',
   STELLAR: 'STELLAR'
@@ -199,6 +219,7 @@ exports.TransactionType = exports.$Enums.TransactionType = {
 
 exports.Prisma.ModelName = {
   User: 'User',
+  SavedRecipient: 'SavedRecipient',
   Transaction: 'Transaction'
 };
 

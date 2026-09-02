@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUpRight, Bell, Eye, EyeOff, FileText, Home, User } from 'lucide-react';
+import { ArrowUpRight, Bell, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { CashOutSheet } from '../cash-out/CashOutSheet';
@@ -9,6 +9,7 @@ import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from '../history/TransactionDetailSheet';
 import { networkLabelForTransaction, formatTxHashLabel } from '@/lib/network';
+import { BottomNav } from '@/components/layout/BottomNav';
 
 export default function HomePage() {
   const { user: privyUser, ready, authenticated, getAccessToken } = usePrivy();
@@ -278,32 +279,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Bottom Navigation */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full px-5 flex justify-center">
-        <div
-          className="w-full max-w-[320px] bg-[#D8E9FF] rounded-[70px] py-[15px] px-[30px] flex items-center justify-between shadow-[0px_4px_4px_0px_#00000040]"
-          style={{ height: '75px' }}
-        >
-          <Link href="/home" className="flex flex-col items-center gap-1 text-[#1C1C1C]">
-            <Home size={28} />
-            <span className="font-semibold text-[13px]">Home</span>
-          </Link>
-          <Link
-            href="/history"
-            className="flex flex-col items-center gap-1 text-[#1C1C1C]/40 hover:text-[#1C1C1C] transition-colors"
-          >
-            <FileText size={28} />
-            <span className="font-semibold text-[13px]">History</span>
-          </Link>
-          <Link
-            href="/profile"
-            className="flex flex-col items-center gap-1 text-[#1C1C1C]/40 hover:text-[#1C1C1C] transition-colors"
-          >
-            <User size={28} />
-            <span className="font-semibold text-[13px]">Profile</span>
-          </Link>
-        </div>
-      </div>
+      <BottomNav />
 
       <CashOutSheet isOpen={cashOutOpen} onClose={() => setCashOutOpen(false)} />
       <TransactionDetailSheet isOpen={!!selectedTx} onClose={() => setSelectedTx(null)} transaction={selectedTx} />

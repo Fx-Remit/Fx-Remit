@@ -13,23 +13,48 @@ enum RemittanceRail {
 }
 
 model User {
-  id               String        @id @default(uuid())
-  privyDid         String        @unique @map("privy_did")
-  walletAddress    String?       @unique @map("wallet_address")
-  stellarPublicKey String?       @unique @map("stellar_public_key")
-  fullName         String?       @map("full_name")
-  email            String?       @unique
-  avatarUrl        String?       @map("avatar_url")
-  totalSentUsd     Decimal       @default(0.0) @map("total_sent_usd") @db.Decimal(36, 18)
-  transactionCount Int           @default(0) @map("transaction_count")
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
-  displayName      String?       @map("display_name")
-  lastLoginAt      DateTime?     @map("last_login_at")
-  walletBalance    Decimal       @default(0.0) @map("wallet_balance") @db.Decimal(36, 18)
+  id               String           @id @default(uuid())
+  privyDid         String           @unique @map("privy_did")
+  walletAddress    String?          @unique @map("wallet_address")
+  stellarPublicKey String?          @unique @map("stellar_public_key")
+  fullName         String?          @map("full_name")
+  email            String?          @unique
+  avatarUrl        String?          @map("avatar_url")
+  totalSentUsd     Decimal          @default(0.0) @map("total_sent_usd") @db.Decimal(36, 18)
+  transactionCount Int              @default(0) @map("transaction_count")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  displayName      String?          @map("display_name")
+  lastLoginAt      DateTime?        @map("last_login_at")
+  walletBalance    Decimal          @default(0.0) @map("wallet_balance") @db.Decimal(36, 18)
   transactions     Transaction[]
+  savedRecipients  SavedRecipient[]
 
   @@map("users")
+}
+
+enum RecipientType {
+  BANK
+  MOBILE
+}
+
+model SavedRecipient {
+  id                String        @id @default(uuid())
+  userId            String        @map("user_id")
+  type              RecipientType @default(BANK)
+  currency          String
+  institutionCode   String        @map("institution_code")
+  institutionName   String        @map("institution_name")
+  accountIdentifier String        @map("account_identifier")
+  accountName       String        @map("account_name")
+  lastUsedAt        DateTime      @default(now()) @map("last_used_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, currency, institutionCode, accountIdentifier])
+  @@index([userId, lastUsedAt(sort: Desc)])
+  @@map("saved_recipients")
 }
 
 model Transaction {
@@ -48,6 +73,10 @@ model Transaction {
   recipientName       String?         @map("recipient_name")
   recipientBank       String?         @map("recipient_bank")
   recipientAcc        String?         @map("recipient_acc")
+  /**
+   * Paycrest institution code — required to reuse recipients without re-picking bank.
+   */
+  recipientBankCode   String?         @map("recipient_bank_code")
   createdAt           DateTime        @default(now()) @map("created_at")
   blockNumber         BigInt          @map("block_number")
   chainId             Int             @map("chain_id")

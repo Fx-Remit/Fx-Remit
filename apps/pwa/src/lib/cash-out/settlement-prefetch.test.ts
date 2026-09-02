@@ -16,6 +16,7 @@ describe('buildCreatePendingBody', () => {
       recipientBank: 'PalmPay',
       recipientAcc: '0123456789',
       bankCode: 'PALMNGPC',
+      recipientType: 'bank',
       token: 'USDC',
       externalId: 'idem-1',
     });
@@ -28,6 +29,7 @@ describe('buildCreatePendingBody', () => {
       recipientBank: 'PalmPay',
       recipientAcc: '0123456789',
       bankCode: 'PALMNGPC',
+      recipientType: 'bank',
       token: 'USDC',
       externalId: 'idem-1',
     });

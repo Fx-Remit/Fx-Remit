@@ -1,9 +1,6 @@
 'use client';
 
 import {
-  Home,
-  FileText,
-  User,
   ChevronRight,
   ShieldCheck,
   HelpCircle,
@@ -22,6 +19,7 @@ import { useUserStore } from '@/store/user-store';
 import { useSecurityStore } from '@/store/security-store';
 import { hashPin, generateSalt, registerBiometrics, isBiometricSupported } from '@/lib/security';
 import { SecuritySetup } from '@/components/security/SecuritySetup';
+import { BottomNav } from '@/components/layout/BottomNav';
 
 export default function ProfilePage() {
   const { logout, exportWallet, user: privyUser } = usePrivy();
@@ -239,32 +237,8 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Bottom Navigation */}
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full px-5 flex justify-center max-w-[430px]">
-          <div
-            className="w-full max-w-[320px] bg-[#D8E9FF] rounded-[70px] py-[15px] px-[30px] flex items-center justify-between shadow-[0px_4px_4px_0px_#00000040]"
-            style={{ height: '75px' }}
-          >
-            <Link
-              href="/home"
-              className="flex flex-col items-center gap-1 text-[#1C1C1C]/40 hover:text-[#1C1C1C] transition-colors"
-            >
-              <Home size={28} />
-              <span className="font-semibold text-[13px]">Home</span>
-            </Link>
-            <Link
-              href="/history"
-              className="flex flex-col items-center gap-1 text-[#1C1C1C]/40 hover:text-[#1C1C1C] transition-colors"
-            >
-              <FileText size={28} />
-              <span className="font-semibold text-[13px]">History</span>
-            </Link>
-            <Link href="/profile" className="flex flex-col items-center gap-1 text-[#1C1C1C]">
-              <User size={28} />
-              <span className="font-semibold text-[13px]">Profile</span>
-            </Link>
-          </div>
-        </div>
+        <BottomNav />
+
         {/* Profile Footer */}
         <div className="pt-8 pb-12 flex flex-col items-center opacity-30">
           <p className="text-[12px] font-bold tracking-widest text-[#1C1C1C] uppercase">

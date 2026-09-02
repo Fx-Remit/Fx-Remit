@@ -20,6 +20,7 @@ export type CreatePendingRequestBody = {
   recipientBank: string;
   recipientAcc: string;
   bankCode?: string;
+  recipientType?: 'bank' | 'mobile';
   token: string;
   externalId?: string;
 };
@@ -61,6 +62,7 @@ export function buildCreatePendingBody(
     recipientBank: input.recipientBank,
     recipientAcc: input.recipientAcc,
     bankCode: input.bankCode,
+    recipientType: input.recipientType,
     token: input.token,
     externalId: input.externalId,
   };

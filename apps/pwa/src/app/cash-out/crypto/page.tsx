@@ -488,7 +488,7 @@ function CryptoCashOutContent() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-5 bg-transparent z-50">
+      <div className="fixed bottom-0 left-1/2 z-50 w-full max-w-[430px] -translate-x-1/2 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <button
           style={{
             height: '62px',
@@ -498,7 +498,7 @@ function CryptoCashOutContent() {
             color: '#F8F8FF',
             lineHeight: '100%',
           }}
-          className="w-full bg-[#2261FE] flex items-center justify-center active:scale-[0.98] transition-transform shadow-lg shadow-blue-200/50 disabled:opacity-50"
+          className="flex w-full items-center justify-center bg-[#2261FE] shadow-lg shadow-blue-200/50 transition-transform active:scale-[0.98] disabled:opacity-50"
           disabled={
             celoUnsupported ||
             (syncRetryAvailable
@@ -522,7 +522,7 @@ function CryptoCashOutContent() {
       </div>
 
       {isConfirmOpen && (
-        <div className="fixed inset-0 z-[100] flex items-end">
+        <div className="fixed inset-0 z-[100] flex items-end justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setIsConfirmOpen(false)} />
 
           <div

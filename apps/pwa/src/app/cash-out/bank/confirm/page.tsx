@@ -351,6 +351,7 @@ function CashOutConfirmContent() {
       recipientBank: bankName,
       recipientAcc: accountNumber,
       bankCode: bankCode || undefined,
+      recipientType: type === 'mobile' ? 'mobile' : 'bank',
       token,
       externalId: idempotencyKey || undefined,
     });
@@ -403,8 +404,7 @@ function CashOutConfirmContent() {
 
       <div className="flex-1 flex flex-col items-center pt-8 overflow-y-auto w-full px-5">
         <div
-          className="bg-white rounded-[15px] p-6 shadow-[0px_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 mb-8 flex flex-col justify-between w-full max-w-[390px]"
-          style={{ height: '359px' }}
+          className="mb-8 flex w-full max-w-[390px] flex-col justify-between rounded-[15px] border border-gray-100 bg-white p-6 shadow-[0px_8px_30px_rgba(0,0,0,0.04)] min-h-[280px]"
         >
           <div className="flex-1 flex flex-col justify-between py-2">
             <div className="space-y-3">
