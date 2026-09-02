@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { ArrowLeft, ArrowUpRight, Search, Filter } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -11,7 +11,7 @@ import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { networkLabelForTransaction, formatTxHashLabel } from '@/lib/network';
 import { BottomNav } from '@/components/layout/BottomNav';
 
-export default function HistoryPage() {
+function HistoryPageContent() {
   const { authenticated, getAccessToken } = usePrivy();
   const { profile: dbUser } = useUserStore();
   const [selectedTx, setSelectedTx] = useState<any>(null);
@@ -206,6 +206,14 @@ export default function HistoryPage() {
         transaction={selectedTx} 
       />
     </div>
+  );
+}
+
+export default function HistoryPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F8FAFD]" />}>
+      <HistoryPageContent />
+    </Suspense>
   );
 }
 
