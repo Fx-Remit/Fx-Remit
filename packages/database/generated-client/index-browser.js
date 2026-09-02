@@ -137,6 +137,28 @@ exports.Prisma.UserScalarFieldEnum = {
   walletBalance: 'walletBalance'
 };
 
+exports.Prisma.NotificationScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  type: 'type',
+  title: 'title',
+  body: 'body',
+  transactionId: 'transactionId',
+  readAt: 'readAt',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.PushSubscriptionScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  endpoint: 'endpoint',
+  p256dh: 'p256dh',
+  auth: 'auth',
+  userAgent: 'userAgent',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.SavedRecipientScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -192,6 +214,12 @@ exports.Prisma.NullsOrder = {
   first: 'first',
   last: 'last'
 };
+exports.NotificationType = exports.$Enums.NotificationType = {
+  DEPOSIT_CREDITED: 'DEPOSIT_CREDITED',
+  REMITTANCE_COMPLETED: 'REMITTANCE_COMPLETED',
+  REMITTANCE_FAILED: 'REMITTANCE_FAILED'
+};
+
 exports.RecipientType = exports.$Enums.RecipientType = {
   BANK: 'BANK',
   MOBILE: 'MOBILE'
@@ -219,6 +247,8 @@ exports.TransactionType = exports.$Enums.TransactionType = {
 
 exports.Prisma.ModelName = {
   User: 'User',
+  Notification: 'Notification',
+  PushSubscription: 'PushSubscription',
   SavedRecipient: 'SavedRecipient',
   Transaction: 'Transaction'
 };

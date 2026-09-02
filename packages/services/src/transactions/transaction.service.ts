@@ -1,6 +1,7 @@
 import { prisma, Status, Transaction, TransactionType, Prisma } from "@fx-remit/database";
 import { RpcClient } from "../evm/rpc.client";
 import { PAYCREST_SETTLEMENT } from "../paycrest/payout.service.js";
+import { NotificationService } from "../notifications/notification.service.js";
 
 /** Thrown when createPending cannot reserve spendable ledger. */
 export class InsufficientBalanceError extends Error {
@@ -565,6 +566,8 @@ export class TransactionService {
       return tx;
     }
 
+    const fromStatus = tx.status;
+
     const placeholderHash =
       tx.txHash.startsWith("pending-") || tx.txHash.startsWith("abandoned-");
 
@@ -576,8 +579,9 @@ export class TransactionService {
       !LEDGER_RESTORED_STATUSES.includes(tx.status) &&
       placeholderHash;
 
+    let updated: Transaction | null;
     if (shouldRestoreLedger) {
-      return await prisma.$transaction(async (client: Prisma.TransactionClient) => {
+      updated = await prisma.$transaction(async (client: Prisma.TransactionClient) => {
         // Atomic claim (#91): only one concurrent FAILED/REFUNDING webhook restores.
         // Do not pin snapshot status — a concurrent PENDING→PROCESSING must not skip
         // restore for a still-unfunded remittance.
@@ -625,15 +629,28 @@ export class TransactionService {
 
         return await client.transaction.findUnique({ where: { id: tx.id } });
       });
+    } else {
+      updated = await prisma.transaction.update({
+        where: { id: tx.id },
+        data: {
+          status,
+          updatedAt: new Date(),
+        },
+      });
     }
 
-    return await prisma.transaction.update({
-      where: { id: tx.id },
-      data: {
-        status,
-        updatedAt: new Date(),
-      },
-    });
+    if (updated && updated.status !== fromStatus) {
+      await NotificationService.notifyRemittanceStatus({
+        userId: updated.userId,
+        transactionId: updated.id,
+        status: updated.status,
+        amountUsd: updated.amountUsd.toString(),
+        payoutFiat: updated.payoutFiat?.toString(),
+        recipientName: updated.recipientName,
+      });
+    }
+
+    return updated;
   }
 
   /**
@@ -1585,7 +1602,18 @@ export class TransactionService {
       throw new Error('Transaction already has an on-chain hash');
     }
 
-    return await prisma.transaction.findUnique({ where: { id: existing.id } });
+    const row = await prisma.transaction.findUnique({ where: { id: existing.id } });
+    if (row && isCrypto && row.status === 'COMPLETED' && existing.status !== 'COMPLETED') {
+      await NotificationService.notifyRemittanceStatus({
+        userId: row.userId,
+        transactionId: row.id,
+        status: row.status,
+        amountUsd: row.amountUsd.toString(),
+        payoutFiat: row.payoutFiat?.toString(),
+        recipientName: row.recipientName,
+      });
+    }
+    return row;
   }
 
   /**
@@ -1941,6 +1969,18 @@ export class TransactionService {
 
         return { created: true as const, transaction: dbTx };
       });
+
+      if (result.created) {
+        const isRefund = Boolean(
+          result.transaction.recipientName?.startsWith('Paycrest refund'),
+        );
+        await NotificationService.notifyDepositCredited({
+          userId: user.id,
+          transactionId: result.transaction.id,
+          amountUsd: result.transaction.amountUsd.toString(),
+          isRefund,
+        });
+      }
 
       return { ...result, user };
     } catch (err: any) {

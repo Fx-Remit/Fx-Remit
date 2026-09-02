@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { ArrowLeft, ArrowUpRight, Search, Filter } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
@@ -10,10 +11,12 @@ import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { networkLabelForTransaction, formatTxHashLabel } from '@/lib/network';
 import { BottomNav } from '@/components/layout/BottomNav';
 
-export default function HistoryPage() {
+function HistoryPageContent() {
   const { authenticated, getAccessToken } = usePrivy();
   const { profile: dbUser } = useUserStore();
   const [selectedTx, setSelectedTx] = useState<any>(null);
+  const searchParams = useSearchParams();
+  const deepLinkTxId = searchParams.get('tx');
 
   const { data: historyData, isLoading } = useQuery({
     queryKey: ['transaction-history-full', dbUser?.id],
@@ -83,6 +86,13 @@ export default function HistoryPage() {
       txHash: tx.txHash,
     };
   };
+
+  useEffect(() => {
+    if (!deepLinkTxId || !transactions.length || selectedTx) return;
+    const match = transactions.find((tx: { id?: string }) => tx.id === deepLinkTxId);
+    if (match) setSelectedTx(mapToDetail(match));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when deep link + list ready
+  }, [deepLinkTxId, transactions, selectedTx]);
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F8FAFD] pb-28">
@@ -196,6 +206,14 @@ export default function HistoryPage() {
         transaction={selectedTx} 
       />
     </div>
+  );
+}
+
+export default function HistoryPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F8FAFD]" />}>
+      <HistoryPageContent />
+    </Suspense>
   );
 }
 
