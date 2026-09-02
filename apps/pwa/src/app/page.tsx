@@ -1,15 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
-import {
-  OnboardingScreen,
-  ONBOARDING_HERO_PHOTO,
-} from '@/components/onboarding/OnboardingIllustration';
 
-const SPLASH_MS = 2200;
+const SPLASH_MS = 1800;
 
 export default function SplashPage() {
   const router = useRouter();
@@ -17,23 +13,6 @@ export default function SplashPage() {
   const { profile: dbUser, isHydrated: userStoreReady } = useUserStore();
 
   const hasRouted = useRef(false);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    const started = performance.now();
-    let frame = 0;
-
-    const tick = (now: number) => {
-      const elapsed = now - started;
-      setProgress(Math.min(100, (elapsed / SPLASH_MS) * 100));
-      if (elapsed < SPLASH_MS) {
-        frame = requestAnimationFrame(tick);
-      }
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, []);
 
   useEffect(() => {
     const isProfileLoading = authenticated && !userStoreReady;
@@ -53,33 +32,25 @@ export default function SplashPage() {
   }, [ready, authenticated, dbUser, userStoreReady, router]);
 
   return (
-    <OnboardingScreen
-      backgroundSrc={ONBOARDING_HERO_PHOTO}
-      objectPosition="center 22%"
-    >
-      <div>
-        <h1 className="mb-3 text-center text-[28px] font-bold leading-tight tracking-tight text-[#F5F5F5]">
-          Welcome to FX Remit
-        </h1>
-        <p className="mb-2 text-center text-[17px] font-semibold leading-snug text-[#F5F5F5]/95">
-          Send money home, instantly
-        </p>
-        <p className="mx-auto mb-10 max-w-[320px] text-center text-[15px] leading-relaxed text-[#F6F6F6]/70">
-          Crypto to bank accounts. Real rates, no hidden fees.
-        </p>
+    <div className="relative flex h-[100dvh] w-full flex-col items-center justify-center overflow-hidden bg-[#0B194E]">
+      <div className="absolute inset-0 z-0">
+        <img
+          src="/splash.svg"
+          alt=""
+          aria-hidden
+          className="h-full w-full object-cover opacity-30"
+        />
+      </div>
 
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-[3px] w-full max-w-[200px] overflow-hidden rounded-full bg-white/15">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-[#2261FE] via-[#4F8CFF] to-[#2261FE] transition-[width] duration-75 ease-linear"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/40">
-            Loading
-          </p>
+      <div className="relative z-10 flex flex-col items-center">
+        <div className="flex h-auto w-[280px] items-center justify-center">
+          <img
+            src="/fx remit.svg"
+            alt="FX Remit"
+            className="h-full w-full object-contain"
+          />
         </div>
       </div>
-    </OnboardingScreen>
+    </div>
   );
 }
