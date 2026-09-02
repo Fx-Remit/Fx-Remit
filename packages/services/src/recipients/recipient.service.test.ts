@@ -106,6 +106,21 @@ describe('RecipientService.listForUser', () => {
   });
 });
 
+describe('looksLikeInstitutionCode', () => {
+  it('accepts digit and uppercase Paycrest-style codes', async () => {
+    const { looksLikeInstitutionCode } = await import('./recipient.service');
+    assert.equal(looksLikeInstitutionCode('058'), true);
+    assert.equal(looksLikeInstitutionCode('PALMNGPC'), true);
+  });
+
+  it('rejects bank display names and junk', async () => {
+    const { looksLikeInstitutionCode } = await import('./recipient.service');
+    assert.equal(looksLikeInstitutionCode('PalmPay'), false);
+    assert.equal(looksLikeInstitutionCode('First Bank'), false);
+    assert.equal(looksLikeInstitutionCode(''), false);
+  });
+});
+
 describe('RecipientService.deleteForUser', () => {
   it('deletes only when userId owns the row', async () => {
     const deleteMany = mock.fn(async (args: any) => {

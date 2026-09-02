@@ -18,7 +18,7 @@ function normalizeType(
 }
 
 /** True when a string looks like a Paycrest institution code rather than a bank display name. */
-function looksLikeInstitutionCode(value: string): boolean {
+export function looksLikeInstitutionCode(value: string): boolean {
   const v = value.trim();
   if (v.length < 2 || v.length > 32) return false;
   if (/\s/.test(v)) return false;

@@ -92,7 +92,7 @@ function paycrestPayload(
   };
 }
 
-async function saveRecipientBestEffort(input: {
+function saveRecipientBestEffort(input: {
   userId: string;
   bankCode?: string;
   recipientType?: string;
@@ -103,7 +103,8 @@ async function saveRecipientBestEffort(input: {
 }) {
   const code = input.bankCode?.trim();
   if (!code) return;
-  await RecipientService.upsert({
+  // Fire-and-forget: address-book write must never delay or fail create-pending.
+  void RecipientService.upsert({
     userId: input.userId,
     type: (input.recipientType as 'bank' | 'mobile' | undefined) || 'BANK',
     currency: (input.destinationCurrency || 'NGN').toUpperCase(),
@@ -305,7 +306,7 @@ export async function POST(req: Request) {
           );
         }
 
-        await saveRecipientBestEffort({
+        saveRecipientBestEffort({
           userId: user.id,
           bankCode,
           recipientType,
@@ -361,7 +362,7 @@ export async function POST(req: Request) {
           if (canResume) {
             const resumed = await PayoutService.getSettlementOrder(hashKey!);
             if (resumed.success && resumed.order && resumed.settlement) {
-              await saveRecipientBestEffort({
+              saveRecipientBestEffort({
                 userId: user.id,
                 bankCode,
                 recipientType,
@@ -461,7 +462,7 @@ export async function POST(req: Request) {
 
     const { settlement } = paycrestResp;
 
-    await saveRecipientBestEffort({
+    saveRecipientBestEffort({
       userId: user.id,
       bankCode,
       recipientType,
