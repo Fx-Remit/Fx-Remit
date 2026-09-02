@@ -9,7 +9,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "type-check": "tsc --noEmit",
-    "test": "node --import tsx --test src/paycrest/*.test.ts src/deposits/*.test.ts src/transactions/*.test.ts src/identity/*.test.ts src/reconciliation/*.test.ts src/recipients/*.test.ts src/evm/*.test.ts src/stellar/config/*.test.ts src/stellar/sep10/*.test.ts src/stellar/sep24/*.test.ts src/stellar/sep38/*.test.ts src/stellar/persist/*.test.ts src/stellar/payment/*.test.ts",
+    "test": "node --import tsx --test src/paycrest/*.test.ts src/deposits/*.test.ts src/transactions/*.test.ts src/identity/*.test.ts src/reconciliation/*.test.ts src/recipients/*.test.ts src/notifications/*.test.ts src/evm/*.test.ts src/stellar/config/*.test.ts src/stellar/sep10/*.test.ts src/stellar/sep24/*.test.ts src/stellar/sep38/*.test.ts src/stellar/persist/*.test.ts src/stellar/payment/*.test.ts",
     "stellar:sep10-test": "node --import tsx src/stellar/sep10/sep10-testnet.ts",
     "stellar:sep24-test": "node --import tsx --env-file=../../apps/pwa/.env.local src/stellar/sep24/sep24-testnet.ts",
     "stellar:sep24-pay-test": "node --import tsx --env-file=../../apps/pwa/.env.local src/stellar/payment/sep24-pay-testnet.ts",
@@ -23,13 +23,16 @@
     "@privy-io/node": "0.12.0",
     "@stellar/stellar-sdk": "^14.1.1",
     "@types/node": "^20.11.24",
+    "@vercel/functions": "^3.9.5",
     "axios": "^1.15.0",
     "decimal.js": "^10.6.0",
     "jsencrypt": "^3.5.4",
-    "viem": "2.47.10"
+    "viem": "2.47.10",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/decimal.js": "^7.4.3",
+    "@types/web-push": "^3.6.4",
     "tsx": "^4.19.4",
     "typescript": "^5.3.3"
   }

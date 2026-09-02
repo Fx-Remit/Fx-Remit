@@ -4,12 +4,14 @@ import { ArrowUpRight, Bell, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { CashOutSheet } from '../cash-out/CashOutSheet';
+import { NotificationsSheet } from '@/components/notifications/NotificationsSheet';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from '../history/TransactionDetailSheet';
 import { networkLabelForTransaction, formatTxHashLabel } from '@/lib/network';
 import { BottomNav } from '@/components/layout/BottomNav';
+import { registerPushServiceWorker } from '@/lib/push/register';
 
 export default function HomePage() {
   const { user: privyUser, ready, authenticated, getAccessToken } = usePrivy();
@@ -51,10 +53,33 @@ export default function HomePage() {
     retry: 1,
   });
 
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const token = await getAccessToken();
+      const res = await fetch('/api/user/notifications?limit=20', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { unreadCount: 0 };
+      return res.json();
+    },
+    enabled: !!dbUser?.id && !!authenticated,
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
+
+  useEffect(() => {
+    if (authenticated) {
+      void registerPushServiceWorker();
+    }
+  }, [authenticated]);
+
   const transactions = historyData?.transactions || [];
+  const unreadCount = Number(notifData?.unreadCount || 0);
 
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [cashOutOpen, setCashOutOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const loading = !ready || !isHydrated || (authenticated && storeLoading && !dbUser);
 
@@ -110,8 +135,18 @@ export default function HomePage() {
             <p className="text-gray-400 text-sm">Welcome back 👋</p>
           </div>
         </div>
-        <button className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 shadow-sm hover:bg-blue-100 transition-colors">
+        <button
+          type="button"
+          onClick={() => setNotificationsOpen(true)}
+          className="relative w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 shadow-sm hover:bg-blue-100 transition-colors"
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        >
           <Bell size={20} />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#FF3B30] text-white text-[10px] font-bold flex items-center justify-center">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -282,6 +317,10 @@ export default function HomePage() {
       <BottomNav />
 
       <CashOutSheet isOpen={cashOutOpen} onClose={() => setCashOutOpen(false)} />
+      <NotificationsSheet
+        isOpen={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+      />
       <TransactionDetailSheet isOpen={!!selectedTx} onClose={() => setSelectedTx(null)} transaction={selectedTx} />
     </div>
   );

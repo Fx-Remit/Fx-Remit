@@ -27,10 +27,49 @@ model User {
   displayName      String?       @map("display_name")
   lastLoginAt      DateTime?     @map("last_login_at")
   walletBalance    Decimal       @default(0.0) @map("wallet_balance") @db.Decimal(36, 18)
-  transactions     Transaction[]
-  savedRecipients  SavedRecipient[]
+  transactions      Transaction[]
+  savedRecipients   SavedRecipient[]
+  notifications     Notification[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
+}
+
+enum NotificationType {
+  DEPOSIT_CREDITED
+  REMITTANCE_COMPLETED
+  REMITTANCE_FAILED
+}
+
+model Notification {
+  id            String           @id @default(uuid())
+  userId        String           @map("user_id")
+  type          NotificationType
+  title         String
+  body          String
+  transactionId String           @map("transaction_id")
+  readAt        DateTime?        @map("read_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, transactionId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 enum RecipientType {
