@@ -41,6 +41,9 @@ describe('GET /api/user/recipients', () => {
     }) as any;
 
     const now = new Date('2026-09-02T12:00:00.000Z');
+    // Backfill runs first return no remittance history for this test.
+    prisma.transaction.findMany = mock.fn(async () => []) as any;
+
     const findMany = mock.fn(async (args: any) => {
       assert.equal(args.where.userId, 'user-1');
       assert.equal(args.where.currency, 'NGN');

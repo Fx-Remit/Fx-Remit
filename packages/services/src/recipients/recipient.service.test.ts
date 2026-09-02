@@ -98,9 +98,28 @@ describe('RecipientService.listForUser', () => {
     const rows = await RecipientService.listForUser('user-1', {
       currency: 'ngn',
       type: 'mobile',
+      backfill: false,
     });
 
     assert.equal(findMany.mock.callCount(), 1);
     assert.deepEqual(rows, []);
+  });
+});
+
+describe('RecipientService.deleteForUser', () => {
+  it('deletes only when userId owns the row', async () => {
+    const deleteMany = mock.fn(async (args: any) => {
+      assert.deepEqual(args.where, { id: 'rec-1', userId: 'user-1' });
+      return { count: 1 };
+    });
+    prisma.savedRecipient.deleteMany = deleteMany as any;
+
+    assert.equal(await RecipientService.deleteForUser('user-1', 'rec-1'), true);
+    assert.equal(deleteMany.mock.callCount(), 1);
+  });
+
+  it('returns false when nothing deleted', async () => {
+    prisma.savedRecipient.deleteMany = mock.fn(async () => ({ count: 0 })) as any;
+    assert.equal(await RecipientService.deleteForUser('user-1', 'missing'), false);
   });
 });

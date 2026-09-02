@@ -1,12 +1,12 @@
 'use client';
 
-import { ChevronLeft, ChevronDown, X, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronDown, X, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useDebounce } from '@/hooks/use-debounce';
 import { Decimal } from 'decimal.js';
@@ -44,6 +44,7 @@ type QuoteResult = {
 
 export default function BankCashOutPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const [amountInput, setAmountInput] = useState('');
   const [lastEdited, setLastEdited] = useState<'send' | 'receive'>('send');
@@ -58,6 +59,7 @@ export default function BankCashOutPage() {
   const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
   const [isPaymentMethodSheetOpen, setIsPaymentMethodSheetOpen] = useState(false);
   const [paymentType, setPaymentType] = useState<'bank' | 'mobile'>('bank');
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   const { getAccessToken, authenticated } = usePrivy();
   const { profile: dbUser } = useUserStore();
@@ -108,10 +110,33 @@ export default function BankCashOutPage() {
       return (data.recipients || []) as SavedRecipientRow[];
     },
     enabled: isPaymentMethodSheetOpen && !!authenticated && !!currency,
-    staleTime: 15_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const savedRecipients = recipientsData || [];
+
+  const removeSavedRecipient = async (row: SavedRecipientRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (removingId) return;
+    setRemovingId(row.id);
+    try {
+      const accessToken = await getAccessToken();
+      const res = await fetch(`/api/user/recipients/${encodeURIComponent(row.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to remove account');
+      }
+      await queryClient.invalidateQueries({ queryKey: ['saved-recipients'] });
+    } catch (err) {
+      console.error('[BANK] remove recipient failed:', err);
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   const tokenBalances = aggregateTokenBalancesUsd(balanceData?.perChain);
 
@@ -495,24 +520,37 @@ export default function BankCashOutPage() {
           ) : (
             <div className="mb-4 max-h-[40dvh] w-full space-y-2 overflow-y-auto">
               {savedRecipients.map((row) => (
-                <button
+                <div
                   key={row.id}
-                  type="button"
-                  onClick={() => selectSavedRecipient(row)}
-                  className="flex w-full items-center gap-3 rounded-[16px] border border-gray-100 bg-[#F8FBFF] px-4 py-3 text-left transition-colors active:bg-[#E1EFFF]"
+                  className="flex w-full items-center gap-2 rounded-[16px] border border-gray-100 bg-[#F8FBFF]"
                 >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#E1EFFF] text-[14px] font-bold text-[#2261FE]">
-                    {row.institutionName.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-bold text-[#1C1C1C]">
-                      {row.accountName}
-                    </p>
-                    <p className="truncate text-[13px] font-medium text-[#888888]">
-                      {row.institutionName} · ···{row.accountIdentifier.slice(-4)}
-                    </p>
-                  </div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => selectSavedRecipient(row)}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors active:bg-[#E1EFFF]"
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#E1EFFF] text-[14px] font-bold text-[#2261FE]">
+                      {row.institutionName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15px] font-bold text-[#1C1C1C]">
+                        {row.accountName}
+                      </p>
+                      <p className="truncate text-[13px] font-medium text-[#888888]">
+                        {row.institutionName} · ···{row.accountIdentifier.slice(-4)}
+                      </p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${row.accountName}`}
+                    disabled={removingId === row.id}
+                    onClick={(e) => void removeSavedRecipient(row, e)}
+                    className="mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#888888] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
               ))}
             </div>
           )}

@@ -10,38 +10,44 @@ const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET?.trim() ?? '';
 
 const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
+async function requireUser(req: Request) {
+  const authHeader = req.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return { error: NextResponse.json({ error: 'Missing authorization header' }, { status: 401 }) };
+  }
+
+  let claims;
+  try {
+    claims = await privy.verifyAuthToken(authHeader.slice(7));
+  } catch {
+    return { error: NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 }) };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { privyDid: claims.userId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    return { error: NextResponse.json({ error: 'User profile not found' }, { status: 404 }) };
+  }
+
+  return { user };
+}
+
 export async function GET(req: Request) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing authorization header' }, { status: 401 });
-    }
-
-    const token = authHeader.slice(7);
-
-    let claims;
-    try {
-      claims = await privy.verifyAuthToken(token);
-    } catch {
-      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { privyDid: claims.userId },
-      select: { id: true },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
-    }
+    const auth = await requireUser(req);
+    if ('error' in auth) return auth.error;
 
     const { searchParams } = new URL(req.url);
     const currency = searchParams.get('currency') || undefined;
     const type = searchParams.get('type') || undefined;
 
-    const recipients = await RecipientService.listForUser(user.id, {
+    const recipients = await RecipientService.listForUser(auth.user.id, {
       currency: currency || undefined,
       type: type as 'BANK' | 'MOBILE' | 'bank' | 'mobile' | undefined,
+      backfill: true,
     });
 
     return NextResponse.json({ success: true, recipients });

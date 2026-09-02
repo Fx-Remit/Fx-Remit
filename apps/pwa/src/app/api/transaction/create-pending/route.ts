@@ -92,6 +92,30 @@ function paycrestPayload(
   };
 }
 
+async function saveRecipientBestEffort(input: {
+  userId: string;
+  bankCode?: string;
+  recipientType?: string;
+  destinationCurrency?: string;
+  recipientBank: string;
+  recipientAcc: string;
+  recipientName: string;
+}) {
+  const code = input.bankCode?.trim();
+  if (!code) return;
+  await RecipientService.upsert({
+    userId: input.userId,
+    type: (input.recipientType as 'bank' | 'mobile' | undefined) || 'BANK',
+    currency: (input.destinationCurrency || 'NGN').toUpperCase(),
+    institutionCode: code,
+    institutionName: input.recipientBank,
+    accountIdentifier: input.recipientAcc,
+    accountName: input.recipientName,
+  }).catch((e) =>
+    console.error('[CREATE_PENDING] SavedRecipient upsert failed:', e),
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -281,6 +305,16 @@ export async function POST(req: Request) {
           );
         }
 
+        await saveRecipientBestEffort({
+          userId: user.id,
+          bankCode,
+          recipientType,
+          destinationCurrency,
+          recipientBank,
+          recipientAcc,
+          recipientName,
+        });
+
         return NextResponse.json({
           success: true,
           resumed: true,
@@ -327,6 +361,15 @@ export async function POST(req: Request) {
           if (canResume) {
             const resumed = await PayoutService.getSettlementOrder(hashKey!);
             if (resumed.success && resumed.order && resumed.settlement) {
+              await saveRecipientBestEffort({
+                userId: user.id,
+                bankCode,
+                recipientType,
+                destinationCurrency,
+                recipientBank,
+                recipientAcc,
+                recipientName,
+              });
               return NextResponse.json({
                 success: true,
                 resumed: true,
@@ -418,20 +461,15 @@ export async function POST(req: Request) {
 
     const { settlement } = paycrestResp;
 
-    // Address book: save after a fundable Paycrest order exists (verified + reserved).
-    if (bankCode?.trim()) {
-      await RecipientService.upsert({
-        userId: user.id,
-        type: recipientType || 'BANK',
-        currency: (destinationCurrency || 'NGN').toUpperCase(),
-        institutionCode: bankCode,
-        institutionName: recipientBank,
-        accountIdentifier: recipientAcc,
-        accountName: recipientName,
-      }).catch((e) =>
-        console.error('[CREATE_PENDING] SavedRecipient upsert failed:', e),
-      );
-    }
+    await saveRecipientBestEffort({
+      userId: user.id,
+      bankCode,
+      recipientType,
+      destinationCurrency,
+      recipientBank,
+      recipientAcc,
+      recipientName,
+    });
 
     return NextResponse.json({
       success: true,
