@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import { ArrowLeft, ArrowUpRight, Search, Filter } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -14,7 +14,8 @@ import { BottomNav } from '@/components/layout/BottomNav';
 function HistoryPageContent() {
   const { authenticated, getAccessToken } = usePrivy();
   const { profile: dbUser } = useUserStore();
-  const [selectedTx, setSelectedTx] = useState<any>(null);
+  const [manualSelectedTx, setManualSelectedTx] = useState<any>(null);
+  const [deepLinkDismissed, setDeepLinkDismissed] = useState(false);
   const searchParams = useSearchParams();
   const deepLinkTxId = searchParams.get('tx');
 
@@ -87,12 +88,19 @@ function HistoryPageContent() {
     };
   };
 
-  useEffect(() => {
-    if (!deepLinkTxId || !transactions.length || selectedTx) return;
-    const match = transactions.find((tx: { id?: string }) => tx.id === deepLinkTxId);
-    if (match) setSelectedTx(mapToDetail(match));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when deep link + list ready
-  }, [deepLinkTxId, transactions, selectedTx]);
+  // Derived, not synced: the deep-linked transaction is computed straight from
+  // the URL + loaded list on every render, no effect needed. Closing the sheet
+  // sets deepLinkDismissed so it won't recompute back open from the same `tx` param.
+  const deepLinkMatch =
+    !deepLinkDismissed && deepLinkTxId
+      ? transactions.find((tx: { id?: string }) => tx.id === deepLinkTxId)
+      : null;
+  const selectedTx = manualSelectedTx || (deepLinkMatch ? mapToDetail(deepLinkMatch) : null);
+
+  const closeDetail = () => {
+    setManualSelectedTx(null);
+    setDeepLinkDismissed(true);
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F8FAFD] pb-28">
@@ -144,7 +152,7 @@ function HistoryPageContent() {
               {transactions.map((tx: any) => (
                 <div 
                   key={tx.id} 
-                  onClick={() => setSelectedTx(mapToDetail(tx))}
+                  onClick={() => setManualSelectedTx(mapToDetail(tx))}
                   className="flex items-center gap-4 px-5 py-5 hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <div
@@ -200,10 +208,10 @@ function HistoryPageContent() {
 
       <BottomNav />
 
-      <TransactionDetailSheet 
-        isOpen={!!selectedTx} 
-        onClose={() => setSelectedTx(null)} 
-        transaction={selectedTx} 
+      <TransactionDetailSheet
+        isOpen={!!selectedTx}
+        onClose={closeDetail}
+        transaction={selectedTx}
       />
     </div>
   );
