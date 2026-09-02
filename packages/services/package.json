@@ -9,7 +9,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "type-check": "tsc --noEmit",
-    "test": "node --import tsx --test src/paycrest/*.test.ts src/deposits/*.test.ts src/transactions/*.test.ts src/identity/*.test.ts src/reconciliation/*.test.ts src/evm/*.test.ts src/stellar/config/*.test.ts src/stellar/sep10/*.test.ts src/stellar/sep24/*.test.ts src/stellar/sep38/*.test.ts src/stellar/persist/*.test.ts src/stellar/payment/*.test.ts",
+    "test": "node --import tsx --test src/paycrest/*.test.ts src/deposits/*.test.ts src/transactions/*.test.ts src/identity/*.test.ts src/reconciliation/*.test.ts src/recipients/*.test.ts src/evm/*.test.ts src/stellar/config/*.test.ts src/stellar/sep10/*.test.ts src/stellar/sep24/*.test.ts src/stellar/sep38/*.test.ts src/stellar/persist/*.test.ts src/stellar/payment/*.test.ts",
     "stellar:sep10-test": "node --import tsx src/stellar/sep10/sep10-testnet.ts",
     "stellar:sep24-test": "node --import tsx --env-file=../../apps/pwa/.env.local src/stellar/sep24/sep24-testnet.ts",
     "stellar:sep24-pay-test": "node --import tsx --env-file=../../apps/pwa/.env.local src/stellar/payment/sep24-pay-testnet.ts",

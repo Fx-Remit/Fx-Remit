@@ -12,14 +12,13 @@ export function CashOutSheet({ isOpen, onClose }: CashOutSheetProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end">
+    <div className="fixed inset-0 z-[100] flex items-end justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
       {/* Sheet */}
       <div
-        className="relative w-full bg-[#f6f6f6] rounded-t-[40px] px-6 pb-12 pt-4 shadow-2xl animate-in slide-in-from-bottom duration-300"
-        style={{ maxWidth: '430px', margin: '0 auto' }}
+        className="relative w-full max-w-[430px] rounded-t-[40px] bg-[#f6f6f6] px-6 pb-[max(3rem,env(safe-area-inset-bottom))] pt-4 shadow-2xl animate-in slide-in-from-bottom duration-300"
       >
         {/* Drag handle */}
         <div className="flex justify-center mb-5">

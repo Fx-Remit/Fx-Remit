@@ -19,6 +19,11 @@ export type PrismaPromise<T> = $Public.PrismaPromise<T>
  */
 export type User = $Result.DefaultSelection<Prisma.$UserPayload>
 /**
+ * Model SavedRecipient
+ * 
+ */
+export type SavedRecipient = $Result.DefaultSelection<Prisma.$SavedRecipientPayload>
+/**
  * Model Transaction
  * 
  */
@@ -34,6 +39,14 @@ export namespace $Enums {
 };
 
 export type RemittanceRail = (typeof RemittanceRail)[keyof typeof RemittanceRail]
+
+
+export const RecipientType: {
+  BANK: 'BANK',
+  MOBILE: 'MOBILE'
+};
+
+export type RecipientType = (typeof RecipientType)[keyof typeof RecipientType]
 
 
 export const TransactionType: {
@@ -61,6 +74,10 @@ export type Status = (typeof Status)[keyof typeof Status]
 export type RemittanceRail = $Enums.RemittanceRail
 
 export const RemittanceRail: typeof $Enums.RemittanceRail
+
+export type RecipientType = $Enums.RecipientType
+
+export const RecipientType: typeof $Enums.RecipientType
 
 export type TransactionType = $Enums.TransactionType
 
@@ -200,6 +217,16 @@ export class PrismaClient<
     * ```
     */
   get user(): Prisma.UserDelegate<ExtArgs, ClientOptions>;
+
+  /**
+   * `prisma.savedRecipient`: Exposes CRUD operations for the **SavedRecipient** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more SavedRecipients
+    * const savedRecipients = await prisma.savedRecipient.findMany()
+    * ```
+    */
+  get savedRecipient(): Prisma.SavedRecipientDelegate<ExtArgs, ClientOptions>;
 
   /**
    * `prisma.transaction`: Exposes CRUD operations for the **Transaction** model.
@@ -645,6 +672,7 @@ export namespace Prisma {
 
   export const ModelName: {
     User: 'User',
+    SavedRecipient: 'SavedRecipient',
     Transaction: 'Transaction'
   };
 
@@ -661,7 +689,7 @@ export namespace Prisma {
       omit: GlobalOmitOptions
     }
     meta: {
-      modelProps: "user" | "transaction"
+      modelProps: "user" | "savedRecipient" | "transaction"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -736,6 +764,80 @@ export namespace Prisma {
           count: {
             args: Prisma.UserCountArgs<ExtArgs>
             result: $Utils.Optional<UserCountAggregateOutputType> | number
+          }
+        }
+      }
+      SavedRecipient: {
+        payload: Prisma.$SavedRecipientPayload<ExtArgs>
+        fields: Prisma.SavedRecipientFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.SavedRecipientFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.SavedRecipientFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload>
+          }
+          findFirst: {
+            args: Prisma.SavedRecipientFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.SavedRecipientFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload>
+          }
+          findMany: {
+            args: Prisma.SavedRecipientFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload>[]
+          }
+          create: {
+            args: Prisma.SavedRecipientCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload>
+          }
+          createMany: {
+            args: Prisma.SavedRecipientCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.SavedRecipientCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload>[]
+          }
+          delete: {
+            args: Prisma.SavedRecipientDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload>
+          }
+          update: {
+            args: Prisma.SavedRecipientUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload>
+          }
+          deleteMany: {
+            args: Prisma.SavedRecipientDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.SavedRecipientUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateManyAndReturn: {
+            args: Prisma.SavedRecipientUpdateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload>[]
+          }
+          upsert: {
+            args: Prisma.SavedRecipientUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedRecipientPayload>
+          }
+          aggregate: {
+            args: Prisma.SavedRecipientAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateSavedRecipient>
+          }
+          groupBy: {
+            args: Prisma.SavedRecipientGroupByArgs<ExtArgs>
+            result: $Utils.Optional<SavedRecipientGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.SavedRecipientCountArgs<ExtArgs>
+            result: $Utils.Optional<SavedRecipientCountAggregateOutputType> | number
           }
         }
       }
@@ -922,6 +1024,7 @@ export namespace Prisma {
   }
   export type GlobalOmitConfig = {
     user?: UserOmit
+    savedRecipient?: SavedRecipientOmit
     transaction?: TransactionOmit
   }
 
@@ -1004,10 +1107,12 @@ export namespace Prisma {
 
   export type UserCountOutputType = {
     transactions: number
+    savedRecipients: number
   }
 
   export type UserCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     transactions?: boolean | UserCountOutputTypeCountTransactionsArgs
+    savedRecipients?: boolean | UserCountOutputTypeCountSavedRecipientsArgs
   }
 
   // Custom InputTypes
@@ -1026,6 +1131,13 @@ export namespace Prisma {
    */
   export type UserCountOutputTypeCountTransactionsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: TransactionWhereInput
+  }
+
+  /**
+   * UserCountOutputType without action
+   */
+  export type UserCountOutputTypeCountSavedRecipientsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: SavedRecipientWhereInput
   }
 
 
@@ -1312,6 +1424,7 @@ export namespace Prisma {
     lastLoginAt?: boolean
     walletBalance?: boolean
     transactions?: boolean | User$transactionsArgs<ExtArgs>
+    savedRecipients?: boolean | User$savedRecipientsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["user"]>
 
@@ -1369,6 +1482,7 @@ export namespace Prisma {
   export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "privyDid" | "walletAddress" | "stellarPublicKey" | "fullName" | "email" | "avatarUrl" | "totalSentUsd" | "transactionCount" | "createdAt" | "updatedAt" | "displayName" | "lastLoginAt" | "walletBalance", ExtArgs["result"]["user"]>
   export type UserInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     transactions?: boolean | User$transactionsArgs<ExtArgs>
+    savedRecipients?: boolean | User$savedRecipientsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
   }
   export type UserIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {}
@@ -1378,6 +1492,7 @@ export namespace Prisma {
     name: "User"
     objects: {
       transactions: Prisma.$TransactionPayload<ExtArgs>[]
+      savedRecipients: Prisma.$SavedRecipientPayload<ExtArgs>[]
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -1789,6 +1904,7 @@ export namespace Prisma {
   export interface Prisma__UserClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
     readonly [Symbol.toStringTag]: "PrismaPromise"
     transactions<T extends User$transactionsArgs<ExtArgs> = {}>(args?: Subset<T, User$transactionsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$TransactionPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+    savedRecipients<T extends User$savedRecipientsArgs<ExtArgs> = {}>(args?: Subset<T, User$savedRecipientsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -2249,6 +2365,30 @@ export namespace Prisma {
   }
 
   /**
+   * User.savedRecipients
+   */
+  export type User$savedRecipientsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    where?: SavedRecipientWhereInput
+    orderBy?: SavedRecipientOrderByWithRelationInput | SavedRecipientOrderByWithRelationInput[]
+    cursor?: SavedRecipientWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: SavedRecipientScalarFieldEnum | SavedRecipientScalarFieldEnum[]
+  }
+
+  /**
    * User without action
    */
   export type UserDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -2264,6 +2404,1147 @@ export namespace Prisma {
      * Choose, which related nodes to fetch as well
      */
     include?: UserInclude<ExtArgs> | null
+  }
+
+
+  /**
+   * Model SavedRecipient
+   */
+
+  export type AggregateSavedRecipient = {
+    _count: SavedRecipientCountAggregateOutputType | null
+    _min: SavedRecipientMinAggregateOutputType | null
+    _max: SavedRecipientMaxAggregateOutputType | null
+  }
+
+  export type SavedRecipientMinAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    type: $Enums.RecipientType | null
+    currency: string | null
+    institutionCode: string | null
+    institutionName: string | null
+    accountIdentifier: string | null
+    accountName: string | null
+    lastUsedAt: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
+  }
+
+  export type SavedRecipientMaxAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    type: $Enums.RecipientType | null
+    currency: string | null
+    institutionCode: string | null
+    institutionName: string | null
+    accountIdentifier: string | null
+    accountName: string | null
+    lastUsedAt: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
+  }
+
+  export type SavedRecipientCountAggregateOutputType = {
+    id: number
+    userId: number
+    type: number
+    currency: number
+    institutionCode: number
+    institutionName: number
+    accountIdentifier: number
+    accountName: number
+    lastUsedAt: number
+    createdAt: number
+    updatedAt: number
+    _all: number
+  }
+
+
+  export type SavedRecipientMinAggregateInputType = {
+    id?: true
+    userId?: true
+    type?: true
+    currency?: true
+    institutionCode?: true
+    institutionName?: true
+    accountIdentifier?: true
+    accountName?: true
+    lastUsedAt?: true
+    createdAt?: true
+    updatedAt?: true
+  }
+
+  export type SavedRecipientMaxAggregateInputType = {
+    id?: true
+    userId?: true
+    type?: true
+    currency?: true
+    institutionCode?: true
+    institutionName?: true
+    accountIdentifier?: true
+    accountName?: true
+    lastUsedAt?: true
+    createdAt?: true
+    updatedAt?: true
+  }
+
+  export type SavedRecipientCountAggregateInputType = {
+    id?: true
+    userId?: true
+    type?: true
+    currency?: true
+    institutionCode?: true
+    institutionName?: true
+    accountIdentifier?: true
+    accountName?: true
+    lastUsedAt?: true
+    createdAt?: true
+    updatedAt?: true
+    _all?: true
+  }
+
+  export type SavedRecipientAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SavedRecipient to aggregate.
+     */
+    where?: SavedRecipientWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SavedRecipients to fetch.
+     */
+    orderBy?: SavedRecipientOrderByWithRelationInput | SavedRecipientOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: SavedRecipientWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SavedRecipients from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SavedRecipients.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned SavedRecipients
+    **/
+    _count?: true | SavedRecipientCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: SavedRecipientMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: SavedRecipientMaxAggregateInputType
+  }
+
+  export type GetSavedRecipientAggregateType<T extends SavedRecipientAggregateArgs> = {
+        [P in keyof T & keyof AggregateSavedRecipient]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateSavedRecipient[P]>
+      : GetScalarType<T[P], AggregateSavedRecipient[P]>
+  }
+
+
+
+
+  export type SavedRecipientGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: SavedRecipientWhereInput
+    orderBy?: SavedRecipientOrderByWithAggregationInput | SavedRecipientOrderByWithAggregationInput[]
+    by: SavedRecipientScalarFieldEnum[] | SavedRecipientScalarFieldEnum
+    having?: SavedRecipientScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: SavedRecipientCountAggregateInputType | true
+    _min?: SavedRecipientMinAggregateInputType
+    _max?: SavedRecipientMaxAggregateInputType
+  }
+
+  export type SavedRecipientGroupByOutputType = {
+    id: string
+    userId: string
+    type: $Enums.RecipientType
+    currency: string
+    institutionCode: string
+    institutionName: string
+    accountIdentifier: string
+    accountName: string
+    lastUsedAt: Date
+    createdAt: Date
+    updatedAt: Date
+    _count: SavedRecipientCountAggregateOutputType | null
+    _min: SavedRecipientMinAggregateOutputType | null
+    _max: SavedRecipientMaxAggregateOutputType | null
+  }
+
+  type GetSavedRecipientGroupByPayload<T extends SavedRecipientGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<SavedRecipientGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof SavedRecipientGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], SavedRecipientGroupByOutputType[P]>
+            : GetScalarType<T[P], SavedRecipientGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type SavedRecipientSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    type?: boolean
+    currency?: boolean
+    institutionCode?: boolean
+    institutionName?: boolean
+    accountIdentifier?: boolean
+    accountName?: boolean
+    lastUsedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["savedRecipient"]>
+
+  export type SavedRecipientSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    type?: boolean
+    currency?: boolean
+    institutionCode?: boolean
+    institutionName?: boolean
+    accountIdentifier?: boolean
+    accountName?: boolean
+    lastUsedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["savedRecipient"]>
+
+  export type SavedRecipientSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    type?: boolean
+    currency?: boolean
+    institutionCode?: boolean
+    institutionName?: boolean
+    accountIdentifier?: boolean
+    accountName?: boolean
+    lastUsedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["savedRecipient"]>
+
+  export type SavedRecipientSelectScalar = {
+    id?: boolean
+    userId?: boolean
+    type?: boolean
+    currency?: boolean
+    institutionCode?: boolean
+    institutionName?: boolean
+    accountIdentifier?: boolean
+    accountName?: boolean
+    lastUsedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+  }
+
+  export type SavedRecipientOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "type" | "currency" | "institutionCode" | "institutionName" | "accountIdentifier" | "accountName" | "lastUsedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["savedRecipient"]>
+  export type SavedRecipientInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+  export type SavedRecipientIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+  export type SavedRecipientIncludeUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+
+  export type $SavedRecipientPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "SavedRecipient"
+    objects: {
+      user: Prisma.$UserPayload<ExtArgs>
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      userId: string
+      type: $Enums.RecipientType
+      currency: string
+      institutionCode: string
+      institutionName: string
+      accountIdentifier: string
+      accountName: string
+      lastUsedAt: Date
+      createdAt: Date
+      updatedAt: Date
+    }, ExtArgs["result"]["savedRecipient"]>
+    composites: {}
+  }
+
+  type SavedRecipientGetPayload<S extends boolean | null | undefined | SavedRecipientDefaultArgs> = $Result.GetResult<Prisma.$SavedRecipientPayload, S>
+
+  type SavedRecipientCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> =
+    Omit<SavedRecipientFindManyArgs, 'select' | 'include' | 'distinct' | 'omit'> & {
+      select?: SavedRecipientCountAggregateInputType | true
+    }
+
+  export interface SavedRecipientDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['SavedRecipient'], meta: { name: 'SavedRecipient' } }
+    /**
+     * Find zero or one SavedRecipient that matches the filter.
+     * @param {SavedRecipientFindUniqueArgs} args - Arguments to find a SavedRecipient
+     * @example
+     * // Get one SavedRecipient
+     * const savedRecipient = await prisma.savedRecipient.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends SavedRecipientFindUniqueArgs>(args: SelectSubset<T, SavedRecipientFindUniqueArgs<ExtArgs>>): Prisma__SavedRecipientClient<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "findUnique", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find one SavedRecipient that matches the filter or throw an error with `error.code='P2025'`
+     * if no matches were found.
+     * @param {SavedRecipientFindUniqueOrThrowArgs} args - Arguments to find a SavedRecipient
+     * @example
+     * // Get one SavedRecipient
+     * const savedRecipient = await prisma.savedRecipient.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends SavedRecipientFindUniqueOrThrowArgs>(args: SelectSubset<T, SavedRecipientFindUniqueOrThrowArgs<ExtArgs>>): Prisma__SavedRecipientClient<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first SavedRecipient that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedRecipientFindFirstArgs} args - Arguments to find a SavedRecipient
+     * @example
+     * // Get one SavedRecipient
+     * const savedRecipient = await prisma.savedRecipient.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends SavedRecipientFindFirstArgs>(args?: SelectSubset<T, SavedRecipientFindFirstArgs<ExtArgs>>): Prisma__SavedRecipientClient<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "findFirst", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first SavedRecipient that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedRecipientFindFirstOrThrowArgs} args - Arguments to find a SavedRecipient
+     * @example
+     * // Get one SavedRecipient
+     * const savedRecipient = await prisma.savedRecipient.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends SavedRecipientFindFirstOrThrowArgs>(args?: SelectSubset<T, SavedRecipientFindFirstOrThrowArgs<ExtArgs>>): Prisma__SavedRecipientClient<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "findFirstOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find zero or more SavedRecipients that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedRecipientFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all SavedRecipients
+     * const savedRecipients = await prisma.savedRecipient.findMany()
+     * 
+     * // Get first 10 SavedRecipients
+     * const savedRecipients = await prisma.savedRecipient.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const savedRecipientWithIdOnly = await prisma.savedRecipient.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends SavedRecipientFindManyArgs>(args?: SelectSubset<T, SavedRecipientFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "findMany", GlobalOmitOptions>>
+
+    /**
+     * Create a SavedRecipient.
+     * @param {SavedRecipientCreateArgs} args - Arguments to create a SavedRecipient.
+     * @example
+     * // Create one SavedRecipient
+     * const SavedRecipient = await prisma.savedRecipient.create({
+     *   data: {
+     *     // ... data to create a SavedRecipient
+     *   }
+     * })
+     * 
+     */
+    create<T extends SavedRecipientCreateArgs>(args: SelectSubset<T, SavedRecipientCreateArgs<ExtArgs>>): Prisma__SavedRecipientClient<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "create", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Create many SavedRecipients.
+     * @param {SavedRecipientCreateManyArgs} args - Arguments to create many SavedRecipients.
+     * @example
+     * // Create many SavedRecipients
+     * const savedRecipient = await prisma.savedRecipient.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends SavedRecipientCreateManyArgs>(args?: SelectSubset<T, SavedRecipientCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many SavedRecipients and returns the data saved in the database.
+     * @param {SavedRecipientCreateManyAndReturnArgs} args - Arguments to create many SavedRecipients.
+     * @example
+     * // Create many SavedRecipients
+     * const savedRecipient = await prisma.savedRecipient.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many SavedRecipients and only return the `id`
+     * const savedRecipientWithIdOnly = await prisma.savedRecipient.createManyAndReturn({
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends SavedRecipientCreateManyAndReturnArgs>(args?: SelectSubset<T, SavedRecipientCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "createManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Delete a SavedRecipient.
+     * @param {SavedRecipientDeleteArgs} args - Arguments to delete one SavedRecipient.
+     * @example
+     * // Delete one SavedRecipient
+     * const SavedRecipient = await prisma.savedRecipient.delete({
+     *   where: {
+     *     // ... filter to delete one SavedRecipient
+     *   }
+     * })
+     * 
+     */
+    delete<T extends SavedRecipientDeleteArgs>(args: SelectSubset<T, SavedRecipientDeleteArgs<ExtArgs>>): Prisma__SavedRecipientClient<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "delete", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Update one SavedRecipient.
+     * @param {SavedRecipientUpdateArgs} args - Arguments to update one SavedRecipient.
+     * @example
+     * // Update one SavedRecipient
+     * const savedRecipient = await prisma.savedRecipient.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends SavedRecipientUpdateArgs>(args: SelectSubset<T, SavedRecipientUpdateArgs<ExtArgs>>): Prisma__SavedRecipientClient<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "update", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Delete zero or more SavedRecipients.
+     * @param {SavedRecipientDeleteManyArgs} args - Arguments to filter SavedRecipients to delete.
+     * @example
+     * // Delete a few SavedRecipients
+     * const { count } = await prisma.savedRecipient.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends SavedRecipientDeleteManyArgs>(args?: SelectSubset<T, SavedRecipientDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more SavedRecipients.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedRecipientUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many SavedRecipients
+     * const savedRecipient = await prisma.savedRecipient.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends SavedRecipientUpdateManyArgs>(args: SelectSubset<T, SavedRecipientUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more SavedRecipients and returns the data updated in the database.
+     * @param {SavedRecipientUpdateManyAndReturnArgs} args - Arguments to update many SavedRecipients.
+     * @example
+     * // Update many SavedRecipients
+     * const savedRecipient = await prisma.savedRecipient.updateManyAndReturn({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Update zero or more SavedRecipients and only return the `id`
+     * const savedRecipientWithIdOnly = await prisma.savedRecipient.updateManyAndReturn({
+     *   select: { id: true },
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    updateManyAndReturn<T extends SavedRecipientUpdateManyAndReturnArgs>(args: SelectSubset<T, SavedRecipientUpdateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "updateManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Create or update one SavedRecipient.
+     * @param {SavedRecipientUpsertArgs} args - Arguments to update or create a SavedRecipient.
+     * @example
+     * // Update or create a SavedRecipient
+     * const savedRecipient = await prisma.savedRecipient.upsert({
+     *   create: {
+     *     // ... data to create a SavedRecipient
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the SavedRecipient we want to update
+     *   }
+     * })
+     */
+    upsert<T extends SavedRecipientUpsertArgs>(args: SelectSubset<T, SavedRecipientUpsertArgs<ExtArgs>>): Prisma__SavedRecipientClient<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "upsert", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+
+    /**
+     * Count the number of SavedRecipients.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedRecipientCountArgs} args - Arguments to filter SavedRecipients to count.
+     * @example
+     * // Count the number of SavedRecipients
+     * const count = await prisma.savedRecipient.count({
+     *   where: {
+     *     // ... the filter for the SavedRecipients we want to count
+     *   }
+     * })
+    **/
+    count<T extends SavedRecipientCountArgs>(
+      args?: Subset<T, SavedRecipientCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], SavedRecipientCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a SavedRecipient.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedRecipientAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends SavedRecipientAggregateArgs>(args: Subset<T, SavedRecipientAggregateArgs>): Prisma.PrismaPromise<GetSavedRecipientAggregateType<T>>
+
+    /**
+     * Group by SavedRecipient.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedRecipientGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends SavedRecipientGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: SavedRecipientGroupByArgs['orderBy'] }
+        : { orderBy?: SavedRecipientGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, SavedRecipientGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetSavedRecipientGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the SavedRecipient model
+   */
+  readonly fields: SavedRecipientFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for SavedRecipient.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__SavedRecipientClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    user<T extends UserDefaultArgs<ExtArgs> = {}>(args?: Subset<T, UserDefaultArgs<ExtArgs>>): Prisma__UserClient<$Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the SavedRecipient model
+   */
+  interface SavedRecipientFieldRefs {
+    readonly id: FieldRef<"SavedRecipient", 'String'>
+    readonly userId: FieldRef<"SavedRecipient", 'String'>
+    readonly type: FieldRef<"SavedRecipient", 'RecipientType'>
+    readonly currency: FieldRef<"SavedRecipient", 'String'>
+    readonly institutionCode: FieldRef<"SavedRecipient", 'String'>
+    readonly institutionName: FieldRef<"SavedRecipient", 'String'>
+    readonly accountIdentifier: FieldRef<"SavedRecipient", 'String'>
+    readonly accountName: FieldRef<"SavedRecipient", 'String'>
+    readonly lastUsedAt: FieldRef<"SavedRecipient", 'DateTime'>
+    readonly createdAt: FieldRef<"SavedRecipient", 'DateTime'>
+    readonly updatedAt: FieldRef<"SavedRecipient", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * SavedRecipient findUnique
+   */
+  export type SavedRecipientFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedRecipient to fetch.
+     */
+    where: SavedRecipientWhereUniqueInput
+  }
+
+  /**
+   * SavedRecipient findUniqueOrThrow
+   */
+  export type SavedRecipientFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedRecipient to fetch.
+     */
+    where: SavedRecipientWhereUniqueInput
+  }
+
+  /**
+   * SavedRecipient findFirst
+   */
+  export type SavedRecipientFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedRecipient to fetch.
+     */
+    where?: SavedRecipientWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SavedRecipients to fetch.
+     */
+    orderBy?: SavedRecipientOrderByWithRelationInput | SavedRecipientOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SavedRecipients.
+     */
+    cursor?: SavedRecipientWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SavedRecipients from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SavedRecipients.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SavedRecipients.
+     */
+    distinct?: SavedRecipientScalarFieldEnum | SavedRecipientScalarFieldEnum[]
+  }
+
+  /**
+   * SavedRecipient findFirstOrThrow
+   */
+  export type SavedRecipientFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedRecipient to fetch.
+     */
+    where?: SavedRecipientWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SavedRecipients to fetch.
+     */
+    orderBy?: SavedRecipientOrderByWithRelationInput | SavedRecipientOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SavedRecipients.
+     */
+    cursor?: SavedRecipientWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SavedRecipients from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SavedRecipients.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SavedRecipients.
+     */
+    distinct?: SavedRecipientScalarFieldEnum | SavedRecipientScalarFieldEnum[]
+  }
+
+  /**
+   * SavedRecipient findMany
+   */
+  export type SavedRecipientFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedRecipients to fetch.
+     */
+    where?: SavedRecipientWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SavedRecipients to fetch.
+     */
+    orderBy?: SavedRecipientOrderByWithRelationInput | SavedRecipientOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing SavedRecipients.
+     */
+    cursor?: SavedRecipientWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SavedRecipients from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SavedRecipients.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SavedRecipients.
+     */
+    distinct?: SavedRecipientScalarFieldEnum | SavedRecipientScalarFieldEnum[]
+  }
+
+  /**
+   * SavedRecipient create
+   */
+  export type SavedRecipientCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    /**
+     * The data needed to create a SavedRecipient.
+     */
+    data: XOR<SavedRecipientCreateInput, SavedRecipientUncheckedCreateInput>
+  }
+
+  /**
+   * SavedRecipient createMany
+   */
+  export type SavedRecipientCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many SavedRecipients.
+     */
+    data: SavedRecipientCreateManyInput | SavedRecipientCreateManyInput[]
+    skipDuplicates?: boolean
+  }
+
+  /**
+   * SavedRecipient createManyAndReturn
+   */
+  export type SavedRecipientCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * The data used to create many SavedRecipients.
+     */
+    data: SavedRecipientCreateManyInput | SavedRecipientCreateManyInput[]
+    skipDuplicates?: boolean
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * SavedRecipient update
+   */
+  export type SavedRecipientUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    /**
+     * The data needed to update a SavedRecipient.
+     */
+    data: XOR<SavedRecipientUpdateInput, SavedRecipientUncheckedUpdateInput>
+    /**
+     * Choose, which SavedRecipient to update.
+     */
+    where: SavedRecipientWhereUniqueInput
+  }
+
+  /**
+   * SavedRecipient updateMany
+   */
+  export type SavedRecipientUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update SavedRecipients.
+     */
+    data: XOR<SavedRecipientUpdateManyMutationInput, SavedRecipientUncheckedUpdateManyInput>
+    /**
+     * Filter which SavedRecipients to update
+     */
+    where?: SavedRecipientWhereInput
+    /**
+     * Limit how many SavedRecipients to update.
+     */
+    limit?: number
+  }
+
+  /**
+   * SavedRecipient updateManyAndReturn
+   */
+  export type SavedRecipientUpdateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelectUpdateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * The data used to update SavedRecipients.
+     */
+    data: XOR<SavedRecipientUpdateManyMutationInput, SavedRecipientUncheckedUpdateManyInput>
+    /**
+     * Filter which SavedRecipients to update
+     */
+    where?: SavedRecipientWhereInput
+    /**
+     * Limit how many SavedRecipients to update.
+     */
+    limit?: number
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientIncludeUpdateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * SavedRecipient upsert
+   */
+  export type SavedRecipientUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    /**
+     * The filter to search for the SavedRecipient to update in case it exists.
+     */
+    where: SavedRecipientWhereUniqueInput
+    /**
+     * In case the SavedRecipient found by the `where` argument doesn't exist, create a new SavedRecipient with this data.
+     */
+    create: XOR<SavedRecipientCreateInput, SavedRecipientUncheckedCreateInput>
+    /**
+     * In case the SavedRecipient was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<SavedRecipientUpdateInput, SavedRecipientUncheckedUpdateInput>
+  }
+
+  /**
+   * SavedRecipient delete
+   */
+  export type SavedRecipientDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
+    /**
+     * Filter which SavedRecipient to delete.
+     */
+    where: SavedRecipientWhereUniqueInput
+  }
+
+  /**
+   * SavedRecipient deleteMany
+   */
+  export type SavedRecipientDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SavedRecipients to delete
+     */
+    where?: SavedRecipientWhereInput
+    /**
+     * Limit how many SavedRecipients to delete.
+     */
+    limit?: number
+  }
+
+  /**
+   * SavedRecipient without action
+   */
+  export type SavedRecipientDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedRecipient
+     */
+    select?: SavedRecipientSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedRecipient
+     */
+    omit?: SavedRecipientOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedRecipientInclude<ExtArgs> | null
   }
 
 
@@ -2313,6 +3594,7 @@ export namespace Prisma {
     recipientName: string | null
     recipientBank: string | null
     recipientAcc: string | null
+    recipientBankCode: string | null
     createdAt: Date | null
     blockNumber: bigint | null
     chainId: number | null
@@ -2339,6 +3621,7 @@ export namespace Prisma {
     recipientName: string | null
     recipientBank: string | null
     recipientAcc: string | null
+    recipientBankCode: string | null
     createdAt: Date | null
     blockNumber: bigint | null
     chainId: number | null
@@ -2365,6 +3648,7 @@ export namespace Prisma {
     recipientName: number
     recipientBank: number
     recipientAcc: number
+    recipientBankCode: number
     createdAt: number
     blockNumber: number
     chainId: number
@@ -2411,6 +3695,7 @@ export namespace Prisma {
     recipientName?: true
     recipientBank?: true
     recipientAcc?: true
+    recipientBankCode?: true
     createdAt?: true
     blockNumber?: true
     chainId?: true
@@ -2437,6 +3722,7 @@ export namespace Prisma {
     recipientName?: true
     recipientBank?: true
     recipientAcc?: true
+    recipientBankCode?: true
     createdAt?: true
     blockNumber?: true
     chainId?: true
@@ -2463,6 +3749,7 @@ export namespace Prisma {
     recipientName?: true
     recipientBank?: true
     recipientAcc?: true
+    recipientBankCode?: true
     createdAt?: true
     blockNumber?: true
     chainId?: true
@@ -2576,6 +3863,7 @@ export namespace Prisma {
     recipientName: string | null
     recipientBank: string | null
     recipientAcc: string | null
+    recipientBankCode: string | null
     createdAt: Date
     blockNumber: bigint
     chainId: number
@@ -2621,6 +3909,7 @@ export namespace Prisma {
     recipientName?: boolean
     recipientBank?: boolean
     recipientAcc?: boolean
+    recipientBankCode?: boolean
     createdAt?: boolean
     blockNumber?: boolean
     chainId?: boolean
@@ -2648,6 +3937,7 @@ export namespace Prisma {
     recipientName?: boolean
     recipientBank?: boolean
     recipientAcc?: boolean
+    recipientBankCode?: boolean
     createdAt?: boolean
     blockNumber?: boolean
     chainId?: boolean
@@ -2675,6 +3965,7 @@ export namespace Prisma {
     recipientName?: boolean
     recipientBank?: boolean
     recipientAcc?: boolean
+    recipientBankCode?: boolean
     createdAt?: boolean
     blockNumber?: boolean
     chainId?: boolean
@@ -2702,6 +3993,7 @@ export namespace Prisma {
     recipientName?: boolean
     recipientBank?: boolean
     recipientAcc?: boolean
+    recipientBankCode?: boolean
     createdAt?: boolean
     blockNumber?: boolean
     chainId?: boolean
@@ -2712,7 +4004,7 @@ export namespace Prisma {
     refundTxHash?: boolean
   }
 
-  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "rail" | "stellarPaymentHash" | "anchorTransactionId" | "corridor" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type" | "refundTxHash", ExtArgs["result"]["transaction"]>
+  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "rail" | "stellarPaymentHash" | "anchorTransactionId" | "corridor" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "recipientBankCode" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type" | "refundTxHash", ExtArgs["result"]["transaction"]>
   export type TransactionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     user?: boolean | UserDefaultArgs<ExtArgs>
   }
@@ -2744,6 +4036,10 @@ export namespace Prisma {
       recipientName: string | null
       recipientBank: string | null
       recipientAcc: string | null
+      /**
+       * * Paycrest institution code — required to reuse recipients without re-picking bank.
+       */
+      recipientBankCode: string | null
       createdAt: Date
       blockNumber: bigint
       chainId: number
@@ -3194,6 +4490,7 @@ export namespace Prisma {
     readonly recipientName: FieldRef<"Transaction", 'String'>
     readonly recipientBank: FieldRef<"Transaction", 'String'>
     readonly recipientAcc: FieldRef<"Transaction", 'String'>
+    readonly recipientBankCode: FieldRef<"Transaction", 'String'>
     readonly createdAt: FieldRef<"Transaction", 'DateTime'>
     readonly blockNumber: FieldRef<"Transaction", 'BigInt'>
     readonly chainId: FieldRef<"Transaction", 'Int'>
@@ -3655,6 +4952,23 @@ export namespace Prisma {
   export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
 
 
+  export const SavedRecipientScalarFieldEnum: {
+    id: 'id',
+    userId: 'userId',
+    type: 'type',
+    currency: 'currency',
+    institutionCode: 'institutionCode',
+    institutionName: 'institutionName',
+    accountIdentifier: 'accountIdentifier',
+    accountName: 'accountName',
+    lastUsedAt: 'lastUsedAt',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
+  };
+
+  export type SavedRecipientScalarFieldEnum = (typeof SavedRecipientScalarFieldEnum)[keyof typeof SavedRecipientScalarFieldEnum]
+
+
   export const TransactionScalarFieldEnum: {
     id: 'id',
     userId: 'userId',
@@ -3671,6 +4985,7 @@ export namespace Prisma {
     recipientName: 'recipientName',
     recipientBank: 'recipientBank',
     recipientAcc: 'recipientAcc',
+    recipientBankCode: 'recipientBankCode',
     createdAt: 'createdAt',
     blockNumber: 'blockNumber',
     chainId: 'chainId',
@@ -3770,6 +5085,20 @@ export namespace Prisma {
 
 
   /**
+   * Reference to a field of type 'RecipientType'
+   */
+  export type EnumRecipientTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'RecipientType'>
+    
+
+
+  /**
+   * Reference to a field of type 'RecipientType[]'
+   */
+  export type ListEnumRecipientTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'RecipientType[]'>
+    
+
+
+  /**
    * Reference to a field of type 'BigInt'
    */
   export type BigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt'>
@@ -3861,6 +5190,7 @@ export namespace Prisma {
     lastLoginAt?: DateTimeNullableFilter<"User"> | Date | string | null
     walletBalance?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactions?: TransactionListRelationFilter
+    savedRecipients?: SavedRecipientListRelationFilter
   }
 
   export type UserOrderByWithRelationInput = {
@@ -3879,6 +5209,7 @@ export namespace Prisma {
     lastLoginAt?: SortOrderInput | SortOrder
     walletBalance?: SortOrder
     transactions?: TransactionOrderByRelationAggregateInput
+    savedRecipients?: SavedRecipientOrderByRelationAggregateInput
   }
 
   export type UserWhereUniqueInput = Prisma.AtLeast<{
@@ -3900,6 +5231,7 @@ export namespace Prisma {
     lastLoginAt?: DateTimeNullableFilter<"User"> | Date | string | null
     walletBalance?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactions?: TransactionListRelationFilter
+    savedRecipients?: SavedRecipientListRelationFilter
   }, "id" | "privyDid" | "walletAddress" | "stellarPublicKey" | "email">
 
   export type UserOrderByWithAggregationInput = {
@@ -3944,6 +5276,92 @@ export namespace Prisma {
     walletBalance?: DecimalWithAggregatesFilter<"User"> | Decimal | DecimalJsLike | number | string
   }
 
+  export type SavedRecipientWhereInput = {
+    AND?: SavedRecipientWhereInput | SavedRecipientWhereInput[]
+    OR?: SavedRecipientWhereInput[]
+    NOT?: SavedRecipientWhereInput | SavedRecipientWhereInput[]
+    id?: StringFilter<"SavedRecipient"> | string
+    userId?: StringFilter<"SavedRecipient"> | string
+    type?: EnumRecipientTypeFilter<"SavedRecipient"> | $Enums.RecipientType
+    currency?: StringFilter<"SavedRecipient"> | string
+    institutionCode?: StringFilter<"SavedRecipient"> | string
+    institutionName?: StringFilter<"SavedRecipient"> | string
+    accountIdentifier?: StringFilter<"SavedRecipient"> | string
+    accountName?: StringFilter<"SavedRecipient"> | string
+    lastUsedAt?: DateTimeFilter<"SavedRecipient"> | Date | string
+    createdAt?: DateTimeFilter<"SavedRecipient"> | Date | string
+    updatedAt?: DateTimeFilter<"SavedRecipient"> | Date | string
+    user?: XOR<UserScalarRelationFilter, UserWhereInput>
+  }
+
+  export type SavedRecipientOrderByWithRelationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    type?: SortOrder
+    currency?: SortOrder
+    institutionCode?: SortOrder
+    institutionName?: SortOrder
+    accountIdentifier?: SortOrder
+    accountName?: SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+    user?: UserOrderByWithRelationInput
+  }
+
+  export type SavedRecipientWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    userId_currency_institutionCode_accountIdentifier?: SavedRecipientUserIdCurrencyInstitutionCodeAccountIdentifierCompoundUniqueInput
+    AND?: SavedRecipientWhereInput | SavedRecipientWhereInput[]
+    OR?: SavedRecipientWhereInput[]
+    NOT?: SavedRecipientWhereInput | SavedRecipientWhereInput[]
+    userId?: StringFilter<"SavedRecipient"> | string
+    type?: EnumRecipientTypeFilter<"SavedRecipient"> | $Enums.RecipientType
+    currency?: StringFilter<"SavedRecipient"> | string
+    institutionCode?: StringFilter<"SavedRecipient"> | string
+    institutionName?: StringFilter<"SavedRecipient"> | string
+    accountIdentifier?: StringFilter<"SavedRecipient"> | string
+    accountName?: StringFilter<"SavedRecipient"> | string
+    lastUsedAt?: DateTimeFilter<"SavedRecipient"> | Date | string
+    createdAt?: DateTimeFilter<"SavedRecipient"> | Date | string
+    updatedAt?: DateTimeFilter<"SavedRecipient"> | Date | string
+    user?: XOR<UserScalarRelationFilter, UserWhereInput>
+  }, "id" | "userId_currency_institutionCode_accountIdentifier">
+
+  export type SavedRecipientOrderByWithAggregationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    type?: SortOrder
+    currency?: SortOrder
+    institutionCode?: SortOrder
+    institutionName?: SortOrder
+    accountIdentifier?: SortOrder
+    accountName?: SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+    _count?: SavedRecipientCountOrderByAggregateInput
+    _max?: SavedRecipientMaxOrderByAggregateInput
+    _min?: SavedRecipientMinOrderByAggregateInput
+  }
+
+  export type SavedRecipientScalarWhereWithAggregatesInput = {
+    AND?: SavedRecipientScalarWhereWithAggregatesInput | SavedRecipientScalarWhereWithAggregatesInput[]
+    OR?: SavedRecipientScalarWhereWithAggregatesInput[]
+    NOT?: SavedRecipientScalarWhereWithAggregatesInput | SavedRecipientScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"SavedRecipient"> | string
+    userId?: StringWithAggregatesFilter<"SavedRecipient"> | string
+    type?: EnumRecipientTypeWithAggregatesFilter<"SavedRecipient"> | $Enums.RecipientType
+    currency?: StringWithAggregatesFilter<"SavedRecipient"> | string
+    institutionCode?: StringWithAggregatesFilter<"SavedRecipient"> | string
+    institutionName?: StringWithAggregatesFilter<"SavedRecipient"> | string
+    accountIdentifier?: StringWithAggregatesFilter<"SavedRecipient"> | string
+    accountName?: StringWithAggregatesFilter<"SavedRecipient"> | string
+    lastUsedAt?: DateTimeWithAggregatesFilter<"SavedRecipient"> | Date | string
+    createdAt?: DateTimeWithAggregatesFilter<"SavedRecipient"> | Date | string
+    updatedAt?: DateTimeWithAggregatesFilter<"SavedRecipient"> | Date | string
+  }
+
   export type TransactionWhereInput = {
     AND?: TransactionWhereInput | TransactionWhereInput[]
     OR?: TransactionWhereInput[]
@@ -3963,6 +5381,7 @@ export namespace Prisma {
     recipientName?: StringNullableFilter<"Transaction"> | string | null
     recipientBank?: StringNullableFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableFilter<"Transaction"> | string | null
+    recipientBankCode?: StringNullableFilter<"Transaction"> | string | null
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
     blockNumber?: BigIntFilter<"Transaction"> | bigint | number
     chainId?: IntFilter<"Transaction"> | number
@@ -3990,6 +5409,7 @@ export namespace Prisma {
     recipientName?: SortOrderInput | SortOrder
     recipientBank?: SortOrderInput | SortOrder
     recipientAcc?: SortOrderInput | SortOrder
+    recipientBankCode?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     blockNumber?: SortOrder
     chainId?: SortOrder
@@ -4025,6 +5445,7 @@ export namespace Prisma {
     recipientName?: StringNullableFilter<"Transaction"> | string | null
     recipientBank?: StringNullableFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableFilter<"Transaction"> | string | null
+    recipientBankCode?: StringNullableFilter<"Transaction"> | string | null
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
     blockNumber?: BigIntFilter<"Transaction"> | bigint | number
     chainId?: IntFilter<"Transaction"> | number
@@ -4051,6 +5472,7 @@ export namespace Prisma {
     recipientName?: SortOrderInput | SortOrder
     recipientBank?: SortOrderInput | SortOrder
     recipientAcc?: SortOrderInput | SortOrder
+    recipientBankCode?: SortOrderInput | SortOrder
     createdAt?: SortOrder
     blockNumber?: SortOrder
     chainId?: SortOrder
@@ -4085,6 +5507,7 @@ export namespace Prisma {
     recipientName?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     recipientBank?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    recipientBankCode?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"Transaction"> | Date | string
     blockNumber?: BigIntWithAggregatesFilter<"Transaction"> | bigint | number
     chainId?: IntWithAggregatesFilter<"Transaction"> | number
@@ -4111,6 +5534,7 @@ export namespace Prisma {
     lastLoginAt?: Date | string | null
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionCreateNestedManyWithoutUserInput
+    savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateInput = {
@@ -4129,6 +5553,7 @@ export namespace Prisma {
     lastLoginAt?: Date | string | null
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
+    savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserUpdateInput = {
@@ -4147,6 +5572,7 @@ export namespace Prisma {
     lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUpdateManyWithoutUserNestedInput
+    savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateInput = {
@@ -4165,6 +5591,7 @@ export namespace Prisma {
     lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
+    savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateManyInput = {
@@ -4218,6 +5645,103 @@ export namespace Prisma {
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
   }
 
+  export type SavedRecipientCreateInput = {
+    id?: string
+    type?: $Enums.RecipientType
+    currency: string
+    institutionCode: string
+    institutionName: string
+    accountIdentifier: string
+    accountName: string
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    user: UserCreateNestedOneWithoutSavedRecipientsInput
+  }
+
+  export type SavedRecipientUncheckedCreateInput = {
+    id?: string
+    userId: string
+    type?: $Enums.RecipientType
+    currency: string
+    institutionCode: string
+    institutionName: string
+    accountIdentifier: string
+    accountName: string
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SavedRecipientUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    type?: EnumRecipientTypeFieldUpdateOperationsInput | $Enums.RecipientType
+    currency?: StringFieldUpdateOperationsInput | string
+    institutionCode?: StringFieldUpdateOperationsInput | string
+    institutionName?: StringFieldUpdateOperationsInput | string
+    accountIdentifier?: StringFieldUpdateOperationsInput | string
+    accountName?: StringFieldUpdateOperationsInput | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    user?: UserUpdateOneRequiredWithoutSavedRecipientsNestedInput
+  }
+
+  export type SavedRecipientUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    type?: EnumRecipientTypeFieldUpdateOperationsInput | $Enums.RecipientType
+    currency?: StringFieldUpdateOperationsInput | string
+    institutionCode?: StringFieldUpdateOperationsInput | string
+    institutionName?: StringFieldUpdateOperationsInput | string
+    accountIdentifier?: StringFieldUpdateOperationsInput | string
+    accountName?: StringFieldUpdateOperationsInput | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SavedRecipientCreateManyInput = {
+    id?: string
+    userId: string
+    type?: $Enums.RecipientType
+    currency: string
+    institutionCode: string
+    institutionName: string
+    accountIdentifier: string
+    accountName: string
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SavedRecipientUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    type?: EnumRecipientTypeFieldUpdateOperationsInput | $Enums.RecipientType
+    currency?: StringFieldUpdateOperationsInput | string
+    institutionCode?: StringFieldUpdateOperationsInput | string
+    institutionName?: StringFieldUpdateOperationsInput | string
+    accountIdentifier?: StringFieldUpdateOperationsInput | string
+    accountName?: StringFieldUpdateOperationsInput | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SavedRecipientUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    type?: EnumRecipientTypeFieldUpdateOperationsInput | $Enums.RecipientType
+    currency?: StringFieldUpdateOperationsInput | string
+    institutionCode?: StringFieldUpdateOperationsInput | string
+    institutionName?: StringFieldUpdateOperationsInput | string
+    accountIdentifier?: StringFieldUpdateOperationsInput | string
+    accountName?: StringFieldUpdateOperationsInput | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
   export type TransactionCreateInput = {
     id?: string
     orderId: bigint | number
@@ -4233,6 +5757,7 @@ export namespace Prisma {
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
+    recipientBankCode?: string | null
     createdAt?: Date | string
     blockNumber: bigint | number
     chainId: number
@@ -4260,6 +5785,7 @@ export namespace Prisma {
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
+    recipientBankCode?: string | null
     createdAt?: Date | string
     blockNumber: bigint | number
     chainId: number
@@ -4285,6 +5811,7 @@ export namespace Prisma {
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientBankCode?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
     chainId?: IntFieldUpdateOperationsInput | number
@@ -4312,6 +5839,7 @@ export namespace Prisma {
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientBankCode?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
     chainId?: IntFieldUpdateOperationsInput | number
@@ -4338,6 +5866,7 @@ export namespace Prisma {
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
+    recipientBankCode?: string | null
     createdAt?: Date | string
     blockNumber: bigint | number
     chainId: number
@@ -4363,6 +5892,7 @@ export namespace Prisma {
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientBankCode?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
     chainId?: IntFieldUpdateOperationsInput | number
@@ -4389,6 +5919,7 @@ export namespace Prisma {
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientBankCode?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
     chainId?: IntFieldUpdateOperationsInput | number
@@ -4479,12 +6010,22 @@ export namespace Prisma {
     none?: TransactionWhereInput
   }
 
+  export type SavedRecipientListRelationFilter = {
+    every?: SavedRecipientWhereInput
+    some?: SavedRecipientWhereInput
+    none?: SavedRecipientWhereInput
+  }
+
   export type SortOrderInput = {
     sort: SortOrder
     nulls?: NullsOrder
   }
 
   export type TransactionOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type SavedRecipientOrderByRelationAggregateInput = {
     _count?: SortOrder
   }
 
@@ -4647,6 +6188,77 @@ export namespace Prisma {
     _max?: NestedDateTimeNullableFilter<$PrismaModel>
   }
 
+  export type EnumRecipientTypeFilter<$PrismaModel = never> = {
+    equals?: $Enums.RecipientType | EnumRecipientTypeFieldRefInput<$PrismaModel>
+    in?: $Enums.RecipientType[] | ListEnumRecipientTypeFieldRefInput<$PrismaModel>
+    notIn?: $Enums.RecipientType[] | ListEnumRecipientTypeFieldRefInput<$PrismaModel>
+    not?: NestedEnumRecipientTypeFilter<$PrismaModel> | $Enums.RecipientType
+  }
+
+  export type UserScalarRelationFilter = {
+    is?: UserWhereInput
+    isNot?: UserWhereInput
+  }
+
+  export type SavedRecipientUserIdCurrencyInstitutionCodeAccountIdentifierCompoundUniqueInput = {
+    userId: string
+    currency: string
+    institutionCode: string
+    accountIdentifier: string
+  }
+
+  export type SavedRecipientCountOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    type?: SortOrder
+    currency?: SortOrder
+    institutionCode?: SortOrder
+    institutionName?: SortOrder
+    accountIdentifier?: SortOrder
+    accountName?: SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type SavedRecipientMaxOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    type?: SortOrder
+    currency?: SortOrder
+    institutionCode?: SortOrder
+    institutionName?: SortOrder
+    accountIdentifier?: SortOrder
+    accountName?: SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type SavedRecipientMinOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    type?: SortOrder
+    currency?: SortOrder
+    institutionCode?: SortOrder
+    institutionName?: SortOrder
+    accountIdentifier?: SortOrder
+    accountName?: SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type EnumRecipientTypeWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.RecipientType | EnumRecipientTypeFieldRefInput<$PrismaModel>
+    in?: $Enums.RecipientType[] | ListEnumRecipientTypeFieldRefInput<$PrismaModel>
+    notIn?: $Enums.RecipientType[] | ListEnumRecipientTypeFieldRefInput<$PrismaModel>
+    not?: NestedEnumRecipientTypeWithAggregatesFilter<$PrismaModel> | $Enums.RecipientType
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumRecipientTypeFilter<$PrismaModel>
+    _max?: NestedEnumRecipientTypeFilter<$PrismaModel>
+  }
+
   export type BigIntFilter<$PrismaModel = never> = {
     equals?: bigint | number | BigIntFieldRefInput<$PrismaModel>
     in?: bigint[] | number[] | ListBigIntFieldRefInput<$PrismaModel>
@@ -4677,11 +6289,6 @@ export namespace Prisma {
     in?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
     notIn?: $Enums.TransactionType[] | ListEnumTransactionTypeFieldRefInput<$PrismaModel>
     not?: NestedEnumTransactionTypeFilter<$PrismaModel> | $Enums.TransactionType
-  }
-
-  export type UserScalarRelationFilter = {
-    is?: UserWhereInput
-    isNot?: UserWhereInput
   }
 
   export type TransactionTxHashLogIndexCompoundUniqueInput = {
@@ -4721,6 +6328,7 @@ export namespace Prisma {
     recipientName?: SortOrder
     recipientBank?: SortOrder
     recipientAcc?: SortOrder
+    recipientBankCode?: SortOrder
     createdAt?: SortOrder
     blockNumber?: SortOrder
     chainId?: SortOrder
@@ -4756,6 +6364,7 @@ export namespace Prisma {
     recipientName?: SortOrder
     recipientBank?: SortOrder
     recipientAcc?: SortOrder
+    recipientBankCode?: SortOrder
     createdAt?: SortOrder
     blockNumber?: SortOrder
     chainId?: SortOrder
@@ -4782,6 +6391,7 @@ export namespace Prisma {
     recipientName?: SortOrder
     recipientBank?: SortOrder
     recipientAcc?: SortOrder
+    recipientBankCode?: SortOrder
     createdAt?: SortOrder
     blockNumber?: SortOrder
     chainId?: SortOrder
@@ -4854,11 +6464,25 @@ export namespace Prisma {
     connect?: TransactionWhereUniqueInput | TransactionWhereUniqueInput[]
   }
 
+  export type SavedRecipientCreateNestedManyWithoutUserInput = {
+    create?: XOR<SavedRecipientCreateWithoutUserInput, SavedRecipientUncheckedCreateWithoutUserInput> | SavedRecipientCreateWithoutUserInput[] | SavedRecipientUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: SavedRecipientCreateOrConnectWithoutUserInput | SavedRecipientCreateOrConnectWithoutUserInput[]
+    createMany?: SavedRecipientCreateManyUserInputEnvelope
+    connect?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+  }
+
   export type TransactionUncheckedCreateNestedManyWithoutUserInput = {
     create?: XOR<TransactionCreateWithoutUserInput, TransactionUncheckedCreateWithoutUserInput> | TransactionCreateWithoutUserInput[] | TransactionUncheckedCreateWithoutUserInput[]
     connectOrCreate?: TransactionCreateOrConnectWithoutUserInput | TransactionCreateOrConnectWithoutUserInput[]
     createMany?: TransactionCreateManyUserInputEnvelope
     connect?: TransactionWhereUniqueInput | TransactionWhereUniqueInput[]
+  }
+
+  export type SavedRecipientUncheckedCreateNestedManyWithoutUserInput = {
+    create?: XOR<SavedRecipientCreateWithoutUserInput, SavedRecipientUncheckedCreateWithoutUserInput> | SavedRecipientCreateWithoutUserInput[] | SavedRecipientUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: SavedRecipientCreateOrConnectWithoutUserInput | SavedRecipientCreateOrConnectWithoutUserInput[]
+    createMany?: SavedRecipientCreateManyUserInputEnvelope
+    connect?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
   }
 
   export type StringFieldUpdateOperationsInput = {
@@ -4907,6 +6531,20 @@ export namespace Prisma {
     deleteMany?: TransactionScalarWhereInput | TransactionScalarWhereInput[]
   }
 
+  export type SavedRecipientUpdateManyWithoutUserNestedInput = {
+    create?: XOR<SavedRecipientCreateWithoutUserInput, SavedRecipientUncheckedCreateWithoutUserInput> | SavedRecipientCreateWithoutUserInput[] | SavedRecipientUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: SavedRecipientCreateOrConnectWithoutUserInput | SavedRecipientCreateOrConnectWithoutUserInput[]
+    upsert?: SavedRecipientUpsertWithWhereUniqueWithoutUserInput | SavedRecipientUpsertWithWhereUniqueWithoutUserInput[]
+    createMany?: SavedRecipientCreateManyUserInputEnvelope
+    set?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+    disconnect?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+    delete?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+    connect?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+    update?: SavedRecipientUpdateWithWhereUniqueWithoutUserInput | SavedRecipientUpdateWithWhereUniqueWithoutUserInput[]
+    updateMany?: SavedRecipientUpdateManyWithWhereWithoutUserInput | SavedRecipientUpdateManyWithWhereWithoutUserInput[]
+    deleteMany?: SavedRecipientScalarWhereInput | SavedRecipientScalarWhereInput[]
+  }
+
   export type TransactionUncheckedUpdateManyWithoutUserNestedInput = {
     create?: XOR<TransactionCreateWithoutUserInput, TransactionUncheckedCreateWithoutUserInput> | TransactionCreateWithoutUserInput[] | TransactionUncheckedCreateWithoutUserInput[]
     connectOrCreate?: TransactionCreateOrConnectWithoutUserInput | TransactionCreateOrConnectWithoutUserInput[]
@@ -4919,6 +6557,38 @@ export namespace Prisma {
     update?: TransactionUpdateWithWhereUniqueWithoutUserInput | TransactionUpdateWithWhereUniqueWithoutUserInput[]
     updateMany?: TransactionUpdateManyWithWhereWithoutUserInput | TransactionUpdateManyWithWhereWithoutUserInput[]
     deleteMany?: TransactionScalarWhereInput | TransactionScalarWhereInput[]
+  }
+
+  export type SavedRecipientUncheckedUpdateManyWithoutUserNestedInput = {
+    create?: XOR<SavedRecipientCreateWithoutUserInput, SavedRecipientUncheckedCreateWithoutUserInput> | SavedRecipientCreateWithoutUserInput[] | SavedRecipientUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: SavedRecipientCreateOrConnectWithoutUserInput | SavedRecipientCreateOrConnectWithoutUserInput[]
+    upsert?: SavedRecipientUpsertWithWhereUniqueWithoutUserInput | SavedRecipientUpsertWithWhereUniqueWithoutUserInput[]
+    createMany?: SavedRecipientCreateManyUserInputEnvelope
+    set?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+    disconnect?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+    delete?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+    connect?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+    update?: SavedRecipientUpdateWithWhereUniqueWithoutUserInput | SavedRecipientUpdateWithWhereUniqueWithoutUserInput[]
+    updateMany?: SavedRecipientUpdateManyWithWhereWithoutUserInput | SavedRecipientUpdateManyWithWhereWithoutUserInput[]
+    deleteMany?: SavedRecipientScalarWhereInput | SavedRecipientScalarWhereInput[]
+  }
+
+  export type UserCreateNestedOneWithoutSavedRecipientsInput = {
+    create?: XOR<UserCreateWithoutSavedRecipientsInput, UserUncheckedCreateWithoutSavedRecipientsInput>
+    connectOrCreate?: UserCreateOrConnectWithoutSavedRecipientsInput
+    connect?: UserWhereUniqueInput
+  }
+
+  export type EnumRecipientTypeFieldUpdateOperationsInput = {
+    set?: $Enums.RecipientType
+  }
+
+  export type UserUpdateOneRequiredWithoutSavedRecipientsNestedInput = {
+    create?: XOR<UserCreateWithoutSavedRecipientsInput, UserUncheckedCreateWithoutSavedRecipientsInput>
+    connectOrCreate?: UserCreateOrConnectWithoutSavedRecipientsInput
+    upsert?: UserUpsertWithoutSavedRecipientsInput
+    connect?: UserWhereUniqueInput
+    update?: XOR<XOR<UserUpdateToOneWithWhereWithoutSavedRecipientsInput, UserUpdateWithoutSavedRecipientsInput>, UserUncheckedUpdateWithoutSavedRecipientsInput>
   }
 
   export type UserCreateNestedOneWithoutTransactionsInput = {
@@ -5143,6 +6813,23 @@ export namespace Prisma {
     _max?: NestedDateTimeNullableFilter<$PrismaModel>
   }
 
+  export type NestedEnumRecipientTypeFilter<$PrismaModel = never> = {
+    equals?: $Enums.RecipientType | EnumRecipientTypeFieldRefInput<$PrismaModel>
+    in?: $Enums.RecipientType[] | ListEnumRecipientTypeFieldRefInput<$PrismaModel>
+    notIn?: $Enums.RecipientType[] | ListEnumRecipientTypeFieldRefInput<$PrismaModel>
+    not?: NestedEnumRecipientTypeFilter<$PrismaModel> | $Enums.RecipientType
+  }
+
+  export type NestedEnumRecipientTypeWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: $Enums.RecipientType | EnumRecipientTypeFieldRefInput<$PrismaModel>
+    in?: $Enums.RecipientType[] | ListEnumRecipientTypeFieldRefInput<$PrismaModel>
+    notIn?: $Enums.RecipientType[] | ListEnumRecipientTypeFieldRefInput<$PrismaModel>
+    not?: NestedEnumRecipientTypeWithAggregatesFilter<$PrismaModel> | $Enums.RecipientType
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedEnumRecipientTypeFilter<$PrismaModel>
+    _max?: NestedEnumRecipientTypeFilter<$PrismaModel>
+  }
+
   export type NestedBigIntFilter<$PrismaModel = never> = {
     equals?: bigint | number | BigIntFieldRefInput<$PrismaModel>
     in?: bigint[] | number[] | ListBigIntFieldRefInput<$PrismaModel>
@@ -5236,6 +6923,7 @@ export namespace Prisma {
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
+    recipientBankCode?: string | null
     createdAt?: Date | string
     blockNumber: bigint | number
     chainId: number
@@ -5261,6 +6949,7 @@ export namespace Prisma {
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
+    recipientBankCode?: string | null
     createdAt?: Date | string
     blockNumber: bigint | number
     chainId: number
@@ -5278,6 +6967,42 @@ export namespace Prisma {
 
   export type TransactionCreateManyUserInputEnvelope = {
     data: TransactionCreateManyUserInput | TransactionCreateManyUserInput[]
+    skipDuplicates?: boolean
+  }
+
+  export type SavedRecipientCreateWithoutUserInput = {
+    id?: string
+    type?: $Enums.RecipientType
+    currency: string
+    institutionCode: string
+    institutionName: string
+    accountIdentifier: string
+    accountName: string
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SavedRecipientUncheckedCreateWithoutUserInput = {
+    id?: string
+    type?: $Enums.RecipientType
+    currency: string
+    institutionCode: string
+    institutionName: string
+    accountIdentifier: string
+    accountName: string
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SavedRecipientCreateOrConnectWithoutUserInput = {
+    where: SavedRecipientWhereUniqueInput
+    create: XOR<SavedRecipientCreateWithoutUserInput, SavedRecipientUncheckedCreateWithoutUserInput>
+  }
+
+  export type SavedRecipientCreateManyUserInputEnvelope = {
+    data: SavedRecipientCreateManyUserInput | SavedRecipientCreateManyUserInput[]
     skipDuplicates?: boolean
   }
 
@@ -5316,6 +7041,7 @@ export namespace Prisma {
     recipientName?: StringNullableFilter<"Transaction"> | string | null
     recipientBank?: StringNullableFilter<"Transaction"> | string | null
     recipientAcc?: StringNullableFilter<"Transaction"> | string | null
+    recipientBankCode?: StringNullableFilter<"Transaction"> | string | null
     createdAt?: DateTimeFilter<"Transaction"> | Date | string
     blockNumber?: BigIntFilter<"Transaction"> | bigint | number
     chainId?: IntFilter<"Transaction"> | number
@@ -5324,6 +7050,127 @@ export namespace Prisma {
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
     type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     refundTxHash?: StringNullableFilter<"Transaction"> | string | null
+  }
+
+  export type SavedRecipientUpsertWithWhereUniqueWithoutUserInput = {
+    where: SavedRecipientWhereUniqueInput
+    update: XOR<SavedRecipientUpdateWithoutUserInput, SavedRecipientUncheckedUpdateWithoutUserInput>
+    create: XOR<SavedRecipientCreateWithoutUserInput, SavedRecipientUncheckedCreateWithoutUserInput>
+  }
+
+  export type SavedRecipientUpdateWithWhereUniqueWithoutUserInput = {
+    where: SavedRecipientWhereUniqueInput
+    data: XOR<SavedRecipientUpdateWithoutUserInput, SavedRecipientUncheckedUpdateWithoutUserInput>
+  }
+
+  export type SavedRecipientUpdateManyWithWhereWithoutUserInput = {
+    where: SavedRecipientScalarWhereInput
+    data: XOR<SavedRecipientUpdateManyMutationInput, SavedRecipientUncheckedUpdateManyWithoutUserInput>
+  }
+
+  export type SavedRecipientScalarWhereInput = {
+    AND?: SavedRecipientScalarWhereInput | SavedRecipientScalarWhereInput[]
+    OR?: SavedRecipientScalarWhereInput[]
+    NOT?: SavedRecipientScalarWhereInput | SavedRecipientScalarWhereInput[]
+    id?: StringFilter<"SavedRecipient"> | string
+    userId?: StringFilter<"SavedRecipient"> | string
+    type?: EnumRecipientTypeFilter<"SavedRecipient"> | $Enums.RecipientType
+    currency?: StringFilter<"SavedRecipient"> | string
+    institutionCode?: StringFilter<"SavedRecipient"> | string
+    institutionName?: StringFilter<"SavedRecipient"> | string
+    accountIdentifier?: StringFilter<"SavedRecipient"> | string
+    accountName?: StringFilter<"SavedRecipient"> | string
+    lastUsedAt?: DateTimeFilter<"SavedRecipient"> | Date | string
+    createdAt?: DateTimeFilter<"SavedRecipient"> | Date | string
+    updatedAt?: DateTimeFilter<"SavedRecipient"> | Date | string
+  }
+
+  export type UserCreateWithoutSavedRecipientsInput = {
+    id?: string
+    privyDid: string
+    walletAddress?: string | null
+    stellarPublicKey?: string | null
+    fullName?: string | null
+    email?: string | null
+    avatarUrl?: string | null
+    totalSentUsd?: Decimal | DecimalJsLike | number | string
+    transactionCount?: number
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
+    transactions?: TransactionCreateNestedManyWithoutUserInput
+  }
+
+  export type UserUncheckedCreateWithoutSavedRecipientsInput = {
+    id?: string
+    privyDid: string
+    walletAddress?: string | null
+    stellarPublicKey?: string | null
+    fullName?: string | null
+    email?: string | null
+    avatarUrl?: string | null
+    totalSentUsd?: Decimal | DecimalJsLike | number | string
+    transactionCount?: number
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
+    transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
+  }
+
+  export type UserCreateOrConnectWithoutSavedRecipientsInput = {
+    where: UserWhereUniqueInput
+    create: XOR<UserCreateWithoutSavedRecipientsInput, UserUncheckedCreateWithoutSavedRecipientsInput>
+  }
+
+  export type UserUpsertWithoutSavedRecipientsInput = {
+    update: XOR<UserUpdateWithoutSavedRecipientsInput, UserUncheckedUpdateWithoutSavedRecipientsInput>
+    create: XOR<UserCreateWithoutSavedRecipientsInput, UserUncheckedCreateWithoutSavedRecipientsInput>
+    where?: UserWhereInput
+  }
+
+  export type UserUpdateToOneWithWhereWithoutSavedRecipientsInput = {
+    where?: UserWhereInput
+    data: XOR<UserUpdateWithoutSavedRecipientsInput, UserUncheckedUpdateWithoutSavedRecipientsInput>
+  }
+
+  export type UserUpdateWithoutSavedRecipientsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    privyDid?: StringFieldUpdateOperationsInput | string
+    walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
+    fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactionCount?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactions?: TransactionUpdateManyWithoutUserNestedInput
+  }
+
+  export type UserUncheckedUpdateWithoutSavedRecipientsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    privyDid?: StringFieldUpdateOperationsInput | string
+    walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
+    fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactionCount?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateWithoutTransactionsInput = {
@@ -5341,6 +7188,7 @@ export namespace Prisma {
     displayName?: string | null
     lastLoginAt?: Date | string | null
     walletBalance?: Decimal | DecimalJsLike | number | string
+    savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutTransactionsInput = {
@@ -5358,6 +7206,7 @@ export namespace Prisma {
     displayName?: string | null
     lastLoginAt?: Date | string | null
     walletBalance?: Decimal | DecimalJsLike | number | string
+    savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutTransactionsInput = {
@@ -5391,6 +7240,7 @@ export namespace Prisma {
     displayName?: NullableStringFieldUpdateOperationsInput | string | null
     lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutTransactionsInput = {
@@ -5408,6 +7258,7 @@ export namespace Prisma {
     displayName?: NullableStringFieldUpdateOperationsInput | string | null
     lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type TransactionCreateManyUserInput = {
@@ -5425,6 +7276,7 @@ export namespace Prisma {
     recipientName?: string | null
     recipientBank?: string | null
     recipientAcc?: string | null
+    recipientBankCode?: string | null
     createdAt?: Date | string
     blockNumber: bigint | number
     chainId: number
@@ -5433,6 +7285,19 @@ export namespace Prisma {
     updatedAt?: Date | string
     type?: $Enums.TransactionType
     refundTxHash?: string | null
+  }
+
+  export type SavedRecipientCreateManyUserInput = {
+    id?: string
+    type?: $Enums.RecipientType
+    currency: string
+    institutionCode: string
+    institutionName: string
+    accountIdentifier: string
+    accountName: string
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
   }
 
   export type TransactionUpdateWithoutUserInput = {
@@ -5450,6 +7315,7 @@ export namespace Prisma {
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientBankCode?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
     chainId?: IntFieldUpdateOperationsInput | number
@@ -5475,6 +7341,7 @@ export namespace Prisma {
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientBankCode?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
     chainId?: IntFieldUpdateOperationsInput | number
@@ -5500,6 +7367,7 @@ export namespace Prisma {
     recipientName?: NullableStringFieldUpdateOperationsInput | string | null
     recipientBank?: NullableStringFieldUpdateOperationsInput | string | null
     recipientAcc?: NullableStringFieldUpdateOperationsInput | string | null
+    recipientBankCode?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     blockNumber?: BigIntFieldUpdateOperationsInput | bigint | number
     chainId?: IntFieldUpdateOperationsInput | number
@@ -5508,6 +7376,45 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     refundTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type SavedRecipientUpdateWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    type?: EnumRecipientTypeFieldUpdateOperationsInput | $Enums.RecipientType
+    currency?: StringFieldUpdateOperationsInput | string
+    institutionCode?: StringFieldUpdateOperationsInput | string
+    institutionName?: StringFieldUpdateOperationsInput | string
+    accountIdentifier?: StringFieldUpdateOperationsInput | string
+    accountName?: StringFieldUpdateOperationsInput | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SavedRecipientUncheckedUpdateWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    type?: EnumRecipientTypeFieldUpdateOperationsInput | $Enums.RecipientType
+    currency?: StringFieldUpdateOperationsInput | string
+    institutionCode?: StringFieldUpdateOperationsInput | string
+    institutionName?: StringFieldUpdateOperationsInput | string
+    accountIdentifier?: StringFieldUpdateOperationsInput | string
+    accountName?: StringFieldUpdateOperationsInput | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SavedRecipientUncheckedUpdateManyWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    type?: EnumRecipientTypeFieldUpdateOperationsInput | $Enums.RecipientType
+    currency?: StringFieldUpdateOperationsInput | string
+    institutionCode?: StringFieldUpdateOperationsInput | string
+    institutionName?: StringFieldUpdateOperationsInput | string
+    accountIdentifier?: StringFieldUpdateOperationsInput | string
+    accountName?: StringFieldUpdateOperationsInput | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
 

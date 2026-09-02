@@ -553,78 +553,69 @@ export function ConfirmTransactionSheet({
 
   return (
     <>
-      <div className="fixed inset-0 z-[100] flex items-end">
+      <div className="fixed inset-0 z-[100] flex items-end justify-center">
         <div
           className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-300"
           onClick={!busy && status !== 'success' ? onClose : undefined}
         />
 
-        <div
-          className="relative flex flex-col items-center pb-12 pt-4 px-5 animate-in slide-in-from-bottom duration-300 bg-[#F8F9FB] rounded-t-[20px]"
-          style={{ width: '430px', height: '738px', margin: '0 auto' }}
-        >
-          <div className="flex justify-center mb-5">
-            <div className="w-12 h-1 bg-gray-300/30 rounded-full" />
+        <div className="relative flex max-h-[90dvh] w-full max-w-[430px] flex-col items-center overflow-y-auto rounded-t-[20px] bg-[#F8F9FB] px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4 animate-in slide-in-from-bottom duration-300">
+          <div className="mb-5 flex justify-center">
+            <div className="h-1 w-12 rounded-full bg-gray-300/30" />
           </div>
 
-          <div
-            className="bg-white rounded-[20px] overflow-hidden shadow-[0px_4px_25px_rgba(0,0,0,0.03)] border border-gray-100 flex flex-col relative mb-4"
-            style={{ width: '390px', height: '480px', paddingTop: '15px' }}
-          >
+          <div className="relative mb-4 flex w-full max-w-[390px] flex-col overflow-hidden rounded-[20px] border border-gray-100 bg-white pt-[15px] shadow-[0px_4px_25px_rgba(0,0,0,0.03)]">
             <button
               onClick={onClose}
               disabled={busy}
-              className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 disabled:opacity-30"
             >
               <X size={20} />
             </button>
 
-            <div className="text-center px-6 pb-4 border-b border-gray-200/60">
-              <h2 className="text-[18px] font-[600] text-[#1C1C1C] leading-none text-center">
+            <div className="border-b border-gray-200/60 px-6 pb-4 text-center">
+              <h2 className="text-center text-[18px] font-[600] leading-none text-[#1C1C1C]">
                 Confirm transaction
               </h2>
               {status === 'creating' && (
-                <p className="text-[12px] text-[#888888] mt-2 font-medium">
+                <p className="mt-2 text-[12px] font-medium text-[#888888]">
                   Preparing secure payout…
                 </p>
               )}
               {prefetchPhase === 'ready' && status === 'idle' && !displayError && (
-                <p className="text-[12px] text-[#2261FE] mt-2 font-medium">
+                <p className="mt-2 text-[12px] font-medium text-[#2261FE]">
                   Ready to send
                 </p>
               )}
               {status === 'granting' && (
-                <p className="text-[12px] text-[#888888] mt-2 font-medium">
+                <p className="mt-2 text-[12px] font-medium text-[#888888]">
                   Confirm once to allow payouts…
                 </p>
               )}
             </div>
 
-            <div className="flex flex-col flex-1 px-6">
-              <div className="flex flex-col items-center justify-center py-8 border-b border-gray-200/60">
-                <p className="text-[#4F4F4F] text-[14px] font-[500] leading-none mb-4">
+            <div className="flex flex-1 flex-col px-6">
+              <div className="flex flex-col items-center justify-center border-b border-gray-200/60 py-8">
+                <p className="mb-4 text-[14px] font-[500] leading-none text-[#4F4F4F]">
                   Total amount
                 </p>
-                <h1 className="text-[36px] font-[500] text-[#1C1C1C] leading-none text-center">
+                <h1 className="text-center text-[36px] font-[500] leading-none text-[#1C1C1C]">
                   ${sendAmount}
                 </h1>
               </div>
 
-              <div className="flex-1 flex flex-col items-center justify-center py-6 gap-6">
+              <div className="flex flex-1 flex-col items-center justify-center gap-6 py-6">
                 <DetailRow label="Recipient" value={accName} />
                 <DetailRow label="Account no" value={accNum} />
-                <div
-                  className="flex items-center justify-between"
-                  style={{ width: '350px', height: '17px' }}
-                >
-                  <span className="text-[#888888] text-[14px] font-[500] leading-none">
+                <div className="flex h-[17px] w-full max-w-[350px] items-center justify-between">
+                  <span className="text-[14px] font-[500] leading-none text-[#888888]">
                     Bank
                   </span>
                   <div className="flex items-center gap-2">
-                    <div className="w-[20px] h-[20px] rounded-full overflow-hidden flex items-center justify-center">
-                      <img src="/bank icon.svg" alt="Bank" className="w-[20px] h-[20px]" />
+                    <div className="flex h-[20px] w-[20px] items-center justify-center overflow-hidden rounded-full">
+                      <img src="/bank icon.svg" alt="Bank" className="h-[20px] w-[20px]" />
                     </div>
-                    <span className="text-[#3D3D3D] text-[14px] font-[500] leading-none truncate max-w-[150px]">
+                    <span className="max-w-[150px] truncate text-[14px] font-[500] leading-none text-[#3D3D3D]">
                       {bankName}
                     </span>
                   </div>
@@ -645,14 +636,14 @@ export function ConfirmTransactionSheet({
 
           {displayError && (
             <div
-              className={`w-[390px] mb-4 p-4 rounded-[12px] flex items-center gap-3 border ${
+              className={`mb-4 flex w-full max-w-[390px] items-center gap-3 rounded-[12px] border p-4 ${
                 displayError.includes('already prepared')
-                  ? 'bg-amber-50 border-amber-100'
-                  : 'bg-red-50 border-red-100'
+                  ? 'border-amber-100 bg-amber-50'
+                  : 'border-red-100 bg-red-50'
               }`}
             >
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
                   displayError.includes('already prepared')
                     ? 'bg-amber-100'
                     : 'bg-red-100'
@@ -679,23 +670,23 @@ export function ConfirmTransactionSheet({
             </div>
           )}
 
-          <div className="w-[390px] max-w-full space-y-4 mt-auto">
+          <div className="mt-auto w-full max-w-[390px] space-y-4">
             {isEmbeddedPrivy && !isDelegated && status === 'idle' && !displayError && (
-              <p className="text-center text-[12px] text-[#888888] font-medium px-2">
+              <p className="px-2 text-center text-[12px] font-medium text-[#888888]">
                 First send may ask you to confirm payouts for this app.
               </p>
             )}
             <button
               onClick={handleSend}
               disabled={sendDisabled}
-              className="w-full h-[65px] bg-[#2261FE] text-white rounded-[7px] text-[18px] font-bold shadow-lg shadow-[#2261FE]/20 active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
+              className="flex h-[65px] w-full items-center justify-center rounded-[7px] bg-[#2261FE] text-[18px] font-bold text-white shadow-lg shadow-[#2261FE]/20 transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {sendLabel}
             </button>
             <button
               onClick={onClose}
               disabled={busy}
-              className="w-full h-[65px] bg-white text-[#2261FE] border-2 border-[#2261FE]/10 rounded-[7px] text-[18px] font-bold active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
+              className="flex h-[65px] w-full items-center justify-center rounded-[7px] border-2 border-[#2261FE]/10 bg-white text-[18px] font-bold text-[#2261FE] transition-all active:scale-[0.98] disabled:opacity-50"
             >
               Edit details
             </button>
@@ -727,10 +718,7 @@ export function ConfirmTransactionSheet({
 
       {status === 'success' && (
         <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div
-            className="bg-white rounded-[20px] p-8 flex flex-col items-center relative shadow-[0px_4px_30px_rgba(0,0,0,0.05)] border border-gray-100 translate-y-[-20px]"
-            style={{ width: '392px', height: '449px' }}
-          >
+          <div className="relative flex w-full max-w-[392px] flex-col items-center rounded-[20px] border border-gray-100 bg-white p-8 shadow-[0px_4px_30px_rgba(0,0,0,0.05)] translate-y-[-20px]">
             <div className="w-full flex justify-between items-center mb-6">
               <h2 className="text-[22px] font-bold text-[#1C1C1C]">Success!</h2>
               <Link
@@ -783,10 +771,10 @@ function DetailRow({
   isHighlight?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between" style={{ width: '350px', height: '17px' }}>
-      <span className="text-[#888888] text-[14px] font-[500] leading-none">{label}</span>
+    <div className="flex h-auto min-h-[17px] w-full max-w-[350px] items-center justify-between gap-3">
+      <span className="shrink-0 text-[14px] font-[500] leading-none text-[#888888]">{label}</span>
       <span
-        className={`text-[#3D3D3D] text-[14px] font-[500] leading-none truncate ml-4 ${isHighlight ? 'text-[#2261FE] font-bold' : ''}`}
+        className={`truncate text-right text-[14px] font-[500] leading-none text-[#3D3D3D] ${isHighlight ? 'font-bold text-[#2261FE]' : ''}`}
       >
         {value}
       </span>

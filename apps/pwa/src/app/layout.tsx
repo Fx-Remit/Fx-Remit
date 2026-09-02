@@ -26,9 +26,11 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: 'cover',
 };
 
 import { Providers } from '@/components/Providers';
+import { AppShell } from '@/components/layout/AppShell';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -40,11 +42,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body style={{ fontFamily: "'Inter', sans-serif" }}>
+      <body
+        className="bg-[#f8fafd] text-foreground"
+        style={{ fontFamily: "'Inter', sans-serif" }}
+      >
         <Providers>
-          <div className="max-w-[430px] mx-auto min-h-screen relative overflow-hidden bg-white">
-            {children}
-          </div>
+          <AppShell>{children}</AppShell>
         </Providers>
       </body>
     </html>

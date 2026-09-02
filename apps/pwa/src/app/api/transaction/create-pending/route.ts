@@ -9,6 +9,7 @@ import {
   QuoteUnavailableError,
   mintAbandonToken,
   InsufficientBalanceError,
+  RecipientService,
 } from '@fx-remit/services';
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,8 @@ const createPendingSchema = z.object({
   recipientAcc: z.string().trim().min(1, "recipientAcc is required"),
   token: z.string().trim().min(1, "token is required"),
   bankCode: z.string().optional(),
+  /** bank | mobile — stored on SavedRecipient after successful Paycrest create */
+  recipientType: z.enum(['bank', 'mobile', 'BANK', 'MOBILE']).optional(),
   externalId: z.string().optional(),
 });
 
@@ -141,6 +144,7 @@ export async function POST(req: Request) {
       destinationCurrency,
       token: sourceToken,
       bankCode,
+      recipientType,
       externalId: frontendId,
     } = validationResult.data;
 
@@ -231,6 +235,7 @@ export async function POST(req: Request) {
         recipientName,
         recipientBank,
         recipientAcc,
+        recipientBankCode: bankCode?.trim() || null,
       });
     } catch (err) {
       const code = errorCode(err);
@@ -412,6 +417,21 @@ export async function POST(req: Request) {
     }
 
     const { settlement } = paycrestResp;
+
+    // Address book: save after a fundable Paycrest order exists (verified + reserved).
+    if (bankCode?.trim()) {
+      await RecipientService.upsert({
+        userId: user.id,
+        type: recipientType || 'BANK',
+        currency: (destinationCurrency || 'NGN').toUpperCase(),
+        institutionCode: bankCode,
+        institutionName: recipientBank,
+        accountIdentifier: recipientAcc,
+        accountName: recipientName,
+      }).catch((e) =>
+        console.error('[CREATE_PENDING] SavedRecipient upsert failed:', e),
+      );
+    }
 
     return NextResponse.json({
       success: true,

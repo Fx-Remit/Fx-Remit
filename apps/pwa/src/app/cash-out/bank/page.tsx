@@ -80,6 +80,39 @@ export default function BankCashOutPage() {
     retry: 1,
   });
 
+  type SavedRecipientRow = {
+    id: string;
+    type: 'BANK' | 'MOBILE';
+    currency: string;
+    institutionCode: string;
+    institutionName: string;
+    accountIdentifier: string;
+    accountName: string;
+  };
+
+  const { data: recipientsData, isLoading: isLoadingRecipients } = useQuery({
+    queryKey: ['saved-recipients', currency, paymentType],
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      const params = new URLSearchParams({
+        currency,
+        type: paymentType === 'mobile' ? 'MOBILE' : 'BANK',
+      });
+      const res = await fetch(`/api/user/recipients?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load saved accounts');
+      }
+      return (data.recipients || []) as SavedRecipientRow[];
+    },
+    enabled: isPaymentMethodSheetOpen && !!authenticated && !!currency,
+    staleTime: 15_000,
+  });
+
+  const savedRecipients = recipientsData || [];
+
   const tokenBalances = aggregateTokenBalancesUsd(balanceData?.perChain);
 
   // Default to the settlement token with the highest live balance (once).
@@ -145,6 +178,39 @@ export default function BankCashOutPage() {
   const belowMinimum = hasSendAmount && sendUsd < MIN_SEND_USD;
   const canChoosePayment = !comingSoon && hasSendAmount && !belowMinimum;
 
+  const buildCashOutParams = () =>
+    new URLSearchParams({
+      type: paymentType,
+      send: sendAmount || '0',
+      receive: receiveAmount || '0',
+      token: token,
+      currency: currency || 'NGN',
+      rate: rate?.toString() || '0',
+      wholesaleRate: !comingSoon ? quote?.wholesale_rate?.toString() || '0' : '0',
+      spread: !comingSoon ? quote?.spread_bps?.toString() || '75' : '75',
+    });
+
+  const goToAddAccount = () => {
+    setIsPaymentMethodSheetOpen(false);
+    router.push(`/cash-out/bank/add?${buildCashOutParams().toString()}`);
+  };
+
+  const selectSavedRecipient = (row: SavedRecipientRow) => {
+    setIsPaymentMethodSheetOpen(false);
+    const params = buildCashOutParams();
+    params.set('accNum', row.accountIdentifier);
+    params.set('accName', row.accountName);
+    params.set('bank', row.institutionName);
+    params.set('bankCode', row.institutionCode);
+    params.set(
+      'idempotencyKey',
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `idk_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    );
+    router.push(`/cash-out/bank/confirm?${params.toString()}`);
+  };
+
   return (
     <div className="min-h-screen bg-[#FDFDFD] flex flex-col">
       {/* Header */}
@@ -163,8 +229,7 @@ export default function BankCashOutPage() {
       <div className="flex-1 flex flex-col items-center pt-8 overflow-y-auto w-full px-[20px]">
         {/* Exchange Card */}
         <div
-          className="bg-white rounded-[15px] p-6 shadow-[0px_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 mb-8 flex flex-col justify-between w-full max-w-[390px]"
-          style={{ height: '359px' }}
+          className="bg-white rounded-[15px] p-6 shadow-[0px_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 mb-8 flex flex-col justify-between w-full max-w-[390px] min-h-[280px] sm:min-h-[320px]"
         >
           <div className="flex-1 flex flex-col justify-between py-2">
             {/* You Send */}
@@ -388,11 +453,10 @@ export default function BankCashOutPage() {
       <SelectionSheet
         isOpen={isPaymentMethodSheetOpen}
         onClose={() => setIsPaymentMethodSheetOpen(false)}
-        title="Add payment method"
+        title={savedRecipients.length > 0 ? 'Choose payment method' : 'Add payment method'}
       >
         <div className="px-6 flex flex-col items-center">
-          {/* Tabs */}
-          <div className="flex gap-2 w-full mb-8">
+          <div className="flex gap-2 w-full mb-6">
             <button
               onClick={() => setPaymentType('bank')}
               className={`flex-1 py-3 px-4 rounded-full text-[14px] font-bold transition-all duration-200 border ${
@@ -415,41 +479,50 @@ export default function BankCashOutPage() {
             </button>
           </div>
 
-          {/* Empty State Illustration */}
-          <div className="flex flex-col items-center justify-center py-6 w-full">
-            <img
-              src="/non added.svg"
-              alt="No payment methods"
-              className="w-[240px] h-auto mb-6 opacity-90"
-            />
-            <p className="text-[#888888] text-[16px] font-medium text-center">
-              No payment method added yet
-            </p>
-          </div>
+          {isLoadingRecipients ? (
+            <p className="py-10 text-[15px] font-medium text-[#888888]">Loading accounts…</p>
+          ) : savedRecipients.length === 0 ? (
+            <div className="flex w-full flex-col items-center justify-center py-6">
+              <img
+                src="/non added.svg"
+                alt="No payment methods"
+                className="mb-6 h-auto w-[240px] max-w-full opacity-90"
+              />
+              <p className="text-center text-[16px] font-medium text-[#888888]">
+                No payment method added yet
+              </p>
+            </div>
+          ) : (
+            <div className="mb-4 max-h-[40dvh] w-full space-y-2 overflow-y-auto">
+              {savedRecipients.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => selectSavedRecipient(row)}
+                  className="flex w-full items-center gap-3 rounded-[16px] border border-gray-100 bg-[#F8FBFF] px-4 py-3 text-left transition-colors active:bg-[#E1EFFF]"
+                >
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#E1EFFF] text-[14px] font-bold text-[#2261FE]">
+                    {row.institutionName.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-bold text-[#1C1C1C]">
+                      {row.accountName}
+                    </p>
+                    <p className="truncate text-[13px] font-medium text-[#888888]">
+                      {row.institutionName} · ···{row.accountIdentifier.slice(-4)}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
 
-          {/* Add Account Button */}
           <button
-            onClick={() => {
-              setIsPaymentMethodSheetOpen(false);
-              const params = new URLSearchParams({
-                type: paymentType,
-                send: sendAmount || '0',
-                receive: receiveAmount || '0',
-                token: token,
-                currency: currency || 'Choose currency',
-                rate: rate?.toString() || '0',
-                wholesaleRate: !comingSoon
-                  ? quote?.wholesale_rate?.toString() || '0'
-                  : '0',
-                spread: !comingSoon
-                  ? quote?.spread_bps?.toString() || '75'
-                  : '75',
-              });
-              router.push(`/cash-out/bank/add?${params.toString()}`);
-            }}
-            className="w-full mt-6 py-4 bg-[#E1EFFF] text-[#2261FE] rounded-full text-[16px] font-bold flex items-center justify-center gap-2 hover:bg-[#D1E5FF] transition-colors border border-[#2261FE]/10"
+            type="button"
+            onClick={goToAddAccount}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-full border border-[#2261FE]/10 bg-[#E1EFFF] py-4 text-[16px] font-bold text-[#2261FE] transition-colors hover:bg-[#D1E5FF]"
           >
-            Add account <Plus size={20} />
+            {savedRecipients.length > 0 ? 'Add another' : 'Add account'} <Plus size={20} />
           </button>
         </div>
       </SelectionSheet>
@@ -472,7 +545,7 @@ function SelectionSheet({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end">
+    <div className="fixed inset-0 z-[100] flex items-end justify-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40 animate-in fade-in duration-300"
@@ -480,7 +553,7 @@ function SelectionSheet({
       />
 
       {/* Sheet */}
-      <div className="relative w-full max-w-[430px] mx-auto bg-white rounded-t-[40px] pt-4 pb-10 shadow-2xl animate-in slide-in-from-bottom duration-300">
+      <div className="relative w-full max-w-[430px] bg-white rounded-t-[40px] pt-4 pb-[max(2.5rem,env(safe-area-inset-bottom))] shadow-2xl animate-in slide-in-from-bottom duration-300">
         <div className="flex justify-center mb-6">
           <div className="w-12 h-1 bg-gray-200 rounded-full" />
         </div>

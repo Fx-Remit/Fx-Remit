@@ -67,6 +67,7 @@ const TRANSACTION_API_SELECT = {
   recipientName: true,
   recipientBank: true,
   recipientAcc: true,
+  recipientBankCode: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -109,6 +110,7 @@ export interface TransactionResponse {
   recipientName: string | null;
   recipientBank: string | null;
   recipientAcc: string | null;
+  recipientBankCode: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -136,6 +138,7 @@ export class TransactionService {
       recipientName: tx.recipientName,
       recipientBank: tx.recipientBank,
       recipientAcc: tx.recipientAcc,
+      recipientBankCode: tx.recipientBankCode,
       createdAt: tx.createdAt.toISOString(),
       updatedAt: tx.updatedAt.toISOString(),
     };
@@ -212,7 +215,12 @@ export class TransactionService {
         OFFSET ${skip}
       `;
 
-      return rows.map((row) => TransactionService.serialize(row));
+      return rows.map((row) =>
+        TransactionService.serialize({
+          ...row,
+          recipientBankCode: null,
+        }),
+      );
     }
   }
 
@@ -1642,6 +1650,7 @@ export class TransactionService {
     recipientName: string;
     recipientBank: string;
     recipientAcc: string;
+    recipientBankCode?: string | null;
   }): Promise<TransactionApiRow> {
     const amount = new Prisma.Decimal(data.amountUsd);
     const payoutFiat = new Prisma.Decimal(data.payoutFiat);
@@ -1697,6 +1706,7 @@ export class TransactionService {
               recipientName: data.recipientName,
               recipientBank: data.recipientBank,
               recipientAcc: data.recipientAcc,
+              recipientBankCode: data.recipientBankCode?.trim() || null,
               txHash: `pending-${data.externalId}`,
               chainId: 0,
               // Avoid @@unique([chainId, blockNumber, logIndex]) collisions on (0,0,0)
@@ -1743,6 +1753,7 @@ export class TransactionService {
           recipientName: data.recipientName,
           recipientBank: data.recipientBank,
           recipientAcc: data.recipientAcc,
+          recipientBankCode: data.recipientBankCode?.trim() || null,
           status: "PENDING",
           type: "REMITTANCE",
           txHash: `pending-${data.externalId}`,
