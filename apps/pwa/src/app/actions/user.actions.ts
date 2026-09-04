@@ -41,22 +41,3 @@ export async function getMe(privyDid: string) {
     return null;
   }
 }
-
-export async function updateProfile(
-  privyDid: string,
-  data: { fullName?: string; displayName?: string; avatarUrl?: string },
-) {
-  if (!privyDid) return null;
-
-  try {
-    const user = await prisma.user.update({
-      where: { privyDid },
-      data,
-    });
-
-    return serializeUser(user);
-  } catch (error) {
-    console.error('updateProfile error:', error);
-    return null;
-  }
-}
