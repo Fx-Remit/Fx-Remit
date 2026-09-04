@@ -19,20 +19,6 @@ const TOKENS = [
     icon: '/usdc.svg',
     requiresNetwork: true,
   },
-  {
-    id: 'cusd',
-    symbol: 'cUSD',
-    name: 'Celo USD',
-    icon: '/cusd.svg',
-    requiresNetwork: false,
-  },
-  {
-    id: 'celo',
-    symbol: 'Celo',
-    name: 'Celo Network',
-    icon: '/celo.svg',
-    requiresNetwork: false,
-  },
 ];
 
 const NETWORKS = [

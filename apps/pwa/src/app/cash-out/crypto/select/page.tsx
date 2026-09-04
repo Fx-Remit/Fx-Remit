@@ -14,16 +14,6 @@ const TOKENS = [
     name: 'USD Coin',
     icon: '/usdc.svg',
   },
-  {
-    symbol: 'cUSD',
-    name: 'Celo Dollar',
-    icon: '/cusd.svg',
-  },
-  {
-    symbol: 'CELO',
-    name: 'Celo Native',
-    icon: '/celo.svg',
-  },
 ];
 
 export default function TokenSelectionPage() {
