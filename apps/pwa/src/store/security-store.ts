@@ -55,6 +55,8 @@ export const useSecurityStore = create<SecurityState>()(
           isSecurityEnabled: false,
           isBiometricEnabled: false,
           hashedPin: null,
+          pinSalt: null,
+          biometricCredentialId: null,
           failedAttempts: 0,
           isLocked: false,
         }),
