@@ -10,6 +10,7 @@ import { useUserStore } from '@/store/user-store';
 import { parseUnits, encodeFunctionData, isAddress } from 'viem';
 import { postCancelPending } from '@/lib/cash-out/create-pending-client';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
+import { tokenBalanceForChain } from '@/lib/cash-out/token-balances';
 
 const NETWORK_DATA: Record<string, { name: string; icon: string; chainId: number; hex: string }> = {
   celo: { name: 'Celo Mainnet', icon: '/cel2.svg', chainId: 42220, hex: '0xa4ec' },
@@ -115,6 +116,16 @@ function CryptoCashOutContent() {
       ?.walletBalance,
   });
   const availableBalance = spendable.amount;
+
+  // Real on-chain holding of the specific token+network selected — this is
+  // what actually bounds the send (a real eth_sendTransaction from the
+  // user's own wallet), separate from the ledger's spendable USD total.
+  const liveTokenBalance = tokenBalanceForChain(
+    balanceData?.perChain,
+    NETWORK_DATA[network].chainId,
+    token,
+  );
+  const liveTokenBalanceLabel = liveTokenBalance.toFixed(2);
 
   type SavedAddressRow = { id: string; network: string; address: string; label: string | null };
 
@@ -232,6 +243,12 @@ function CryptoCashOutContent() {
       const requestedUsd = Number(amount);
       if (!Number.isFinite(requestedUsd) || requestedUsd <= 0) {
         throw new Error('Enter a valid amount');
+      }
+
+      if (requestedUsd > liveTokenBalance) {
+        throw new Error(
+          `You don't have enough ${token} on ${NETWORK_DATA[network]?.name || network} in your wallet.`,
+        );
       }
 
       // If the form amount changed since the last reserve, abandon the old row first.
@@ -510,6 +527,19 @@ function CryptoCashOutContent() {
               Available: ${availableBalance}
               {!spendable.ready ? ' (syncing…)' : ''}
             </p>
+            {!tokenUnsupported && balanceData && (
+              <p
+                style={{
+                  fontWeight: 500,
+                  fontSize: '12px',
+                  color: liveTokenBalance > 0 ? '#888888' : '#E11D48',
+                  lineHeight: '100%',
+                }}
+                className="mt-1 font-medium"
+              >
+                You hold ${liveTokenBalanceLabel} {token} on {NETWORK_DATA[network]?.name}
+              </p>
+            )}
           </div>
         </div>
 
@@ -595,7 +625,8 @@ function CryptoCashOutContent() {
                 !walletAddress ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
-                parseFloat(amount) > parseFloat(availableBalance))
+                parseFloat(amount) > parseFloat(availableBalance) ||
+                parseFloat(amount) > liveTokenBalance)
           }
           onClick={() => {
             if (syncRetryAvailable) {

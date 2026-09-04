@@ -53,3 +53,14 @@ export function pickHighestBalanceToken(
   if (best != null && bestAmt > 0) return best;
   return fallback;
 }
+
+export function tokenBalanceForChain(
+  perChain: LivePerChain[] | null | undefined,
+  chainId: number,
+  symbol: string,
+): number {
+  const chain = perChain?.find((c) => c.chainId === chainId);
+  const upper = symbol.toUpperCase();
+  const amt = chain?.tokens?.find((t) => (t.symbol || '').toUpperCase() === upper)?.balanceUsd;
+  return typeof amt === 'number' && Number.isFinite(amt) ? amt : 0;
+}

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   aggregateTokenBalancesUsd,
   pickHighestBalanceToken,
+  tokenBalanceForChain,
   BANK_SETTLEMENT_TOKENS,
 } from './token-balances';
 
@@ -70,5 +71,39 @@ describe('pickHighestBalanceToken', () => {
       BANK_SETTLEMENT_TOKENS,
     );
     assert.equal(token, 'USDC');
+  });
+});
+
+describe('tokenBalanceForChain', () => {
+  const perChain = [
+    {
+      chainId: 8453,
+      totalUsd: 10,
+      tokens: [{ symbol: 'USDC', balanceUsd: 7 }],
+    },
+    {
+      chainId: 42220,
+      totalUsd: 5,
+      tokens: [{ symbol: 'USDC', balanceUsd: 5 }],
+    },
+  ];
+
+  it('returns the balance for the specific chain, not summed across chains', () => {
+    assert.equal(tokenBalanceForChain(perChain, 8453, 'USDC'), 7);
+    assert.equal(tokenBalanceForChain(perChain, 42220, 'USDC'), 5);
+  });
+
+  it('is case-insensitive on the symbol', () => {
+    assert.equal(tokenBalanceForChain(perChain, 8453, 'usdc'), 7);
+  });
+
+  it('returns 0 for a token not held on that chain', () => {
+    assert.equal(tokenBalanceForChain(perChain, 8453, 'USDT'), 0);
+  });
+
+  it('returns 0 for an unknown chain or missing data', () => {
+    assert.equal(tokenBalanceForChain(perChain, 1, 'USDC'), 0);
+    assert.equal(tokenBalanceForChain(null, 8453, 'USDC'), 0);
+    assert.equal(tokenBalanceForChain(undefined, 8453, 'USDC'), 0);
   });
 });
