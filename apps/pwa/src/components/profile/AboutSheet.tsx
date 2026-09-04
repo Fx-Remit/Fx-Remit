@@ -33,17 +33,18 @@ export function AboutSheet({ isOpen, onClose }: AboutSheetProps) {
         </div>
 
         <div className="bg-white rounded-[24px] overflow-hidden border border-gray-100 shadow-[0px_4px_25px_rgba(0,0,0,0.02)] divide-y divide-gray-50 mb-4">
-          <div className="w-full flex items-center gap-4 p-5">
+          <a
+            href="mailto:team@fx-remit.xyz"
+            className="w-full flex items-center gap-4 p-5 hover:bg-gray-50 transition-colors"
+          >
             <div className="w-10 h-10 rounded-full bg-[#f8fafd] flex items-center justify-center text-[#2261FE] shrink-0">
               <Mail size={20} />
             </div>
             <div className="flex flex-col text-left">
               <span className="text-[17px] font-bold text-[#1C1C1C]">Contact Support</span>
-              <span className="text-[13px] text-[#6D6D6D] font-medium">
-                Support channel coming soon
-              </span>
+              <span className="text-[13px] text-[#6D6D6D] font-medium">team@fx-remit.xyz</span>
             </div>
-          </div>
+          </a>
         </div>
 
         <div className="bg-white rounded-[24px] p-5 border border-gray-100 shadow-[0px_4px_25px_rgba(0,0,0,0.02)] space-y-4">
