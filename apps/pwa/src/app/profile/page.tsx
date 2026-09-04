@@ -1,25 +1,26 @@
 'use client';
 
 import {
-  ChevronRight,
   ShieldCheck,
   HelpCircle,
   LogOut,
   Settings,
-  Edit2,
   Lock,
   Fingerprint,
   ArrowRight,
+  Calendar,
+  ChevronRight,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useSecurityStore } from '@/store/security-store';
-import { hashPin, generateSalt, registerBiometrics, isBiometricSupported } from '@/lib/security';
+import { isBiometricSupported } from '@/lib/security';
 import { SecuritySetup } from '@/components/security/SecuritySetup';
 import { BottomNav } from '@/components/layout/BottomNav';
+import { MenuRow } from '@/components/profile/MenuRow';
+import { AboutSheet } from '@/components/profile/AboutSheet';
 
 export default function ProfilePage() {
   const { logout, exportWallet, user: privyUser } = usePrivy();
@@ -36,6 +37,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const [isBioSupported, setIsBioSupported] = React.useState(false);
   const [showSetup, setShowSetup] = React.useState(false);
+  const [showAbout, setShowAbout] = React.useState(false);
 
   React.useEffect(() => {
     isBiometricSupported().then(setIsBioSupported);
@@ -62,6 +64,9 @@ export default function ProfilePage() {
   const displayName = dbUser?.displayName || dbUser?.fullName || 'User';
   const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${dbUser?.id}&backgroundColor=b6e3f4`;
   const emailOrWallet = dbUser?.email || (dbUser?.walletAddress ? `${dbUser.walletAddress.slice(0, 6)}...${dbUser.walletAddress.slice(-4)}` : '');
+  const memberSince = dbUser?.createdAt
+    ? new Date(dbUser.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    : '—';
 
   // Only Privy embedded wallet users can export — MetaMask users own their own keys
   const hasEmbeddedWallet = privyUser?.linkedAccounts?.some(
@@ -75,13 +80,16 @@ export default function ProfilePage() {
         <div className="pt-16 px-6 pb-8 flex flex-col items-center">
           <div className="w-full flex justify-between items-center mb-8">
             <h1 className="text-[20px] font-bold text-[#1C1C1C]">Profile</h1>
-            <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <button
+              onClick={() => setShowAbout(true)}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
               <Settings size={22} className="text-[#1C1C1C]" />
             </button>
           </div>
 
           {/* User Info Card */}
-          <div className="w-full flex items-center justify-between bg-white rounded-[24px] p-5 shadow-[0px_4px_25px_rgba(0,0,0,0.02)] border border-gray-100">
+          <div className="w-full flex items-center bg-white rounded-[24px] p-5 shadow-[0px_4px_25px_rgba(0,0,0,0.02)] border border-gray-100">
             <div className="flex items-center gap-4">
               {/* Avatar */}
               <div className="w-[64px] h-[64px] rounded-full overflow-hidden border-2 border-white shadow-sm bg-[#E0E7FF]">
@@ -96,9 +104,6 @@ export default function ProfilePage() {
                 </p>
               </div>
             </div>
-            <button className="w-10 h-10 flex items-center justify-center bg-[#F8FAFD] rounded-full text-[#1C1C1C] active:scale-95 transition-all">
-              <Edit2 size={18} />
-            </button>
           </div>
         </div>
 
@@ -113,6 +118,7 @@ export default function ProfilePage() {
               <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">
                 ${dbUser?.totalSentUsd?.toString() || '0.00'}
               </h3>
+              <p className="text-[11px] text-[#6D6D6D] font-medium mt-0.5">Total Sent</p>
             </div>
 
             {/* Total Transactions */}
@@ -127,14 +133,18 @@ export default function ProfilePage() {
               <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">
                 {dbUser?.transactionCount || 0}
               </h3>
+              <p className="text-[11px] text-[#6D6D6D] font-medium mt-0.5">Transactions</p>
             </div>
 
-            {/* Fees Paid */}
+            {/* Member Since */}
             <div className="flex-1 bg-white rounded-[20px] p-4 border border-gray-100 shadow-[0px_4px_15px_rgba(0,0,0,0.01)] flex flex-col items-center text-center">
-              <div className="w-[45px] h-[45px] mb-3 flex items-center justify-center">
-                <img src="/fees.svg" alt="" className="w-full h-full object-contain" />
+              <div className="w-[45px] h-[45px] mb-3 flex items-center justify-center rounded-full bg-[#F8FAFD] text-[#2261FE]">
+                <Calendar size={20} />
               </div>
-              <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">$0.00</h3>
+              <h3 className="text-[#1C1C1C] text-[16px] font-bold leading-tight">
+                {memberSince}
+              </h3>
+              <p className="text-[11px] text-[#6D6D6D] font-medium mt-0.5">Member Since</p>
             </div>
           </div>
         </div>
@@ -146,21 +156,17 @@ export default function ProfilePage() {
           </h3>
 
           <div className="bg-white rounded-[24px] overflow-hidden border border-gray-100 shadow-[0px_4px_25px_rgba(0,0,0,0.02)]">
-            <button 
+            <MenuRow
               onClick={isSecurityEnabled ? undefined : handleSetupSecurity}
-              className="w-full text-left outline-none"
-            >
-              <MenuButton
-                icon={<ShieldCheck size={20} className={isSecurityEnabled ? "text-green-500" : "text-[#10B981]"} />}
-                label={isSecurityEnabled ? "Security Active" : "Setup App Lock"}
-                subLabel={isSecurityEnabled ? "Protection is running" : "Set a 6-digit PIN"}
-              />
-            </button>
+              icon={<ShieldCheck size={20} className={isSecurityEnabled ? "text-green-500" : "text-[#10B981]"} />}
+              label={isSecurityEnabled ? "Security Active" : "Setup App Lock"}
+              subLabel={isSecurityEnabled ? "Protection is running" : "Set a 6-digit PIN"}
+            />
             <div className="h-[1px] bg-gray-50 mx-5" />
 
             {isSecurityEnabled && (
               <>
-                <button 
+                <MenuRow
                   onClick={() => {
                     if (!isBiometricEnabled) {
                       // Can't enable biometrics without going through setup
@@ -169,50 +175,43 @@ export default function ProfilePage() {
                       setBiometricEnabled(false);
                     }
                   }}
-                  className="w-full text-left outline-none"
-                >
-                  <MenuButton
-                    icon={<Fingerprint size={20} className={isBiometricEnabled ? "text-blue-500" : "text-gray-400"} />}
-                    label="FaceID / TouchID"
-                    subLabel={isBiometricEnabled ? "Enabled" : "Disabled"}
-                  />
-                </button>
+                  icon={<Fingerprint size={20} className={isBiometricEnabled ? "text-blue-500" : "text-gray-400"} />}
+                  label="FaceID / TouchID"
+                  subLabel={isBiometricEnabled ? "Enabled" : "Disabled"}
+                />
                 <div className="h-[1px] bg-gray-50 mx-5" />
-                <button 
+                <MenuRow
                   onClick={() => {
                     if (window.confirm('Remove App Lock? This will disable your PIN and biometric protection.')) {
                       clearSecurity();
                     }
                   }}
-                  className="w-full text-left outline-none"
-                >
-                  <MenuButton
-                    icon={<Lock size={20} className="text-red-400" />}
-                    label="Remove App Lock"
-                    subLabel="Disable all security"
-                  />
-                </button>
+                  icon={<Lock size={20} />}
+                  label="Remove App Lock"
+                  subLabel="Disable all security"
+                  tone="danger"
+                />
                 <div className="h-[1px] bg-gray-50 mx-5" />
               </>
             )}
 
             {hasEmbeddedWallet && (
               <>
-                <button onClick={handleExportWallet} className="w-full text-left outline-none">
-                  <MenuButton
-                    icon={<ArrowRight size={20} className="text-orange-500" />}
-                    label="Export Private Key"
-                    subLabel="Securely backup your wallet"
-                  />
-                </button>
+                <MenuRow
+                  onClick={handleExportWallet}
+                  icon={<ArrowRight size={20} className="text-orange-500" />}
+                  label="Export Private Key"
+                  subLabel="Securely backup your wallet"
+                />
                 <div className="h-[1px] bg-gray-50 mx-5" />
               </>
             )}
-            
-            <MenuButton
+
+            <MenuRow
+              onClick={() => setShowAbout(true)}
               icon={<HelpCircle size={20} className="text-[#2261FE]" />}
               label="Contact Support"
-              subLabel="Help Center & Chat"
+              subLabel="Help Center & Legal"
             />
           </div>
 
@@ -259,36 +258,8 @@ export default function ProfilePage() {
           userName={dbUser?.displayName || 'User'}
         />
       )}
-    </div>
-  );
-}
 
-function MenuButton({
-  icon,
-  label,
-  subLabel,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  subLabel: string;
-}) {
-  return (
-    <button className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors group">
-      <div className="flex items-center gap-4">
-        <div className="w-10 h-10 rounded-full bg-[#f8fafd] flex items-center justify-center text-[#1C1C1C] group-hover:scale-110 transition-transform">
-          {icon}
-        </div>
-        <div className="flex flex-col text-left">
-          <span className="text-[17px] font-bold text-[#1C1C1C]">{label}</span>
-          <span className="text-[13px] text-[#6D6D6D] font-medium whitespace-nowrap">
-            {subLabel}
-          </span>
-        </div>
-      </div>
-      <ChevronRight
-        size={18}
-        className="text-gray-300 group-hover:text-[#1C1C1C] transition-colors"
-      />
-    </button>
+      <AboutSheet isOpen={showAbout} onClose={() => setShowAbout(false)} />
+    </div>
   );
 }
