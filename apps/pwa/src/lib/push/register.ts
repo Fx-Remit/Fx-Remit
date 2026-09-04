@@ -72,3 +72,50 @@ export async function subscribeToWebPush(getAccessToken: () => Promise<string | 
 
   return { ok: true };
 }
+
+/** Client-side truth for whether this device is subscribed no server round trip needed. */
+export async function getPushSubscriptionStatus(): Promise<
+  'unsupported' | 'denied' | 'subscribed' | 'unsubscribed'
+> {
+  if (typeof window === 'undefined' || !('Notification' in window) || !('PushManager' in window)) {
+    return 'unsupported';
+  }
+  if (Notification.permission === 'denied') return 'denied';
+
+  const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+  const subscription = await registration?.pushManager.getSubscription();
+  return subscription ? 'subscribed' : 'unsubscribed';
+}
+
+export async function unsubscribeFromWebPush(
+  getAccessToken: () => Promise<string | null>,
+): Promise<{ ok: boolean; reason?: string }> {
+  const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) return { ok: true };
+
+  const endpoint = subscription.endpoint;
+
+  const token = await getAccessToken();
+  if (!token) return { ok: false, reason: 'Not authenticated' };
+
+  const res = await fetch('/api/user/push/subscribe', {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ endpoint }),
+  });
+
+  // 404 means the server already has no row for this endpoint (e.g. pruned
+  // after a failed push send) — nothing left to sync, safe to drop locally too.
+  if (!res.ok && res.status !== 404) {
+    return { ok: false, reason: 'Unsubscribe failed' };
+  }
+
+  // Drop the local subscription only once the server side is confirmed clear,
+  // so a genuine failure (network, auth) leaves both sides consistent for a retry.
+  await subscription.unsubscribe();
+  return { ok: true };
+}

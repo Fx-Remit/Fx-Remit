@@ -12,6 +12,7 @@ interface UserProfile {
   transactionCount?: number;
   /** Ledger spendable balance as decimal string from API / server actions. */
   walletBalance?: string | number;
+  createdAt?: string;
 }
 
 interface UserState {
