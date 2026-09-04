@@ -127,3 +127,47 @@ export const useSecurityStore = create<SecurityState>()(
     },
   ),
 );
+
+
+if (typeof document !== "undefined") {
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const clearIdleTimer = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = undefined;
+  };
+
+
+  const armIdleTimer = () => {
+    const { isSecurityEnabled, isLocked, autoLockMs, setLocked } = useSecurityStore.getState();
+    clearIdleTimer();
+    if (!isSecurityEnabled || isLocked || autoLockMs === 0) return;
+    idleTimer = setTimeout(() => setLocked(true), autoLockMs);
+  };
+
+  (["pointerdown", "keydown", "touchstart"] as const).forEach((ev) =>
+    document.addEventListener(ev, armIdleTimer),
+  );
+
+
+  document.addEventListener("visibilitychange", () => {
+    const { isSecurityEnabled, setHiddenAt, evaluateLockState } = useSecurityStore.getState();
+    if (!isSecurityEnabled) return;
+    if (document.visibilityState === "hidden") {
+      clearIdleTimer();
+      setHiddenAt(Date.now());
+    } else {
+      evaluateLockState();
+    }
+  });
+
+  useSecurityStore.subscribe((state, prev) => {
+    if (
+      state.isSecurityEnabled !== prev.isSecurityEnabled ||
+      state.isLocked !== prev.isLocked ||
+      state.autoLockMs !== prev.autoLockMs
+    ) {
+      armIdleTimer();
+    }
+  });
+}
