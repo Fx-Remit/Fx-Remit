@@ -10,6 +10,7 @@ import {
   ArrowRight,
   Calendar,
   ChevronRight,
+  Edit2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React from 'react';
@@ -21,6 +22,7 @@ import { SecuritySetup } from '@/components/security/SecuritySetup';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { MenuRow } from '@/components/profile/MenuRow';
 import { AboutSheet } from '@/components/profile/AboutSheet';
+import { EditProfileSheet } from '@/components/profile/EditProfileSheet';
 
 export default function ProfilePage() {
   const { logout, exportWallet, user: privyUser } = usePrivy();
@@ -38,6 +40,7 @@ export default function ProfilePage() {
   const [isBioSupported, setIsBioSupported] = React.useState(false);
   const [showSetup, setShowSetup] = React.useState(false);
   const [showAbout, setShowAbout] = React.useState(false);
+  const [showEdit, setShowEdit] = React.useState(false);
 
   React.useEffect(() => {
     isBiometricSupported().then(setIsBioSupported);
@@ -89,7 +92,7 @@ export default function ProfilePage() {
           </div>
 
           {/* User Info Card */}
-          <div className="w-full flex items-center bg-white rounded-[24px] p-5 shadow-[0px_4px_25px_rgba(0,0,0,0.02)] border border-gray-100">
+          <div className="w-full flex items-center justify-between bg-white rounded-[24px] p-5 shadow-[0px_4px_25px_rgba(0,0,0,0.02)] border border-gray-100">
             <div className="flex items-center gap-4">
               {/* Avatar */}
               <div className="w-[64px] h-[64px] rounded-full overflow-hidden border-2 border-white shadow-sm bg-[#E0E7FF]">
@@ -104,6 +107,13 @@ export default function ProfilePage() {
                 </p>
               </div>
             </div>
+            <button
+              onClick={() => setShowEdit(true)}
+              className="w-10 h-10 flex items-center justify-center bg-[#F8FAFD] rounded-full text-[#1C1C1C] active:scale-95 transition-all"
+              aria-label="Edit profile"
+            >
+              <Edit2 size={18} />
+            </button>
           </div>
         </div>
 
@@ -260,6 +270,7 @@ export default function ProfilePage() {
       )}
 
       <AboutSheet isOpen={showAbout} onClose={() => setShowAbout(false)} />
+      <EditProfileSheet isOpen={showEdit} onClose={() => setShowEdit(false)} />
     </div>
   );
 }
