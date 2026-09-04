@@ -51,6 +51,20 @@ export async function PATCH(req: Request) {
       );
     }
 
+    if (avatarUrl !== undefined && (avatarUrl.length === 0 || avatarUrl.length > 500)) {
+      return NextResponse.json(
+        { error: 'avatarUrl must be 1-500 characters' },
+        { status: 400 },
+      );
+    }
+
+    if (avatarUrl !== undefined && !/^https:\/\//i.test(avatarUrl)) {
+      return NextResponse.json(
+        { error: 'avatarUrl must be an https:// URL' },
+        { status: 400 },
+      );
+    }
+
     const data: { displayName?: string; avatarUrl?: string } = {};
     if (displayName !== undefined) data.displayName = displayName;
     if (avatarUrl !== undefined) data.avatarUrl = avatarUrl;

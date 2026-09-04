@@ -61,6 +61,36 @@ describe('PATCH /api/user/profile', () => {
     assert.equal(res.status, 400);
   });
 
+  it('rejects an avatarUrl over 500 characters', async () => {
+    mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
+      userId: 'did:privy:user-1',
+    }));
+    prisma.user.findUnique = mock.fn(async () => ({ id: 'user-1' })) as any;
+
+    const res = await PATCH(
+      patchRequest(
+        { avatarUrl: `https://example.com/${'a'.repeat(500)}` },
+        { authorization: 'Bearer test-token' },
+      ),
+    );
+    assert.equal(res.status, 400);
+  });
+
+  it('rejects a non-https avatarUrl', async () => {
+    mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
+      userId: 'did:privy:user-1',
+    }));
+    prisma.user.findUnique = mock.fn(async () => ({ id: 'user-1' })) as any;
+
+    const res = await PATCH(
+      patchRequest(
+        { avatarUrl: 'javascript:alert(1)' },
+        { authorization: 'Bearer test-token' },
+      ),
+    );
+    assert.equal(res.status, 400);
+  });
+
   it('returns 400 when the body has nothing to update', async () => {
     mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({
       userId: 'did:privy:user-1',
