@@ -45,6 +45,7 @@ export default function ProfilePage() {
     setBiometricCredentialId,
     setPendingAction,
     setLocked,
+    clearSecurity,
   } = useSecurityStore();
 
   const router = useRouter();
@@ -77,6 +78,7 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     await logout();
+    clearSecurity();
     setProfile(null);
     router.push('/');
   };

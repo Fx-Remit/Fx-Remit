@@ -47,7 +47,7 @@ export const SecuritySetup: React.FC<SecuritySetupProps> = ({
     if (p1 === p2) {
       const salt = generateSalt();
       const hashed = await hashPin(p1, salt);
-      setPin(hashed, salt);
+      setPin(hashed, salt, userId);
       if (isBioSupported) {
         setStep('BIOMETRIC');
       } else {

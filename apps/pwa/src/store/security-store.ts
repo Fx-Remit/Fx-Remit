@@ -19,6 +19,8 @@ interface SecurityState {
   hiddenAt: number | null;
   /** One-shot intent: a re-auth prompt is being shown to confirm disabling App Lock. */
   pendingAction: 'disableSecurity' | null;
+  /** The internal user id the current PIN/biometric setup belongs to, so a different account logging in on the same device doesn't inherit it. */
+  ownerUserId: string | null;
 
   // Actions
   setHydrated: (state: boolean) => void;
@@ -26,7 +28,8 @@ interface SecurityState {
   setBiometricEnabled: (enabled: boolean) => void;
   setBiometricCredentialId: (id: string | null) => void;
   setSecurityEnabled: (enabled: boolean) => void;
-  setPin: (pin: string | null, salt: string | null) => void; // Expects hashed pin
+  setPin: (pin: string | null, salt: string | null, ownerUserId: string | null) => void; // Expects hashed pin
+  setOwnerUserId: (id: string | null) => void;
   incrementFailedAttempts: () => void;
   resetFailedAttempts: () => void;
   setLastUnlockedAt: (timestamp: number | null) => void;
@@ -56,14 +59,16 @@ export const useSecurityStore = create<SecurityState>()(
       lastUnlockedAt: null,
       hiddenAt: null,
       pendingAction: null,
+      ownerUserId: null,
 
       setHydrated: (isHydrated) => set({ isHydrated }),
       setLocked: (isLocked) => set({ isLocked }),
       setBiometricEnabled: (isBiometricEnabled) => set({ isBiometricEnabled }),
       setBiometricCredentialId: (biometricCredentialId) => set({ biometricCredentialId }),
       setSecurityEnabled: (isSecurityEnabled) => set({ isSecurityEnabled }),
-      setPin: (hashedPin, pinSalt) =>
-        set({ hashedPin, pinSalt, isSecurityEnabled: !!hashedPin, failedAttempts: 0 }),
+      setPin: (hashedPin, pinSalt, ownerUserId) =>
+        set({ hashedPin, pinSalt, ownerUserId, isSecurityEnabled: !!hashedPin, failedAttempts: 0 }),
+      setOwnerUserId: (ownerUserId) => set({ ownerUserId }),
 
       incrementFailedAttempts: () =>
         set((state) => ({
@@ -101,6 +106,7 @@ export const useSecurityStore = create<SecurityState>()(
           lastUnlockedAt: null,
           hiddenAt: null,
           pendingAction: null,
+          ownerUserId: null,
         }),
     }),
     {
