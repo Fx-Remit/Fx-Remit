@@ -12,6 +12,7 @@ import { TransactionDetailSheet } from '../history/TransactionDetailSheet';
 import { networkLabelForTransaction, formatTxHashLabel } from '@/lib/network';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { registerPushServiceWorker } from '@/lib/push/register';
+import { defaultAvatarUrl } from '@/lib/avatar';
 
 export default function HomePage() {
   const { user: privyUser, ready, authenticated, getAccessToken } = usePrivy();
@@ -84,7 +85,7 @@ export default function HomePage() {
   const loading = !ready || !isHydrated || (authenticated && storeLoading && !dbUser);
 
   const displayName = dbUser?.displayName || dbUser?.fullName || privyUser?.id?.slice(0, 10);
-  const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${privyUser?.id}&backgroundColor=b6e3f4`;
+  const avatar = dbUser?.avatarUrl || defaultAvatarUrl(privyUser?.id ?? '');
 
   // Spendable = DB ledger (cash-out source of truth). Balance API syncs deposits into ledger first.
   const ledgerUsd =

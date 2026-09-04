@@ -1,30 +1,84 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Check } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { X, Check, Camera } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
+import { createClient } from '@/utils/supabase/client';
+import { AVATAR_PRESETS, avatarUrlForPreset } from '@/lib/avatar';
 
 interface EditProfileSheetProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const AVATAR_BACKGROUNDS = ['b6e3f4', 'ffd5dc', 'c0aede', 'ffdfbf', 'd1f4d1', 'ffe3b3'];
+const ALLOWED_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+
+function readImagePreview(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (
+        typeof result === 'string' &&
+        /^data:image\/(?:jpeg|png|webp|gif);base64,/.test(result)
+      ) {
+        resolve(result);
+        return;
+      }
+      resolve(null);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
 
 export function EditProfileSheet({ isOpen, onClose }: EditProfileSheetProps) {
   const { getAccessToken } = usePrivy();
   const { profile: dbUser, setProfile } = useUserStore();
+  const supabase = createClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState(dbUser?.displayName || '');
   const [avatarUrl, setAvatarUrl] = useState(dbUser?.avatarUrl || '');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen || !dbUser) return null;
 
-  const avatarFor = (bg: string) =>
-    `https://api.dicebear.com/8.x/lorelei/svg?seed=${dbUser.id}&backgroundColor=${bg}`;
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!ALLOWED_AVATAR_TYPES.has(file.type)) {
+      setError('Please choose a JPEG, PNG, WEBP, or GIF image.');
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setError('Image must be under 5MB.');
+      return;
+    }
+
+    const preview = await readImagePreview(file);
+    if (!preview) {
+      setError('Could not read that image. Try a different file.');
+      return;
+    }
+
+    setError(null);
+    setAvatarFile(file);
+    setAvatarPreview(preview);
+  };
+
+  const handleSelectPreset = (presetUrl: string) => {
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setAvatarUrl(presetUrl);
+  };
 
   const handleSave = async () => {
     const trimmed = name.trim();
@@ -35,6 +89,29 @@ export function EditProfileSheet({ isOpen, onClose }: EditProfileSheetProps) {
     setSaving(true);
     setError(null);
     try {
+      let finalAvatarUrl = avatarUrl;
+
+      if (avatarFile) {
+        const safeFileName = avatarFile.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+        const filePath = `avatars/${Date.now()}-${safeFileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, avatarFile, {
+            upsert: true,
+            contentType: avatarFile.type,
+          });
+
+        if (uploadError) {
+          setError('Photo upload failed. Please try again.');
+          setSaving(false);
+          return;
+        }
+
+        const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+        finalAvatarUrl = data.publicUrl;
+      }
+
       const token = await getAccessToken();
       const res = await fetch('/api/user/profile', {
         method: 'PATCH',
@@ -42,7 +119,7 @@ export function EditProfileSheet({ isOpen, onClose }: EditProfileSheetProps) {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ displayName: trimmed, avatarUrl }),
+        body: JSON.stringify({ displayName: trimmed, avatarUrl: finalAvatarUrl }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -57,6 +134,9 @@ export function EditProfileSheet({ isOpen, onClose }: EditProfileSheetProps) {
       setSaving(false);
     }
   };
+
+  const previewSrc =
+    avatarPreview || avatarUrl || avatarUrlForPreset(AVATAR_PRESETS[0], dbUser.id);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center">
@@ -79,38 +159,86 @@ export function EditProfileSheet({ isOpen, onClose }: EditProfileSheetProps) {
           <h2 className="text-[22px] font-bold text-[#1C1C1C]">Edit Profile</h2>
         </div>
 
-        <div className="flex justify-center mb-6">
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+        />
+
+        <div className="relative mx-auto mb-6 w-fit">
           <div className="w-[80px] h-[80px] rounded-full overflow-hidden border-2 border-white shadow-sm bg-[#E0E7FF]">
-            <img
-              src={avatarUrl || avatarFor(AVATAR_BACKGROUNDS[0])}
-              alt=""
-              className="w-full h-full object-cover"
-            />
+            <img src={previewSrc} alt="" className="w-full h-full object-cover" />
           </div>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#f6f6f6] bg-[#2261FE] active:scale-90 transition-transform"
+            aria-label="Upload photo"
+          >
+            <Camera size={16} className="text-white" />
+          </button>
         </div>
 
-        <div className="flex justify-center gap-3 mb-6">
-          {AVATAR_BACKGROUNDS.map((bg) => {
-            const url = avatarFor(bg);
-            const selected = avatarUrl === url;
-            return (
-              <button
-                key={bg}
-                type="button"
-                onClick={() => setAvatarUrl(url)}
-                className={`relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all ${
-                  selected ? 'border-[#2261FE] scale-110' : 'border-white'
-                }`}
-              >
-                <img src={url} alt="" className="w-full h-full object-cover" />
-                {selected && (
-                  <span className="absolute inset-0 flex items-center justify-center bg-black/20">
-                    <Check size={16} className="text-white" />
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div className="mb-6 space-y-3">
+          <div>
+            <p className="text-[11px] font-bold text-[#6D6D6D] uppercase tracking-widest px-1 mb-2 text-center">
+              Feminine
+            </p>
+            <div className="flex justify-center gap-3">
+              {AVATAR_PRESETS.filter((p) => !p.beard).map((preset) => {
+                const url = avatarUrlForPreset(preset, dbUser.id);
+                const selected = !avatarFile && avatarUrl === url;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleSelectPreset(url)}
+                    className={`relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all ${
+                      selected ? 'border-[#2261FE] scale-110' : 'border-white'
+                    }`}
+                  >
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    {selected && (
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <Check size={16} className="text-white" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] font-bold text-[#6D6D6D] uppercase tracking-widest px-1 mb-2 text-center">
+              Masculine
+            </p>
+            <div className="flex justify-center gap-3">
+              {AVATAR_PRESETS.filter((p) => p.beard).map((preset) => {
+                const url = avatarUrlForPreset(preset, dbUser.id);
+                const selected = !avatarFile && avatarUrl === url;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleSelectPreset(url)}
+                    className={`relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all ${
+                      selected ? 'border-[#2261FE] scale-110' : 'border-white'
+                    }`}
+                  >
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    {selected && (
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <Check size={16} className="text-white" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="mb-2">

@@ -26,6 +26,7 @@ import { MenuRow } from '@/components/profile/MenuRow';
 import { AboutSheet } from '@/components/profile/AboutSheet';
 import { EditProfileSheet } from '@/components/profile/EditProfileSheet';
 import { Toggle } from '@/components/ui/Toggle';
+import { defaultAvatarUrl } from '@/lib/avatar';
 import {
   getPushSubscriptionStatus,
   subscribeToWebPush,
@@ -94,7 +95,7 @@ export default function ProfilePage() {
   };
 
   const displayName = dbUser?.displayName || dbUser?.fullName || 'User';
-  const avatar = dbUser?.avatarUrl || `https://api.dicebear.com/8.x/lorelei/svg?seed=${dbUser?.id}&backgroundColor=b6e3f4`;
+  const avatar = dbUser?.avatarUrl || defaultAvatarUrl(dbUser?.id ?? '');
   const emailOrWallet = dbUser?.email || (dbUser?.walletAddress ? `${dbUser.walletAddress.slice(0, 6)}...${dbUser.walletAddress.slice(-4)}` : '');
   const memberSince = dbUser?.createdAt
     ? new Date(dbUser.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
