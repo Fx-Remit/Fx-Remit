@@ -576,11 +576,17 @@ function CryptoCashOutContent() {
                     onClick={() => selectSavedAddress(row)}
                     className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors active:bg-[#E1EFFF]"
                   >
-                    <img
-                      src={NETWORK_DATA[row.network]?.icon}
-                      alt=""
-                      className="h-11 w-11 shrink-0 rounded-full object-contain"
-                    />
+                    {NETWORK_DATA[row.network] ? (
+                      <img
+                        src={NETWORK_DATA[row.network].icon}
+                        alt=""
+                        className="h-11 w-11 shrink-0 rounded-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#E1EFFF] text-[14px] font-bold text-[#2261FE]">
+                        {row.network.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[15px] font-bold text-[#1C1C1C]">
                         {row.label || `${row.address.slice(0, 6)}...${row.address.slice(-4)}`}

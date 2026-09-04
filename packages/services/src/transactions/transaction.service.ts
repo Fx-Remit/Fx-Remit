@@ -1584,10 +1584,28 @@ export class TransactionService {
     const cryptoNetwork = isCrypto
       ? (existing.recipientBank || '').slice('crypto:'.length)
       : null;
-    const settlementChainId =
-      isCrypto && cryptoNetwork
-        ? CRYPTO_CASH_OUT_CHAIN_ID[cryptoNetwork] ?? PAYCREST_SETTLEMENT.chainId
-        : PAYCREST_SETTLEMENT.chainId;
+    let settlementChainId = PAYCREST_SETTLEMENT.chainId;
+    if (isCrypto && cryptoNetwork) {
+      const mapped = CRYPTO_CASH_OUT_CHAIN_ID[cryptoNetwork];
+      if (mapped != null) {
+        settlementChainId = mapped;
+      } else {
+        // Should be unreachable — create-crypto-pending only ever writes
+        // network: z.enum(['base', 'celo']) into recipientBank. Falling back
+        // to Base silently would reintroduce the exact mislabeling bug this
+        // branch exists to fix, so surface it loudly instead.
+        console.error(
+          JSON.stringify({
+            alert: 'UNMAPPED_CRYPTO_CASH_OUT_NETWORK',
+            severity: 'high',
+            transactionId: existing.id,
+            recipientBank: existing.recipientBank,
+            cryptoNetwork,
+            message: 'Falling back to Paycrest/Base chainId — network needs adding to CRYPTO_CASH_OUT_CHAIN_ID',
+          }),
+        );
+      }
+    }
 
     const attached = await prisma.transaction.updateMany({
       where: {
