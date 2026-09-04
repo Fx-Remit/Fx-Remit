@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
-/** How long the app may stay backgrounded before requiring re-verification. */
-export const LOCK_GRACE_MS = 60_000;
+/** Default Auto-Lock interval: how long the app may sit backgrounded or idle before requiring re-verification. */
+export const DEFAULT_AUTO_LOCK_MS = 5 * 60_000;
 
 interface SecurityState {
   isLocked: boolean;
@@ -21,6 +21,8 @@ interface SecurityState {
   pendingAction: 'disableSecurity' | null;
   /** The internal user id the current PIN/biometric setup belongs to, so a different account logging in on the same device doesn't inherit it. */
   ownerUserId: string | null;
+  /** How long the app may sit backgrounded or idle before requiring re-verification. User-configurable. */
+  autoLockMs: number;
 
   // Actions
   setHydrated: (state: boolean) => void;
@@ -42,6 +44,7 @@ interface SecurityState {
    */
   evaluateLockState: () => void;
   setPendingAction: (action: 'disableSecurity' | null) => void;
+  setAutoLockMs: (ms: number) => void;
   clearSecurity: () => void;
 }
 
@@ -60,6 +63,7 @@ export const useSecurityStore = create<SecurityState>()(
       hiddenAt: null,
       pendingAction: null,
       ownerUserId: null,
+      autoLockMs: DEFAULT_AUTO_LOCK_MS,
 
       setHydrated: (isHydrated) => set({ isHydrated }),
       setLocked: (isLocked) => set({ isLocked }),
@@ -84,7 +88,7 @@ export const useSecurityStore = create<SecurityState>()(
         const { isSecurityEnabled, lastUnlockedAt, hiddenAt } = get();
         if (!isSecurityEnabled) return;
         const neverUnlocked = lastUnlockedAt == null;
-        const expiredWhileHidden = hiddenAt != null && Date.now() - hiddenAt > LOCK_GRACE_MS;
+        const expiredWhileHidden = hiddenAt != null && Date.now() - hiddenAt > get().autoLockMs;
         if (neverUnlocked || expiredWhileHidden) {
           set({ isLocked: true, hiddenAt: null });
         } else {
@@ -93,6 +97,7 @@ export const useSecurityStore = create<SecurityState>()(
       },
 
       setPendingAction: (pendingAction) => set({ pendingAction }),
+      setAutoLockMs: (autoLockMs) => set({ autoLockMs }),
 
       clearSecurity: () =>
         set({

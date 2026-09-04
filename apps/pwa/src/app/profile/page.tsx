@@ -21,6 +21,7 @@ import { useUserStore } from '@/store/user-store';
 import { useSecurityStore } from '@/store/security-store';
 import { isBiometricSupported } from '@/lib/security';
 import { SecuritySetup } from '@/components/security/SecuritySetup';
+import { AutoLockSheet } from '@/components/security/AutoLockSheet';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { MenuRow } from '@/components/profile/MenuRow';
 import { AboutSheet } from '@/components/profile/AboutSheet';
@@ -34,6 +35,12 @@ import {
 
 type PushStatus = 'unsupported' | 'denied' | 'subscribed' | 'unsubscribed' | null;
 
+function formatAutoLockLabel(ms: number): string {
+  if (ms === 0) return 'Immediately';
+  const minutes = ms / 60_000;
+  return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+}
+
 export default function ProfilePage() {
   const { logout, exportWallet, getAccessToken, user: privyUser } = usePrivy();
   const { profile: dbUser, setProfile } = useUserStore();
@@ -46,6 +53,7 @@ export default function ProfilePage() {
     setPendingAction,
     setLocked,
     clearSecurity,
+    autoLockMs,
   } = useSecurityStore();
 
   const router = useRouter();
@@ -53,6 +61,7 @@ export default function ProfilePage() {
   const [showSetup, setShowSetup] = React.useState(false);
   const [showAbout, setShowAbout] = React.useState(false);
   const [showEdit, setShowEdit] = React.useState(false);
+  const [showAutoLock, setShowAutoLock] = React.useState(false);
   const [pushStatus, setPushStatus] = React.useState<PushStatus>(null);
   const [pushBusy, setPushBusy] = React.useState(false);
 
@@ -254,6 +263,13 @@ export default function ProfilePage() {
             {isSecurityEnabled && (
               <>
                 <MenuRow
+                  onClick={() => setShowAutoLock(true)}
+                  icon={<Lock size={20} className="text-[#2261FE]" />}
+                  label="Auto-Lock"
+                  subLabel={formatAutoLockLabel(autoLockMs)}
+                />
+                <div className="h-[1px] bg-gray-50 mx-5" />
+                <MenuRow
                   onClick={() => {
                     if (!isBiometricEnabled) {
                       // Can't enable biometrics without going through setup
@@ -347,6 +363,7 @@ export default function ProfilePage() {
 
       <AboutSheet isOpen={showAbout} onClose={() => setShowAbout(false)} />
       <EditProfileSheet isOpen={showEdit} onClose={() => setShowEdit(false)} />
+      <AutoLockSheet isOpen={showAutoLock} onClose={() => setShowAutoLock(false)} />
     </div>
   );
 }

@@ -36,7 +36,8 @@ export const wagmiConfig = createConfig({
 });
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const { isSecurityEnabled, setHiddenAt, evaluateLockState } = useSecurityStore();
+  const { isSecurityEnabled, isLocked, autoLockMs, setLocked, setHiddenAt, evaluateLockState } =
+    useSecurityStore();
 
   // Stamps a persisted timestamp rather than arming an in-memory timer, so
   // the grace-period check survives the process being killed while
@@ -55,6 +56,29 @@ export function Providers({ children }: { children: React.ReactNode }) {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isSecurityEnabled, setHiddenAt, evaluateLockState]);
+
+  // Locks after autoLockMs of no activity even if the app is never
+  // backgrounded. Unlike the timer this replaced for the background case,
+  // a live setTimeout is fine here: the tab is guaranteed foregrounded and
+  // alive for as long as this effect's timer is armed.
+  useEffect(() => {
+    if (!isSecurityEnabled || isLocked) return;
+
+    let timer: ReturnType<typeof setTimeout>;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setLocked(true), autoLockMs);
+    };
+
+    const events: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'touchstart'];
+    events.forEach((ev) => document.addEventListener(ev, reset));
+    reset();
+
+    return () => {
+      clearTimeout(timer);
+      events.forEach((ev) => document.removeEventListener(ev, reset));
+    };
+  }, [isSecurityEnabled, isLocked, autoLockMs, setLocked]);
 
   return (
     <PrivyProvider
