@@ -9,7 +9,12 @@ import webpush from 'web-push';
 
 export type NotifyInput = {
   userId: string;
-  type: NotificationType | 'DEPOSIT_CREDITED' | 'REMITTANCE_COMPLETED' | 'REMITTANCE_FAILED';
+  type:
+    | NotificationType
+    | 'DEPOSIT_CREDITED'
+    | 'REMITTANCE_COMPLETED'
+    | 'REMITTANCE_FAILED'
+    | 'NEW_CRYPTO_ADDRESS';
   transactionId: string;
   title: string;
   body: string;

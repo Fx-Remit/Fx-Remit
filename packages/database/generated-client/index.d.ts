@@ -59,7 +59,8 @@ export type RemittanceRail = (typeof RemittanceRail)[keyof typeof RemittanceRail
 export const NotificationType: {
   DEPOSIT_CREDITED: 'DEPOSIT_CREDITED',
   REMITTANCE_COMPLETED: 'REMITTANCE_COMPLETED',
-  REMITTANCE_FAILED: 'REMITTANCE_FAILED'
+  REMITTANCE_FAILED: 'REMITTANCE_FAILED',
+  NEW_CRYPTO_ADDRESS: 'NEW_CRYPTO_ADDRESS'
 };
 
 export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType]
@@ -6165,6 +6166,7 @@ export namespace Prisma {
     network: string | null
     address: string | null
     label: string | null
+    firstConfirmedAt: Date | null
     lastUsedAt: Date | null
     createdAt: Date | null
     updatedAt: Date | null
@@ -6176,6 +6178,7 @@ export namespace Prisma {
     network: string | null
     address: string | null
     label: string | null
+    firstConfirmedAt: Date | null
     lastUsedAt: Date | null
     createdAt: Date | null
     updatedAt: Date | null
@@ -6187,6 +6190,7 @@ export namespace Prisma {
     network: number
     address: number
     label: number
+    firstConfirmedAt: number
     lastUsedAt: number
     createdAt: number
     updatedAt: number
@@ -6200,6 +6204,7 @@ export namespace Prisma {
     network?: true
     address?: true
     label?: true
+    firstConfirmedAt?: true
     lastUsedAt?: true
     createdAt?: true
     updatedAt?: true
@@ -6211,6 +6216,7 @@ export namespace Prisma {
     network?: true
     address?: true
     label?: true
+    firstConfirmedAt?: true
     lastUsedAt?: true
     createdAt?: true
     updatedAt?: true
@@ -6222,6 +6228,7 @@ export namespace Prisma {
     network?: true
     address?: true
     label?: true
+    firstConfirmedAt?: true
     lastUsedAt?: true
     createdAt?: true
     updatedAt?: true
@@ -6306,6 +6313,7 @@ export namespace Prisma {
     network: string
     address: string
     label: string | null
+    firstConfirmedAt: Date | null
     lastUsedAt: Date
     createdAt: Date
     updatedAt: Date
@@ -6334,6 +6342,7 @@ export namespace Prisma {
     network?: boolean
     address?: boolean
     label?: boolean
+    firstConfirmedAt?: boolean
     lastUsedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -6346,6 +6355,7 @@ export namespace Prisma {
     network?: boolean
     address?: boolean
     label?: boolean
+    firstConfirmedAt?: boolean
     lastUsedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -6358,6 +6368,7 @@ export namespace Prisma {
     network?: boolean
     address?: boolean
     label?: boolean
+    firstConfirmedAt?: boolean
     lastUsedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -6370,12 +6381,13 @@ export namespace Prisma {
     network?: boolean
     address?: boolean
     label?: boolean
+    firstConfirmedAt?: boolean
     lastUsedAt?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }
 
-  export type SavedCryptoAddressOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "network" | "address" | "label" | "lastUsedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["savedCryptoAddress"]>
+  export type SavedCryptoAddressOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "network" | "address" | "label" | "firstConfirmedAt" | "lastUsedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["savedCryptoAddress"]>
   export type SavedCryptoAddressInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     user?: boolean | UserDefaultArgs<ExtArgs>
   }
@@ -6400,6 +6412,7 @@ export namespace Prisma {
       network: string
       address: string
       label: string | null
+      firstConfirmedAt: Date | null
       lastUsedAt: Date
       createdAt: Date
       updatedAt: Date
@@ -6832,6 +6845,7 @@ export namespace Prisma {
     readonly network: FieldRef<"SavedCryptoAddress", 'String'>
     readonly address: FieldRef<"SavedCryptoAddress", 'String'>
     readonly label: FieldRef<"SavedCryptoAddress", 'String'>
+    readonly firstConfirmedAt: FieldRef<"SavedCryptoAddress", 'DateTime'>
     readonly lastUsedAt: FieldRef<"SavedCryptoAddress", 'DateTime'>
     readonly createdAt: FieldRef<"SavedCryptoAddress", 'DateTime'>
     readonly updatedAt: FieldRef<"SavedCryptoAddress", 'DateTime'>
@@ -8709,6 +8723,7 @@ export namespace Prisma {
     network: 'network',
     address: 'address',
     label: 'label',
+    firstConfirmedAt: 'firstConfirmedAt',
     lastUsedAt: 'lastUsedAt',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
@@ -9283,6 +9298,7 @@ export namespace Prisma {
     network?: StringFilter<"SavedCryptoAddress"> | string
     address?: StringFilter<"SavedCryptoAddress"> | string
     label?: StringNullableFilter<"SavedCryptoAddress"> | string | null
+    firstConfirmedAt?: DateTimeNullableFilter<"SavedCryptoAddress"> | Date | string | null
     lastUsedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
     createdAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
     updatedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
@@ -9295,6 +9311,7 @@ export namespace Prisma {
     network?: SortOrder
     address?: SortOrder
     label?: SortOrderInput | SortOrder
+    firstConfirmedAt?: SortOrderInput | SortOrder
     lastUsedAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -9311,6 +9328,7 @@ export namespace Prisma {
     network?: StringFilter<"SavedCryptoAddress"> | string
     address?: StringFilter<"SavedCryptoAddress"> | string
     label?: StringNullableFilter<"SavedCryptoAddress"> | string | null
+    firstConfirmedAt?: DateTimeNullableFilter<"SavedCryptoAddress"> | Date | string | null
     lastUsedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
     createdAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
     updatedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
@@ -9323,6 +9341,7 @@ export namespace Prisma {
     network?: SortOrder
     address?: SortOrder
     label?: SortOrderInput | SortOrder
+    firstConfirmedAt?: SortOrderInput | SortOrder
     lastUsedAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -9340,6 +9359,7 @@ export namespace Prisma {
     network?: StringWithAggregatesFilter<"SavedCryptoAddress"> | string
     address?: StringWithAggregatesFilter<"SavedCryptoAddress"> | string
     label?: StringNullableWithAggregatesFilter<"SavedCryptoAddress"> | string | null
+    firstConfirmedAt?: DateTimeNullableWithAggregatesFilter<"SavedCryptoAddress"> | Date | string | null
     lastUsedAt?: DateTimeWithAggregatesFilter<"SavedCryptoAddress"> | Date | string
     createdAt?: DateTimeWithAggregatesFilter<"SavedCryptoAddress"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"SavedCryptoAddress"> | Date | string
@@ -9894,6 +9914,7 @@ export namespace Prisma {
     network: string
     address: string
     label?: string | null
+    firstConfirmedAt?: Date | string | null
     lastUsedAt?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -9906,6 +9927,7 @@ export namespace Prisma {
     network: string
     address: string
     label?: string | null
+    firstConfirmedAt?: Date | string | null
     lastUsedAt?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -9916,6 +9938,7 @@ export namespace Prisma {
     network?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     label?: NullableStringFieldUpdateOperationsInput | string | null
+    firstConfirmedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -9928,6 +9951,7 @@ export namespace Prisma {
     network?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     label?: NullableStringFieldUpdateOperationsInput | string | null
+    firstConfirmedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -9939,6 +9963,7 @@ export namespace Prisma {
     network: string
     address: string
     label?: string | null
+    firstConfirmedAt?: Date | string | null
     lastUsedAt?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -9949,6 +9974,7 @@ export namespace Prisma {
     network?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     label?: NullableStringFieldUpdateOperationsInput | string | null
+    firstConfirmedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -9960,6 +9986,7 @@ export namespace Prisma {
     network?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     label?: NullableStringFieldUpdateOperationsInput | string | null
+    firstConfirmedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -10613,6 +10640,7 @@ export namespace Prisma {
     network?: SortOrder
     address?: SortOrder
     label?: SortOrder
+    firstConfirmedAt?: SortOrder
     lastUsedAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -10624,6 +10652,7 @@ export namespace Prisma {
     network?: SortOrder
     address?: SortOrder
     label?: SortOrder
+    firstConfirmedAt?: SortOrder
     lastUsedAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -10635,6 +10664,7 @@ export namespace Prisma {
     network?: SortOrder
     address?: SortOrder
     label?: SortOrder
+    firstConfirmedAt?: SortOrder
     lastUsedAt?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -11581,6 +11611,7 @@ export namespace Prisma {
     network: string
     address: string
     label?: string | null
+    firstConfirmedAt?: Date | string | null
     lastUsedAt?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -11591,6 +11622,7 @@ export namespace Prisma {
     network: string
     address: string
     label?: string | null
+    firstConfirmedAt?: Date | string | null
     lastUsedAt?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -11770,6 +11802,7 @@ export namespace Prisma {
     network?: StringFilter<"SavedCryptoAddress"> | string
     address?: StringFilter<"SavedCryptoAddress"> | string
     label?: StringNullableFilter<"SavedCryptoAddress"> | string | null
+    firstConfirmedAt?: DateTimeNullableFilter<"SavedCryptoAddress"> | Date | string | null
     lastUsedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
     createdAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
     updatedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
@@ -12379,6 +12412,7 @@ export namespace Prisma {
     network: string
     address: string
     label?: string | null
+    firstConfirmedAt?: Date | string | null
     lastUsedAt?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -12526,6 +12560,7 @@ export namespace Prisma {
     network?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     label?: NullableStringFieldUpdateOperationsInput | string | null
+    firstConfirmedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -12536,6 +12571,7 @@ export namespace Prisma {
     network?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     label?: NullableStringFieldUpdateOperationsInput | string | null
+    firstConfirmedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -12546,6 +12582,7 @@ export namespace Prisma {
     network?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     label?: NullableStringFieldUpdateOperationsInput | string | null
+    firstConfirmedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string

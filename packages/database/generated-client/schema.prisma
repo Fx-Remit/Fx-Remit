@@ -40,6 +40,7 @@ enum NotificationType {
   DEPOSIT_CREDITED
   REMITTANCE_COMPLETED
   REMITTANCE_FAILED
+  NEW_CRYPTO_ADDRESS
 }
 
 model Notification {
@@ -101,18 +102,19 @@ model SavedRecipient {
  * Wallet addresses a user has cashed out crypto to before — auto-backfilled from history, not an explicit "save" step.
  */
 model SavedCryptoAddress {
-  id         String   @id @default(uuid())
-  userId     String   @map("user_id")
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
   /**
    * 'base' | 'celo' — matches the network literal already used throughout the crypto cash-out flow.
    */
-  network    String
-  address    String
-  label      String?
-  lastUsedAt DateTime @default(now()) @map("last_used_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  network          String
+  address          String
+  label            String?
+  firstConfirmedAt DateTime? @map("first_confirmed_at")
+  lastUsedAt       DateTime  @default(now()) @map("last_used_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, network, address])
   @@index([userId, lastUsedAt(sort: Desc)])
