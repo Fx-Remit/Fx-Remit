@@ -97,6 +97,11 @@ export default function ProfilePage() {
   };
 
   const handleExportWallet = async () => {
+    if (isSecurityEnabled) {
+      setPendingAction('exportPrivateKey');
+      setLocked(true);
+      return;
+    }
     try {
       await exportWallet();
     } catch (err) {

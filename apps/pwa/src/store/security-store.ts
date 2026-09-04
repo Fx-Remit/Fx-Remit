@@ -17,8 +17,8 @@ interface SecurityState {
   lastUnlockedAt: number | null;
   /** Epoch ms the tab last went hidden; persisted so it survives the process being killed. */
   hiddenAt: number | null;
-  /** One-shot intent: a re-auth prompt is being shown to confirm disabling App Lock. */
-  pendingAction: 'disableSecurity' | null;
+  /** One-shot intent: a re-auth prompt is being shown to confirm a sensitive action. */
+  pendingAction: 'disableSecurity' | 'exportPrivateKey' | null;
   /** The internal user id the current PIN/biometric setup belongs to, so a different account logging in on the same device doesn't inherit it. */
   ownerUserId: string | null;
   /** How long the app may sit backgrounded or idle before requiring re-verification. User-configurable. */
@@ -43,7 +43,7 @@ interface SecurityState {
    * been killed while backgrounded. Only ever locks, never unlocks.
    */
   evaluateLockState: () => void;
-  setPendingAction: (action: 'disableSecurity' | null) => void;
+  setPendingAction: (action: 'disableSecurity' | 'exportPrivateKey' | null) => void;
   setAutoLockMs: (ms: number) => void;
   clearSecurity: () => void;
 }
