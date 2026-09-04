@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
+import { useSecurityStore } from '@/store/security-store';
 import { getMe } from '@/app/actions/user.actions';
 
 
@@ -16,6 +17,15 @@ export function UserHydrator() {
       if (!user?.id) return null;
 
       const profile = await getMe(user.id);
+
+      if (profile) {
+        const sec = useSecurityStore.getState();
+        if (sec.hashedPin && sec.ownerUserId !== null && sec.ownerUserId !== profile.id) {
+          sec.clearSecurity();
+        } else if (sec.hashedPin && sec.ownerUserId === null) {
+          sec.setOwnerUserId(profile.id);
+        }
+      }
 
       const privyWallet = user.linkedAccounts?.find((a) => a.type === 'wallet');
       const walletAddress = privyWallet?.type === 'wallet' ? privyWallet.address : undefined;

@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
-/** How long the app may stay backgrounded before requiring re-verification. */
-export const LOCK_GRACE_MS = 60_000;
+/** Default Auto-Lock interval: how long the app may sit backgrounded or idle before requiring re-verification. */
+export const DEFAULT_AUTO_LOCK_MS = 5 * 60_000;
 
 interface SecurityState {
   isLocked: boolean;
@@ -17,8 +17,12 @@ interface SecurityState {
   lastUnlockedAt: number | null;
   /** Epoch ms the tab last went hidden; persisted so it survives the process being killed. */
   hiddenAt: number | null;
-  /** One-shot intent: a re-auth prompt is being shown to confirm disabling App Lock. */
-  pendingAction: 'disableSecurity' | null;
+  /** One-shot intent: a re-auth prompt is being shown to confirm a sensitive action. */
+  pendingAction: 'disableSecurity' | 'exportPrivateKey' | null;
+  /** The internal user id the current PIN/biometric setup belongs to, so a different account logging in on the same device doesn't inherit it. */
+  ownerUserId: string | null;
+  /** How long the app may sit backgrounded or idle before requiring re-verification. User-configurable. */
+  autoLockMs: number;
 
   // Actions
   setHydrated: (state: boolean) => void;
@@ -26,7 +30,8 @@ interface SecurityState {
   setBiometricEnabled: (enabled: boolean) => void;
   setBiometricCredentialId: (id: string | null) => void;
   setSecurityEnabled: (enabled: boolean) => void;
-  setPin: (pin: string | null, salt: string | null) => void; // Expects hashed pin
+  setPin: (pin: string | null, salt: string | null, ownerUserId: string | null) => void; // Expects hashed pin
+  setOwnerUserId: (id: string | null) => void;
   incrementFailedAttempts: () => void;
   resetFailedAttempts: () => void;
   setLastUnlockedAt: (timestamp: number | null) => void;
@@ -38,7 +43,8 @@ interface SecurityState {
    * been killed while backgrounded. Only ever locks, never unlocks.
    */
   evaluateLockState: () => void;
-  setPendingAction: (action: 'disableSecurity' | null) => void;
+  setPendingAction: (action: 'disableSecurity' | 'exportPrivateKey' | null) => void;
+  setAutoLockMs: (ms: number) => void;
   clearSecurity: () => void;
 }
 
@@ -56,14 +62,17 @@ export const useSecurityStore = create<SecurityState>()(
       lastUnlockedAt: null,
       hiddenAt: null,
       pendingAction: null,
+      ownerUserId: null,
+      autoLockMs: DEFAULT_AUTO_LOCK_MS,
 
       setHydrated: (isHydrated) => set({ isHydrated }),
       setLocked: (isLocked) => set({ isLocked }),
       setBiometricEnabled: (isBiometricEnabled) => set({ isBiometricEnabled }),
       setBiometricCredentialId: (biometricCredentialId) => set({ biometricCredentialId }),
       setSecurityEnabled: (isSecurityEnabled) => set({ isSecurityEnabled }),
-      setPin: (hashedPin, pinSalt) =>
-        set({ hashedPin, pinSalt, isSecurityEnabled: !!hashedPin, failedAttempts: 0 }),
+      setPin: (hashedPin, pinSalt, ownerUserId) =>
+        set({ hashedPin, pinSalt, ownerUserId, isSecurityEnabled: !!hashedPin, failedAttempts: 0 }),
+      setOwnerUserId: (ownerUserId) => set({ ownerUserId }),
 
       incrementFailedAttempts: () =>
         set((state) => ({
@@ -79,7 +88,7 @@ export const useSecurityStore = create<SecurityState>()(
         const { isSecurityEnabled, lastUnlockedAt, hiddenAt } = get();
         if (!isSecurityEnabled) return;
         const neverUnlocked = lastUnlockedAt == null;
-        const expiredWhileHidden = hiddenAt != null && Date.now() - hiddenAt > LOCK_GRACE_MS;
+        const expiredWhileHidden = hiddenAt != null && Date.now() - hiddenAt > get().autoLockMs;
         if (neverUnlocked || expiredWhileHidden) {
           set({ isLocked: true, hiddenAt: null });
         } else {
@@ -88,6 +97,7 @@ export const useSecurityStore = create<SecurityState>()(
       },
 
       setPendingAction: (pendingAction) => set({ pendingAction }),
+      setAutoLockMs: (autoLockMs) => set({ autoLockMs }),
 
       clearSecurity: () =>
         set({
@@ -101,6 +111,7 @@ export const useSecurityStore = create<SecurityState>()(
           lastUnlockedAt: null,
           hiddenAt: null,
           pendingAction: null,
+          ownerUserId: null,
         }),
     }),
     {
