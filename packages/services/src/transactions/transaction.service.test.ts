@@ -1525,6 +1525,29 @@ describe('TransactionService.attachOnChainHash', () => {
     });
     assert.equal(result?.status, 'COMPLETED');
   });
+
+  it('stamps the real settlement chain for a Celo crypto withdraw, not Paycrest\'s Base chainId', async () => {
+    const existing = sampleTx({
+      userId: 'user-1',
+      status: 'PENDING',
+      txHash: 'pending-crypto_2',
+      recipientBank: 'crypto:celo',
+    });
+    const attached = { ...existing, status: 'COMPLETED', txHash: HASH, chainId: 42220 };
+    prisma.transaction.findFirst = mock.fn(async () => existing) as any;
+    prisma.transaction.findUnique = mock.fn(async () => attached) as any;
+    prisma.transaction.updateMany = mock.fn(async (args: any) => {
+      assert.equal(args.data.chainId, 42220);
+      return { count: 1 };
+    }) as any;
+
+    const result = await TransactionService.attachOnChainHash({
+      userId: 'user-1',
+      orderId: 42n,
+      txHash: HASH,
+    });
+    assert.equal(result?.chainId, 42220);
+  });
 });
 
 describe('TransactionService REFUND_REQUIRED ops paths (#96)', () => {

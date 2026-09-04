@@ -3,6 +3,12 @@ import { RpcClient } from "../evm/rpc.client";
 import { PAYCREST_SETTLEMENT } from "../paycrest/payout.service.js";
 import { NotificationService } from "../notifications/notification.service.js";
 
+/** Chain a manual-wallet crypto cash-out actually settles on (recipientBank: "crypto:<network>"). */
+const CRYPTO_CASH_OUT_CHAIN_ID: Record<string, number> = {
+  base: 8453,
+  celo: 42220,
+};
+
 /** Thrown when createPending cannot reserve spendable ledger. */
 export class InsufficientBalanceError extends Error {
   readonly code = "INSUFFICIENT_BALANCE" as const;
@@ -1572,6 +1578,16 @@ export class TransactionService {
     const preservePaycrestId =
       !!paycrestOrderId &&
       !this.isAppLocalPendingKey(paycrestOrderId, existing.externalId);
+    // Crypto cash-out settles on whichever network the user actually sent on
+    // (recipientBank is "crypto:base" / "crypto:celo") — PAYCREST_SETTLEMENT
+    // is Base-only and only correct for Paycrest bank remittances.
+    const cryptoNetwork = isCrypto
+      ? (existing.recipientBank || '').slice('crypto:'.length)
+      : null;
+    const settlementChainId =
+      isCrypto && cryptoNetwork
+        ? CRYPTO_CASH_OUT_CHAIN_ID[cryptoNetwork] ?? PAYCREST_SETTLEMENT.chainId
+        : PAYCREST_SETTLEMENT.chainId;
 
     const attached = await prisma.transaction.updateMany({
       where: {
@@ -1585,7 +1601,7 @@ export class TransactionService {
       data: {
         txHash: hash,
         // Pending rows are created with chainId=0; stamp settlement chain on broadcast.
-        chainId: PAYCREST_SETTLEMENT.chainId,
+        chainId: settlementChainId,
         ...(preservePaycrestId && !existing.anchorTransactionId
           ? { anchorTransactionId: paycrestOrderId }
           : {}),
@@ -1985,7 +2001,7 @@ export class TransactionService {
       return { ...result, user };
     } catch (err: any) {
       if (err?.code === "P2002") {
-        // Concurrent writer won (deposit keys or per-user refundTxHash) — do not credit again.
+        // Concurrent writer won (deposit keys or per-user refundTxHash) do not credit again.
         const raced =
           (await prisma.transaction.findUnique({
             where: {
