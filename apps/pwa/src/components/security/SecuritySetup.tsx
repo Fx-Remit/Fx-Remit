@@ -8,7 +8,7 @@ import { useSecurityStore } from '@/store/security-store';
 interface SecuritySetupProps {
   onComplete: () => void;
   onCancel: () => void;
-  userId: string;
+  userId: string | null;
   userName: string;
 }
 
@@ -92,6 +92,12 @@ export const SecuritySetup: React.FC<SecuritySetupProps> = ({
   }, [step]);
 
   const handleEnableBiometrics = async () => {
+    if (!userId) {
+      // No stable user id yet (profile still loading) — PIN is already saved,
+      // just skip biometric enrollment rather than register it against a placeholder.
+      onComplete();
+      return;
+    }
     try {
       const credId = await registerBiometrics(userId, userName);
       setBiometricCredentialId(credId);

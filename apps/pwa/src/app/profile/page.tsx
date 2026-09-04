@@ -361,7 +361,7 @@ export default function ProfilePage() {
         <SecuritySetup
           onComplete={() => setShowSetup(false)}
           onCancel={() => setShowSetup(false)}
-          userId={dbUser?.id || 'user'}
+          userId={dbUser?.id ?? null}
           userName={dbUser?.displayName || 'User'}
         />
       )}
