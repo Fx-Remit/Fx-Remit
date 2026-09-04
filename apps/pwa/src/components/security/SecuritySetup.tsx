@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Shield, Fingerprint, Delete, X, ArrowLeft, Check } from 'lucide-react';
-import { hashPin, generateSalt, registerBiometrics, isBiometricSupported } from '@/lib/security';
+import { hashPin, generateSalt, registerBiometrics, isBiometricSupported, isWeakPin } from '@/lib/security';
 import { useSecurityStore } from '@/store/security-store';
 
 interface SecuritySetupProps {
@@ -36,6 +36,11 @@ export const SecuritySetup: React.FC<SecuritySetupProps> = ({
   const proceedToConfirm = useCallback((nextPin?: string) => {
     const p = nextPin ?? pin;
     if (p.length === 6) {
+      if (isWeakPin(p)) {
+        setError('Choose a less predictable PIN.');
+        setPinInput('');
+        return;
+      }
       setStep('CONFIRM');
       setPinInput(p);
     }
