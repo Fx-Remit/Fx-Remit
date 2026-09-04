@@ -34,6 +34,11 @@ export type PushSubscription = $Result.DefaultSelection<Prisma.$PushSubscription
  */
 export type SavedRecipient = $Result.DefaultSelection<Prisma.$SavedRecipientPayload>
 /**
+ * Model SavedCryptoAddress
+ * * Wallet addresses a user has cashed out crypto to before — auto-backfilled from history, not an explicit "save" step.
+ */
+export type SavedCryptoAddress = $Result.DefaultSelection<Prisma.$SavedCryptoAddressPayload>
+/**
  * Model Transaction
  * 
  */
@@ -270,6 +275,16 @@ export class PrismaClient<
     * ```
     */
   get savedRecipient(): Prisma.SavedRecipientDelegate<ExtArgs, ClientOptions>;
+
+  /**
+   * `prisma.savedCryptoAddress`: Exposes CRUD operations for the **SavedCryptoAddress** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more SavedCryptoAddresses
+    * const savedCryptoAddresses = await prisma.savedCryptoAddress.findMany()
+    * ```
+    */
+  get savedCryptoAddress(): Prisma.SavedCryptoAddressDelegate<ExtArgs, ClientOptions>;
 
   /**
    * `prisma.transaction`: Exposes CRUD operations for the **Transaction** model.
@@ -718,6 +733,7 @@ export namespace Prisma {
     Notification: 'Notification',
     PushSubscription: 'PushSubscription',
     SavedRecipient: 'SavedRecipient',
+    SavedCryptoAddress: 'SavedCryptoAddress',
     Transaction: 'Transaction'
   };
 
@@ -734,7 +750,7 @@ export namespace Prisma {
       omit: GlobalOmitOptions
     }
     meta: {
-      modelProps: "user" | "notification" | "pushSubscription" | "savedRecipient" | "transaction"
+      modelProps: "user" | "notification" | "pushSubscription" | "savedRecipient" | "savedCryptoAddress" | "transaction"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1034,6 +1050,80 @@ export namespace Prisma {
           }
         }
       }
+      SavedCryptoAddress: {
+        payload: Prisma.$SavedCryptoAddressPayload<ExtArgs>
+        fields: Prisma.SavedCryptoAddressFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.SavedCryptoAddressFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.SavedCryptoAddressFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload>
+          }
+          findFirst: {
+            args: Prisma.SavedCryptoAddressFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.SavedCryptoAddressFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload>
+          }
+          findMany: {
+            args: Prisma.SavedCryptoAddressFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload>[]
+          }
+          create: {
+            args: Prisma.SavedCryptoAddressCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload>
+          }
+          createMany: {
+            args: Prisma.SavedCryptoAddressCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.SavedCryptoAddressCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload>[]
+          }
+          delete: {
+            args: Prisma.SavedCryptoAddressDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload>
+          }
+          update: {
+            args: Prisma.SavedCryptoAddressUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload>
+          }
+          deleteMany: {
+            args: Prisma.SavedCryptoAddressDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.SavedCryptoAddressUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateManyAndReturn: {
+            args: Prisma.SavedCryptoAddressUpdateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload>[]
+          }
+          upsert: {
+            args: Prisma.SavedCryptoAddressUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$SavedCryptoAddressPayload>
+          }
+          aggregate: {
+            args: Prisma.SavedCryptoAddressAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateSavedCryptoAddress>
+          }
+          groupBy: {
+            args: Prisma.SavedCryptoAddressGroupByArgs<ExtArgs>
+            result: $Utils.Optional<SavedCryptoAddressGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.SavedCryptoAddressCountArgs<ExtArgs>
+            result: $Utils.Optional<SavedCryptoAddressCountAggregateOutputType> | number
+          }
+        }
+      }
       Transaction: {
         payload: Prisma.$TransactionPayload<ExtArgs>
         fields: Prisma.TransactionFieldRefs
@@ -1220,6 +1310,7 @@ export namespace Prisma {
     notification?: NotificationOmit
     pushSubscription?: PushSubscriptionOmit
     savedRecipient?: SavedRecipientOmit
+    savedCryptoAddress?: SavedCryptoAddressOmit
     transaction?: TransactionOmit
   }
 
@@ -1303,6 +1394,7 @@ export namespace Prisma {
   export type UserCountOutputType = {
     transactions: number
     savedRecipients: number
+    savedCryptoAddresses: number
     notifications: number
     pushSubscriptions: number
   }
@@ -1310,6 +1402,7 @@ export namespace Prisma {
   export type UserCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     transactions?: boolean | UserCountOutputTypeCountTransactionsArgs
     savedRecipients?: boolean | UserCountOutputTypeCountSavedRecipientsArgs
+    savedCryptoAddresses?: boolean | UserCountOutputTypeCountSavedCryptoAddressesArgs
     notifications?: boolean | UserCountOutputTypeCountNotificationsArgs
     pushSubscriptions?: boolean | UserCountOutputTypeCountPushSubscriptionsArgs
   }
@@ -1337,6 +1430,13 @@ export namespace Prisma {
    */
   export type UserCountOutputTypeCountSavedRecipientsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: SavedRecipientWhereInput
+  }
+
+  /**
+   * UserCountOutputType without action
+   */
+  export type UserCountOutputTypeCountSavedCryptoAddressesArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: SavedCryptoAddressWhereInput
   }
 
   /**
@@ -1638,6 +1738,7 @@ export namespace Prisma {
     walletBalance?: boolean
     transactions?: boolean | User$transactionsArgs<ExtArgs>
     savedRecipients?: boolean | User$savedRecipientsArgs<ExtArgs>
+    savedCryptoAddresses?: boolean | User$savedCryptoAddressesArgs<ExtArgs>
     notifications?: boolean | User$notificationsArgs<ExtArgs>
     pushSubscriptions?: boolean | User$pushSubscriptionsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
@@ -1698,6 +1799,7 @@ export namespace Prisma {
   export type UserInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     transactions?: boolean | User$transactionsArgs<ExtArgs>
     savedRecipients?: boolean | User$savedRecipientsArgs<ExtArgs>
+    savedCryptoAddresses?: boolean | User$savedCryptoAddressesArgs<ExtArgs>
     notifications?: boolean | User$notificationsArgs<ExtArgs>
     pushSubscriptions?: boolean | User$pushSubscriptionsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
@@ -1710,6 +1812,7 @@ export namespace Prisma {
     objects: {
       transactions: Prisma.$TransactionPayload<ExtArgs>[]
       savedRecipients: Prisma.$SavedRecipientPayload<ExtArgs>[]
+      savedCryptoAddresses: Prisma.$SavedCryptoAddressPayload<ExtArgs>[]
       notifications: Prisma.$NotificationPayload<ExtArgs>[]
       pushSubscriptions: Prisma.$PushSubscriptionPayload<ExtArgs>[]
     }
@@ -2124,6 +2227,7 @@ export namespace Prisma {
     readonly [Symbol.toStringTag]: "PrismaPromise"
     transactions<T extends User$transactionsArgs<ExtArgs> = {}>(args?: Subset<T, User$transactionsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$TransactionPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     savedRecipients<T extends User$savedRecipientsArgs<ExtArgs> = {}>(args?: Subset<T, User$savedRecipientsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedRecipientPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+    savedCryptoAddresses<T extends User$savedCryptoAddressesArgs<ExtArgs> = {}>(args?: Subset<T, User$savedCryptoAddressesArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     notifications<T extends User$notificationsArgs<ExtArgs> = {}>(args?: Subset<T, User$notificationsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$NotificationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     pushSubscriptions<T extends User$pushSubscriptionsArgs<ExtArgs> = {}>(args?: Subset<T, User$pushSubscriptionsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$PushSubscriptionPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     /**
@@ -2607,6 +2711,30 @@ export namespace Prisma {
     take?: number
     skip?: number
     distinct?: SavedRecipientScalarFieldEnum | SavedRecipientScalarFieldEnum[]
+  }
+
+  /**
+   * User.savedCryptoAddresses
+   */
+  export type User$savedCryptoAddressesArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    where?: SavedCryptoAddressWhereInput
+    orderBy?: SavedCryptoAddressOrderByWithRelationInput | SavedCryptoAddressOrderByWithRelationInput[]
+    cursor?: SavedCryptoAddressWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: SavedCryptoAddressScalarFieldEnum | SavedCryptoAddressScalarFieldEnum[]
   }
 
   /**
@@ -6022,6 +6150,1111 @@ export namespace Prisma {
 
 
   /**
+   * Model SavedCryptoAddress
+   */
+
+  export type AggregateSavedCryptoAddress = {
+    _count: SavedCryptoAddressCountAggregateOutputType | null
+    _min: SavedCryptoAddressMinAggregateOutputType | null
+    _max: SavedCryptoAddressMaxAggregateOutputType | null
+  }
+
+  export type SavedCryptoAddressMinAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    network: string | null
+    address: string | null
+    label: string | null
+    lastUsedAt: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
+  }
+
+  export type SavedCryptoAddressMaxAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    network: string | null
+    address: string | null
+    label: string | null
+    lastUsedAt: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
+  }
+
+  export type SavedCryptoAddressCountAggregateOutputType = {
+    id: number
+    userId: number
+    network: number
+    address: number
+    label: number
+    lastUsedAt: number
+    createdAt: number
+    updatedAt: number
+    _all: number
+  }
+
+
+  export type SavedCryptoAddressMinAggregateInputType = {
+    id?: true
+    userId?: true
+    network?: true
+    address?: true
+    label?: true
+    lastUsedAt?: true
+    createdAt?: true
+    updatedAt?: true
+  }
+
+  export type SavedCryptoAddressMaxAggregateInputType = {
+    id?: true
+    userId?: true
+    network?: true
+    address?: true
+    label?: true
+    lastUsedAt?: true
+    createdAt?: true
+    updatedAt?: true
+  }
+
+  export type SavedCryptoAddressCountAggregateInputType = {
+    id?: true
+    userId?: true
+    network?: true
+    address?: true
+    label?: true
+    lastUsedAt?: true
+    createdAt?: true
+    updatedAt?: true
+    _all?: true
+  }
+
+  export type SavedCryptoAddressAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SavedCryptoAddress to aggregate.
+     */
+    where?: SavedCryptoAddressWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SavedCryptoAddresses to fetch.
+     */
+    orderBy?: SavedCryptoAddressOrderByWithRelationInput | SavedCryptoAddressOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: SavedCryptoAddressWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SavedCryptoAddresses from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SavedCryptoAddresses.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned SavedCryptoAddresses
+    **/
+    _count?: true | SavedCryptoAddressCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: SavedCryptoAddressMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: SavedCryptoAddressMaxAggregateInputType
+  }
+
+  export type GetSavedCryptoAddressAggregateType<T extends SavedCryptoAddressAggregateArgs> = {
+        [P in keyof T & keyof AggregateSavedCryptoAddress]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateSavedCryptoAddress[P]>
+      : GetScalarType<T[P], AggregateSavedCryptoAddress[P]>
+  }
+
+
+
+
+  export type SavedCryptoAddressGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: SavedCryptoAddressWhereInput
+    orderBy?: SavedCryptoAddressOrderByWithAggregationInput | SavedCryptoAddressOrderByWithAggregationInput[]
+    by: SavedCryptoAddressScalarFieldEnum[] | SavedCryptoAddressScalarFieldEnum
+    having?: SavedCryptoAddressScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: SavedCryptoAddressCountAggregateInputType | true
+    _min?: SavedCryptoAddressMinAggregateInputType
+    _max?: SavedCryptoAddressMaxAggregateInputType
+  }
+
+  export type SavedCryptoAddressGroupByOutputType = {
+    id: string
+    userId: string
+    network: string
+    address: string
+    label: string | null
+    lastUsedAt: Date
+    createdAt: Date
+    updatedAt: Date
+    _count: SavedCryptoAddressCountAggregateOutputType | null
+    _min: SavedCryptoAddressMinAggregateOutputType | null
+    _max: SavedCryptoAddressMaxAggregateOutputType | null
+  }
+
+  type GetSavedCryptoAddressGroupByPayload<T extends SavedCryptoAddressGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<SavedCryptoAddressGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof SavedCryptoAddressGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], SavedCryptoAddressGroupByOutputType[P]>
+            : GetScalarType<T[P], SavedCryptoAddressGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type SavedCryptoAddressSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    network?: boolean
+    address?: boolean
+    label?: boolean
+    lastUsedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["savedCryptoAddress"]>
+
+  export type SavedCryptoAddressSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    network?: boolean
+    address?: boolean
+    label?: boolean
+    lastUsedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["savedCryptoAddress"]>
+
+  export type SavedCryptoAddressSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    network?: boolean
+    address?: boolean
+    label?: boolean
+    lastUsedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["savedCryptoAddress"]>
+
+  export type SavedCryptoAddressSelectScalar = {
+    id?: boolean
+    userId?: boolean
+    network?: boolean
+    address?: boolean
+    label?: boolean
+    lastUsedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+  }
+
+  export type SavedCryptoAddressOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "network" | "address" | "label" | "lastUsedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["savedCryptoAddress"]>
+  export type SavedCryptoAddressInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+  export type SavedCryptoAddressIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+  export type SavedCryptoAddressIncludeUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+
+  export type $SavedCryptoAddressPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "SavedCryptoAddress"
+    objects: {
+      user: Prisma.$UserPayload<ExtArgs>
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      userId: string
+      /**
+       * * 'base' | 'celo' — matches the network literal already used throughout the crypto cash-out flow.
+       */
+      network: string
+      address: string
+      label: string | null
+      lastUsedAt: Date
+      createdAt: Date
+      updatedAt: Date
+    }, ExtArgs["result"]["savedCryptoAddress"]>
+    composites: {}
+  }
+
+  type SavedCryptoAddressGetPayload<S extends boolean | null | undefined | SavedCryptoAddressDefaultArgs> = $Result.GetResult<Prisma.$SavedCryptoAddressPayload, S>
+
+  type SavedCryptoAddressCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> =
+    Omit<SavedCryptoAddressFindManyArgs, 'select' | 'include' | 'distinct' | 'omit'> & {
+      select?: SavedCryptoAddressCountAggregateInputType | true
+    }
+
+  export interface SavedCryptoAddressDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['SavedCryptoAddress'], meta: { name: 'SavedCryptoAddress' } }
+    /**
+     * Find zero or one SavedCryptoAddress that matches the filter.
+     * @param {SavedCryptoAddressFindUniqueArgs} args - Arguments to find a SavedCryptoAddress
+     * @example
+     * // Get one SavedCryptoAddress
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends SavedCryptoAddressFindUniqueArgs>(args: SelectSubset<T, SavedCryptoAddressFindUniqueArgs<ExtArgs>>): Prisma__SavedCryptoAddressClient<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "findUnique", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find one SavedCryptoAddress that matches the filter or throw an error with `error.code='P2025'`
+     * if no matches were found.
+     * @param {SavedCryptoAddressFindUniqueOrThrowArgs} args - Arguments to find a SavedCryptoAddress
+     * @example
+     * // Get one SavedCryptoAddress
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends SavedCryptoAddressFindUniqueOrThrowArgs>(args: SelectSubset<T, SavedCryptoAddressFindUniqueOrThrowArgs<ExtArgs>>): Prisma__SavedCryptoAddressClient<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first SavedCryptoAddress that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedCryptoAddressFindFirstArgs} args - Arguments to find a SavedCryptoAddress
+     * @example
+     * // Get one SavedCryptoAddress
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends SavedCryptoAddressFindFirstArgs>(args?: SelectSubset<T, SavedCryptoAddressFindFirstArgs<ExtArgs>>): Prisma__SavedCryptoAddressClient<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "findFirst", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first SavedCryptoAddress that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedCryptoAddressFindFirstOrThrowArgs} args - Arguments to find a SavedCryptoAddress
+     * @example
+     * // Get one SavedCryptoAddress
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends SavedCryptoAddressFindFirstOrThrowArgs>(args?: SelectSubset<T, SavedCryptoAddressFindFirstOrThrowArgs<ExtArgs>>): Prisma__SavedCryptoAddressClient<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "findFirstOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find zero or more SavedCryptoAddresses that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedCryptoAddressFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all SavedCryptoAddresses
+     * const savedCryptoAddresses = await prisma.savedCryptoAddress.findMany()
+     * 
+     * // Get first 10 SavedCryptoAddresses
+     * const savedCryptoAddresses = await prisma.savedCryptoAddress.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const savedCryptoAddressWithIdOnly = await prisma.savedCryptoAddress.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends SavedCryptoAddressFindManyArgs>(args?: SelectSubset<T, SavedCryptoAddressFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "findMany", GlobalOmitOptions>>
+
+    /**
+     * Create a SavedCryptoAddress.
+     * @param {SavedCryptoAddressCreateArgs} args - Arguments to create a SavedCryptoAddress.
+     * @example
+     * // Create one SavedCryptoAddress
+     * const SavedCryptoAddress = await prisma.savedCryptoAddress.create({
+     *   data: {
+     *     // ... data to create a SavedCryptoAddress
+     *   }
+     * })
+     * 
+     */
+    create<T extends SavedCryptoAddressCreateArgs>(args: SelectSubset<T, SavedCryptoAddressCreateArgs<ExtArgs>>): Prisma__SavedCryptoAddressClient<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "create", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Create many SavedCryptoAddresses.
+     * @param {SavedCryptoAddressCreateManyArgs} args - Arguments to create many SavedCryptoAddresses.
+     * @example
+     * // Create many SavedCryptoAddresses
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends SavedCryptoAddressCreateManyArgs>(args?: SelectSubset<T, SavedCryptoAddressCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many SavedCryptoAddresses and returns the data saved in the database.
+     * @param {SavedCryptoAddressCreateManyAndReturnArgs} args - Arguments to create many SavedCryptoAddresses.
+     * @example
+     * // Create many SavedCryptoAddresses
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many SavedCryptoAddresses and only return the `id`
+     * const savedCryptoAddressWithIdOnly = await prisma.savedCryptoAddress.createManyAndReturn({
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends SavedCryptoAddressCreateManyAndReturnArgs>(args?: SelectSubset<T, SavedCryptoAddressCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "createManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Delete a SavedCryptoAddress.
+     * @param {SavedCryptoAddressDeleteArgs} args - Arguments to delete one SavedCryptoAddress.
+     * @example
+     * // Delete one SavedCryptoAddress
+     * const SavedCryptoAddress = await prisma.savedCryptoAddress.delete({
+     *   where: {
+     *     // ... filter to delete one SavedCryptoAddress
+     *   }
+     * })
+     * 
+     */
+    delete<T extends SavedCryptoAddressDeleteArgs>(args: SelectSubset<T, SavedCryptoAddressDeleteArgs<ExtArgs>>): Prisma__SavedCryptoAddressClient<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "delete", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Update one SavedCryptoAddress.
+     * @param {SavedCryptoAddressUpdateArgs} args - Arguments to update one SavedCryptoAddress.
+     * @example
+     * // Update one SavedCryptoAddress
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends SavedCryptoAddressUpdateArgs>(args: SelectSubset<T, SavedCryptoAddressUpdateArgs<ExtArgs>>): Prisma__SavedCryptoAddressClient<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "update", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Delete zero or more SavedCryptoAddresses.
+     * @param {SavedCryptoAddressDeleteManyArgs} args - Arguments to filter SavedCryptoAddresses to delete.
+     * @example
+     * // Delete a few SavedCryptoAddresses
+     * const { count } = await prisma.savedCryptoAddress.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends SavedCryptoAddressDeleteManyArgs>(args?: SelectSubset<T, SavedCryptoAddressDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more SavedCryptoAddresses.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedCryptoAddressUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many SavedCryptoAddresses
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends SavedCryptoAddressUpdateManyArgs>(args: SelectSubset<T, SavedCryptoAddressUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more SavedCryptoAddresses and returns the data updated in the database.
+     * @param {SavedCryptoAddressUpdateManyAndReturnArgs} args - Arguments to update many SavedCryptoAddresses.
+     * @example
+     * // Update many SavedCryptoAddresses
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.updateManyAndReturn({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Update zero or more SavedCryptoAddresses and only return the `id`
+     * const savedCryptoAddressWithIdOnly = await prisma.savedCryptoAddress.updateManyAndReturn({
+     *   select: { id: true },
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    updateManyAndReturn<T extends SavedCryptoAddressUpdateManyAndReturnArgs>(args: SelectSubset<T, SavedCryptoAddressUpdateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "updateManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Create or update one SavedCryptoAddress.
+     * @param {SavedCryptoAddressUpsertArgs} args - Arguments to update or create a SavedCryptoAddress.
+     * @example
+     * // Update or create a SavedCryptoAddress
+     * const savedCryptoAddress = await prisma.savedCryptoAddress.upsert({
+     *   create: {
+     *     // ... data to create a SavedCryptoAddress
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the SavedCryptoAddress we want to update
+     *   }
+     * })
+     */
+    upsert<T extends SavedCryptoAddressUpsertArgs>(args: SelectSubset<T, SavedCryptoAddressUpsertArgs<ExtArgs>>): Prisma__SavedCryptoAddressClient<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "upsert", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+
+    /**
+     * Count the number of SavedCryptoAddresses.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedCryptoAddressCountArgs} args - Arguments to filter SavedCryptoAddresses to count.
+     * @example
+     * // Count the number of SavedCryptoAddresses
+     * const count = await prisma.savedCryptoAddress.count({
+     *   where: {
+     *     // ... the filter for the SavedCryptoAddresses we want to count
+     *   }
+     * })
+    **/
+    count<T extends SavedCryptoAddressCountArgs>(
+      args?: Subset<T, SavedCryptoAddressCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], SavedCryptoAddressCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a SavedCryptoAddress.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedCryptoAddressAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends SavedCryptoAddressAggregateArgs>(args: Subset<T, SavedCryptoAddressAggregateArgs>): Prisma.PrismaPromise<GetSavedCryptoAddressAggregateType<T>>
+
+    /**
+     * Group by SavedCryptoAddress.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {SavedCryptoAddressGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends SavedCryptoAddressGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: SavedCryptoAddressGroupByArgs['orderBy'] }
+        : { orderBy?: SavedCryptoAddressGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, SavedCryptoAddressGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetSavedCryptoAddressGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the SavedCryptoAddress model
+   */
+  readonly fields: SavedCryptoAddressFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for SavedCryptoAddress.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__SavedCryptoAddressClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    user<T extends UserDefaultArgs<ExtArgs> = {}>(args?: Subset<T, UserDefaultArgs<ExtArgs>>): Prisma__UserClient<$Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the SavedCryptoAddress model
+   */
+  interface SavedCryptoAddressFieldRefs {
+    readonly id: FieldRef<"SavedCryptoAddress", 'String'>
+    readonly userId: FieldRef<"SavedCryptoAddress", 'String'>
+    readonly network: FieldRef<"SavedCryptoAddress", 'String'>
+    readonly address: FieldRef<"SavedCryptoAddress", 'String'>
+    readonly label: FieldRef<"SavedCryptoAddress", 'String'>
+    readonly lastUsedAt: FieldRef<"SavedCryptoAddress", 'DateTime'>
+    readonly createdAt: FieldRef<"SavedCryptoAddress", 'DateTime'>
+    readonly updatedAt: FieldRef<"SavedCryptoAddress", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * SavedCryptoAddress findUnique
+   */
+  export type SavedCryptoAddressFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedCryptoAddress to fetch.
+     */
+    where: SavedCryptoAddressWhereUniqueInput
+  }
+
+  /**
+   * SavedCryptoAddress findUniqueOrThrow
+   */
+  export type SavedCryptoAddressFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedCryptoAddress to fetch.
+     */
+    where: SavedCryptoAddressWhereUniqueInput
+  }
+
+  /**
+   * SavedCryptoAddress findFirst
+   */
+  export type SavedCryptoAddressFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedCryptoAddress to fetch.
+     */
+    where?: SavedCryptoAddressWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SavedCryptoAddresses to fetch.
+     */
+    orderBy?: SavedCryptoAddressOrderByWithRelationInput | SavedCryptoAddressOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SavedCryptoAddresses.
+     */
+    cursor?: SavedCryptoAddressWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SavedCryptoAddresses from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SavedCryptoAddresses.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SavedCryptoAddresses.
+     */
+    distinct?: SavedCryptoAddressScalarFieldEnum | SavedCryptoAddressScalarFieldEnum[]
+  }
+
+  /**
+   * SavedCryptoAddress findFirstOrThrow
+   */
+  export type SavedCryptoAddressFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedCryptoAddress to fetch.
+     */
+    where?: SavedCryptoAddressWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SavedCryptoAddresses to fetch.
+     */
+    orderBy?: SavedCryptoAddressOrderByWithRelationInput | SavedCryptoAddressOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for SavedCryptoAddresses.
+     */
+    cursor?: SavedCryptoAddressWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SavedCryptoAddresses from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SavedCryptoAddresses.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SavedCryptoAddresses.
+     */
+    distinct?: SavedCryptoAddressScalarFieldEnum | SavedCryptoAddressScalarFieldEnum[]
+  }
+
+  /**
+   * SavedCryptoAddress findMany
+   */
+  export type SavedCryptoAddressFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    /**
+     * Filter, which SavedCryptoAddresses to fetch.
+     */
+    where?: SavedCryptoAddressWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of SavedCryptoAddresses to fetch.
+     */
+    orderBy?: SavedCryptoAddressOrderByWithRelationInput | SavedCryptoAddressOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing SavedCryptoAddresses.
+     */
+    cursor?: SavedCryptoAddressWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` SavedCryptoAddresses from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` SavedCryptoAddresses.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of SavedCryptoAddresses.
+     */
+    distinct?: SavedCryptoAddressScalarFieldEnum | SavedCryptoAddressScalarFieldEnum[]
+  }
+
+  /**
+   * SavedCryptoAddress create
+   */
+  export type SavedCryptoAddressCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    /**
+     * The data needed to create a SavedCryptoAddress.
+     */
+    data: XOR<SavedCryptoAddressCreateInput, SavedCryptoAddressUncheckedCreateInput>
+  }
+
+  /**
+   * SavedCryptoAddress createMany
+   */
+  export type SavedCryptoAddressCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many SavedCryptoAddresses.
+     */
+    data: SavedCryptoAddressCreateManyInput | SavedCryptoAddressCreateManyInput[]
+    skipDuplicates?: boolean
+  }
+
+  /**
+   * SavedCryptoAddress createManyAndReturn
+   */
+  export type SavedCryptoAddressCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * The data used to create many SavedCryptoAddresses.
+     */
+    data: SavedCryptoAddressCreateManyInput | SavedCryptoAddressCreateManyInput[]
+    skipDuplicates?: boolean
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * SavedCryptoAddress update
+   */
+  export type SavedCryptoAddressUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    /**
+     * The data needed to update a SavedCryptoAddress.
+     */
+    data: XOR<SavedCryptoAddressUpdateInput, SavedCryptoAddressUncheckedUpdateInput>
+    /**
+     * Choose, which SavedCryptoAddress to update.
+     */
+    where: SavedCryptoAddressWhereUniqueInput
+  }
+
+  /**
+   * SavedCryptoAddress updateMany
+   */
+  export type SavedCryptoAddressUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update SavedCryptoAddresses.
+     */
+    data: XOR<SavedCryptoAddressUpdateManyMutationInput, SavedCryptoAddressUncheckedUpdateManyInput>
+    /**
+     * Filter which SavedCryptoAddresses to update
+     */
+    where?: SavedCryptoAddressWhereInput
+    /**
+     * Limit how many SavedCryptoAddresses to update.
+     */
+    limit?: number
+  }
+
+  /**
+   * SavedCryptoAddress updateManyAndReturn
+   */
+  export type SavedCryptoAddressUpdateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelectUpdateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * The data used to update SavedCryptoAddresses.
+     */
+    data: XOR<SavedCryptoAddressUpdateManyMutationInput, SavedCryptoAddressUncheckedUpdateManyInput>
+    /**
+     * Filter which SavedCryptoAddresses to update
+     */
+    where?: SavedCryptoAddressWhereInput
+    /**
+     * Limit how many SavedCryptoAddresses to update.
+     */
+    limit?: number
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressIncludeUpdateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * SavedCryptoAddress upsert
+   */
+  export type SavedCryptoAddressUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    /**
+     * The filter to search for the SavedCryptoAddress to update in case it exists.
+     */
+    where: SavedCryptoAddressWhereUniqueInput
+    /**
+     * In case the SavedCryptoAddress found by the `where` argument doesn't exist, create a new SavedCryptoAddress with this data.
+     */
+    create: XOR<SavedCryptoAddressCreateInput, SavedCryptoAddressUncheckedCreateInput>
+    /**
+     * In case the SavedCryptoAddress was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<SavedCryptoAddressUpdateInput, SavedCryptoAddressUncheckedUpdateInput>
+  }
+
+  /**
+   * SavedCryptoAddress delete
+   */
+  export type SavedCryptoAddressDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+    /**
+     * Filter which SavedCryptoAddress to delete.
+     */
+    where: SavedCryptoAddressWhereUniqueInput
+  }
+
+  /**
+   * SavedCryptoAddress deleteMany
+   */
+  export type SavedCryptoAddressDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which SavedCryptoAddresses to delete
+     */
+    where?: SavedCryptoAddressWhereInput
+    /**
+     * Limit how many SavedCryptoAddresses to delete.
+     */
+    limit?: number
+  }
+
+  /**
+   * SavedCryptoAddress without action
+   */
+  export type SavedCryptoAddressDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the SavedCryptoAddress
+     */
+    select?: SavedCryptoAddressSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the SavedCryptoAddress
+     */
+    omit?: SavedCryptoAddressOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: SavedCryptoAddressInclude<ExtArgs> | null
+  }
+
+
+  /**
    * Model Transaction
    */
 
@@ -7470,6 +8703,20 @@ export namespace Prisma {
   export type SavedRecipientScalarFieldEnum = (typeof SavedRecipientScalarFieldEnum)[keyof typeof SavedRecipientScalarFieldEnum]
 
 
+  export const SavedCryptoAddressScalarFieldEnum: {
+    id: 'id',
+    userId: 'userId',
+    network: 'network',
+    address: 'address',
+    label: 'label',
+    lastUsedAt: 'lastUsedAt',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
+  };
+
+  export type SavedCryptoAddressScalarFieldEnum = (typeof SavedCryptoAddressScalarFieldEnum)[keyof typeof SavedCryptoAddressScalarFieldEnum]
+
+
   export const TransactionScalarFieldEnum: {
     id: 'id',
     userId: 'userId',
@@ -7706,6 +8953,7 @@ export namespace Prisma {
     walletBalance?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactions?: TransactionListRelationFilter
     savedRecipients?: SavedRecipientListRelationFilter
+    savedCryptoAddresses?: SavedCryptoAddressListRelationFilter
     notifications?: NotificationListRelationFilter
     pushSubscriptions?: PushSubscriptionListRelationFilter
   }
@@ -7727,6 +8975,7 @@ export namespace Prisma {
     walletBalance?: SortOrder
     transactions?: TransactionOrderByRelationAggregateInput
     savedRecipients?: SavedRecipientOrderByRelationAggregateInput
+    savedCryptoAddresses?: SavedCryptoAddressOrderByRelationAggregateInput
     notifications?: NotificationOrderByRelationAggregateInput
     pushSubscriptions?: PushSubscriptionOrderByRelationAggregateInput
   }
@@ -7751,6 +9000,7 @@ export namespace Prisma {
     walletBalance?: DecimalFilter<"User"> | Decimal | DecimalJsLike | number | string
     transactions?: TransactionListRelationFilter
     savedRecipients?: SavedRecipientListRelationFilter
+    savedCryptoAddresses?: SavedCryptoAddressListRelationFilter
     notifications?: NotificationListRelationFilter
     pushSubscriptions?: PushSubscriptionListRelationFilter
   }, "id" | "privyDid" | "walletAddress" | "stellarPublicKey" | "email">
@@ -8024,6 +9274,77 @@ export namespace Prisma {
     updatedAt?: DateTimeWithAggregatesFilter<"SavedRecipient"> | Date | string
   }
 
+  export type SavedCryptoAddressWhereInput = {
+    AND?: SavedCryptoAddressWhereInput | SavedCryptoAddressWhereInput[]
+    OR?: SavedCryptoAddressWhereInput[]
+    NOT?: SavedCryptoAddressWhereInput | SavedCryptoAddressWhereInput[]
+    id?: StringFilter<"SavedCryptoAddress"> | string
+    userId?: StringFilter<"SavedCryptoAddress"> | string
+    network?: StringFilter<"SavedCryptoAddress"> | string
+    address?: StringFilter<"SavedCryptoAddress"> | string
+    label?: StringNullableFilter<"SavedCryptoAddress"> | string | null
+    lastUsedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
+    createdAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
+    updatedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
+    user?: XOR<UserScalarRelationFilter, UserWhereInput>
+  }
+
+  export type SavedCryptoAddressOrderByWithRelationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    network?: SortOrder
+    address?: SortOrder
+    label?: SortOrderInput | SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+    user?: UserOrderByWithRelationInput
+  }
+
+  export type SavedCryptoAddressWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    userId_network_address?: SavedCryptoAddressUserIdNetworkAddressCompoundUniqueInput
+    AND?: SavedCryptoAddressWhereInput | SavedCryptoAddressWhereInput[]
+    OR?: SavedCryptoAddressWhereInput[]
+    NOT?: SavedCryptoAddressWhereInput | SavedCryptoAddressWhereInput[]
+    userId?: StringFilter<"SavedCryptoAddress"> | string
+    network?: StringFilter<"SavedCryptoAddress"> | string
+    address?: StringFilter<"SavedCryptoAddress"> | string
+    label?: StringNullableFilter<"SavedCryptoAddress"> | string | null
+    lastUsedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
+    createdAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
+    updatedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
+    user?: XOR<UserScalarRelationFilter, UserWhereInput>
+  }, "id" | "userId_network_address">
+
+  export type SavedCryptoAddressOrderByWithAggregationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    network?: SortOrder
+    address?: SortOrder
+    label?: SortOrderInput | SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+    _count?: SavedCryptoAddressCountOrderByAggregateInput
+    _max?: SavedCryptoAddressMaxOrderByAggregateInput
+    _min?: SavedCryptoAddressMinOrderByAggregateInput
+  }
+
+  export type SavedCryptoAddressScalarWhereWithAggregatesInput = {
+    AND?: SavedCryptoAddressScalarWhereWithAggregatesInput | SavedCryptoAddressScalarWhereWithAggregatesInput[]
+    OR?: SavedCryptoAddressScalarWhereWithAggregatesInput[]
+    NOT?: SavedCryptoAddressScalarWhereWithAggregatesInput | SavedCryptoAddressScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"SavedCryptoAddress"> | string
+    userId?: StringWithAggregatesFilter<"SavedCryptoAddress"> | string
+    network?: StringWithAggregatesFilter<"SavedCryptoAddress"> | string
+    address?: StringWithAggregatesFilter<"SavedCryptoAddress"> | string
+    label?: StringNullableWithAggregatesFilter<"SavedCryptoAddress"> | string | null
+    lastUsedAt?: DateTimeWithAggregatesFilter<"SavedCryptoAddress"> | Date | string
+    createdAt?: DateTimeWithAggregatesFilter<"SavedCryptoAddress"> | Date | string
+    updatedAt?: DateTimeWithAggregatesFilter<"SavedCryptoAddress"> | Date | string
+  }
+
   export type TransactionWhereInput = {
     AND?: TransactionWhereInput | TransactionWhereInput[]
     OR?: TransactionWhereInput[]
@@ -8197,6 +9518,7 @@ export namespace Prisma {
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionCreateNestedManyWithoutUserInput
     savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     notifications?: NotificationCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
   }
@@ -8218,6 +9540,7 @@ export namespace Prisma {
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
     savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
   }
@@ -8239,6 +9562,7 @@ export namespace Prisma {
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUpdateManyWithoutUserNestedInput
     savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     notifications?: NotificationUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
   }
@@ -8260,6 +9584,7 @@ export namespace Prisma {
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
     savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
     notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
   }
@@ -8564,6 +9889,82 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
+  export type SavedCryptoAddressCreateInput = {
+    id?: string
+    network: string
+    address: string
+    label?: string | null
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    user: UserCreateNestedOneWithoutSavedCryptoAddressesInput
+  }
+
+  export type SavedCryptoAddressUncheckedCreateInput = {
+    id?: string
+    userId: string
+    network: string
+    address: string
+    label?: string | null
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SavedCryptoAddressUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    network?: StringFieldUpdateOperationsInput | string
+    address?: StringFieldUpdateOperationsInput | string
+    label?: NullableStringFieldUpdateOperationsInput | string | null
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    user?: UserUpdateOneRequiredWithoutSavedCryptoAddressesNestedInput
+  }
+
+  export type SavedCryptoAddressUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    network?: StringFieldUpdateOperationsInput | string
+    address?: StringFieldUpdateOperationsInput | string
+    label?: NullableStringFieldUpdateOperationsInput | string | null
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SavedCryptoAddressCreateManyInput = {
+    id?: string
+    userId: string
+    network: string
+    address: string
+    label?: string | null
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SavedCryptoAddressUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    network?: StringFieldUpdateOperationsInput | string
+    address?: StringFieldUpdateOperationsInput | string
+    label?: NullableStringFieldUpdateOperationsInput | string | null
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SavedCryptoAddressUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    network?: StringFieldUpdateOperationsInput | string
+    address?: StringFieldUpdateOperationsInput | string
+    label?: NullableStringFieldUpdateOperationsInput | string | null
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
   export type TransactionCreateInput = {
     id?: string
     orderId: bigint | number
@@ -8838,6 +10239,12 @@ export namespace Prisma {
     none?: SavedRecipientWhereInput
   }
 
+  export type SavedCryptoAddressListRelationFilter = {
+    every?: SavedCryptoAddressWhereInput
+    some?: SavedCryptoAddressWhereInput
+    none?: SavedCryptoAddressWhereInput
+  }
+
   export type NotificationListRelationFilter = {
     every?: NotificationWhereInput
     some?: NotificationWhereInput
@@ -8860,6 +10267,10 @@ export namespace Prisma {
   }
 
   export type SavedRecipientOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type SavedCryptoAddressOrderByRelationAggregateInput = {
     _count?: SortOrder
   }
 
@@ -9190,6 +10601,45 @@ export namespace Prisma {
     _max?: NestedEnumRecipientTypeFilter<$PrismaModel>
   }
 
+  export type SavedCryptoAddressUserIdNetworkAddressCompoundUniqueInput = {
+    userId: string
+    network: string
+    address: string
+  }
+
+  export type SavedCryptoAddressCountOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    network?: SortOrder
+    address?: SortOrder
+    label?: SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type SavedCryptoAddressMaxOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    network?: SortOrder
+    address?: SortOrder
+    label?: SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type SavedCryptoAddressMinOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    network?: SortOrder
+    address?: SortOrder
+    label?: SortOrder
+    lastUsedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
   export type BigIntFilter<$PrismaModel = never> = {
     equals?: bigint | number | BigIntFieldRefInput<$PrismaModel>
     in?: bigint[] | number[] | ListBigIntFieldRefInput<$PrismaModel>
@@ -9402,6 +10852,13 @@ export namespace Prisma {
     connect?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
   }
 
+  export type SavedCryptoAddressCreateNestedManyWithoutUserInput = {
+    create?: XOR<SavedCryptoAddressCreateWithoutUserInput, SavedCryptoAddressUncheckedCreateWithoutUserInput> | SavedCryptoAddressCreateWithoutUserInput[] | SavedCryptoAddressUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: SavedCryptoAddressCreateOrConnectWithoutUserInput | SavedCryptoAddressCreateOrConnectWithoutUserInput[]
+    createMany?: SavedCryptoAddressCreateManyUserInputEnvelope
+    connect?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
+  }
+
   export type NotificationCreateNestedManyWithoutUserInput = {
     create?: XOR<NotificationCreateWithoutUserInput, NotificationUncheckedCreateWithoutUserInput> | NotificationCreateWithoutUserInput[] | NotificationUncheckedCreateWithoutUserInput[]
     connectOrCreate?: NotificationCreateOrConnectWithoutUserInput | NotificationCreateOrConnectWithoutUserInput[]
@@ -9428,6 +10885,13 @@ export namespace Prisma {
     connectOrCreate?: SavedRecipientCreateOrConnectWithoutUserInput | SavedRecipientCreateOrConnectWithoutUserInput[]
     createMany?: SavedRecipientCreateManyUserInputEnvelope
     connect?: SavedRecipientWhereUniqueInput | SavedRecipientWhereUniqueInput[]
+  }
+
+  export type SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput = {
+    create?: XOR<SavedCryptoAddressCreateWithoutUserInput, SavedCryptoAddressUncheckedCreateWithoutUserInput> | SavedCryptoAddressCreateWithoutUserInput[] | SavedCryptoAddressUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: SavedCryptoAddressCreateOrConnectWithoutUserInput | SavedCryptoAddressCreateOrConnectWithoutUserInput[]
+    createMany?: SavedCryptoAddressCreateManyUserInputEnvelope
+    connect?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
   }
 
   export type NotificationUncheckedCreateNestedManyWithoutUserInput = {
@@ -9504,6 +10968,20 @@ export namespace Prisma {
     deleteMany?: SavedRecipientScalarWhereInput | SavedRecipientScalarWhereInput[]
   }
 
+  export type SavedCryptoAddressUpdateManyWithoutUserNestedInput = {
+    create?: XOR<SavedCryptoAddressCreateWithoutUserInput, SavedCryptoAddressUncheckedCreateWithoutUserInput> | SavedCryptoAddressCreateWithoutUserInput[] | SavedCryptoAddressUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: SavedCryptoAddressCreateOrConnectWithoutUserInput | SavedCryptoAddressCreateOrConnectWithoutUserInput[]
+    upsert?: SavedCryptoAddressUpsertWithWhereUniqueWithoutUserInput | SavedCryptoAddressUpsertWithWhereUniqueWithoutUserInput[]
+    createMany?: SavedCryptoAddressCreateManyUserInputEnvelope
+    set?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
+    disconnect?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
+    delete?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
+    connect?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
+    update?: SavedCryptoAddressUpdateWithWhereUniqueWithoutUserInput | SavedCryptoAddressUpdateWithWhereUniqueWithoutUserInput[]
+    updateMany?: SavedCryptoAddressUpdateManyWithWhereWithoutUserInput | SavedCryptoAddressUpdateManyWithWhereWithoutUserInput[]
+    deleteMany?: SavedCryptoAddressScalarWhereInput | SavedCryptoAddressScalarWhereInput[]
+  }
+
   export type NotificationUpdateManyWithoutUserNestedInput = {
     create?: XOR<NotificationCreateWithoutUserInput, NotificationUncheckedCreateWithoutUserInput> | NotificationCreateWithoutUserInput[] | NotificationUncheckedCreateWithoutUserInput[]
     connectOrCreate?: NotificationCreateOrConnectWithoutUserInput | NotificationCreateOrConnectWithoutUserInput[]
@@ -9558,6 +11036,20 @@ export namespace Prisma {
     update?: SavedRecipientUpdateWithWhereUniqueWithoutUserInput | SavedRecipientUpdateWithWhereUniqueWithoutUserInput[]
     updateMany?: SavedRecipientUpdateManyWithWhereWithoutUserInput | SavedRecipientUpdateManyWithWhereWithoutUserInput[]
     deleteMany?: SavedRecipientScalarWhereInput | SavedRecipientScalarWhereInput[]
+  }
+
+  export type SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput = {
+    create?: XOR<SavedCryptoAddressCreateWithoutUserInput, SavedCryptoAddressUncheckedCreateWithoutUserInput> | SavedCryptoAddressCreateWithoutUserInput[] | SavedCryptoAddressUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: SavedCryptoAddressCreateOrConnectWithoutUserInput | SavedCryptoAddressCreateOrConnectWithoutUserInput[]
+    upsert?: SavedCryptoAddressUpsertWithWhereUniqueWithoutUserInput | SavedCryptoAddressUpsertWithWhereUniqueWithoutUserInput[]
+    createMany?: SavedCryptoAddressCreateManyUserInputEnvelope
+    set?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
+    disconnect?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
+    delete?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
+    connect?: SavedCryptoAddressWhereUniqueInput | SavedCryptoAddressWhereUniqueInput[]
+    update?: SavedCryptoAddressUpdateWithWhereUniqueWithoutUserInput | SavedCryptoAddressUpdateWithWhereUniqueWithoutUserInput[]
+    updateMany?: SavedCryptoAddressUpdateManyWithWhereWithoutUserInput | SavedCryptoAddressUpdateManyWithWhereWithoutUserInput[]
+    deleteMany?: SavedCryptoAddressScalarWhereInput | SavedCryptoAddressScalarWhereInput[]
   }
 
   export type NotificationUncheckedUpdateManyWithoutUserNestedInput = {
@@ -9636,6 +11128,20 @@ export namespace Prisma {
     upsert?: UserUpsertWithoutSavedRecipientsInput
     connect?: UserWhereUniqueInput
     update?: XOR<XOR<UserUpdateToOneWithWhereWithoutSavedRecipientsInput, UserUpdateWithoutSavedRecipientsInput>, UserUncheckedUpdateWithoutSavedRecipientsInput>
+  }
+
+  export type UserCreateNestedOneWithoutSavedCryptoAddressesInput = {
+    create?: XOR<UserCreateWithoutSavedCryptoAddressesInput, UserUncheckedCreateWithoutSavedCryptoAddressesInput>
+    connectOrCreate?: UserCreateOrConnectWithoutSavedCryptoAddressesInput
+    connect?: UserWhereUniqueInput
+  }
+
+  export type UserUpdateOneRequiredWithoutSavedCryptoAddressesNestedInput = {
+    create?: XOR<UserCreateWithoutSavedCryptoAddressesInput, UserUncheckedCreateWithoutSavedCryptoAddressesInput>
+    connectOrCreate?: UserCreateOrConnectWithoutSavedCryptoAddressesInput
+    upsert?: UserUpsertWithoutSavedCryptoAddressesInput
+    connect?: UserWhereUniqueInput
+    update?: XOR<XOR<UserUpdateToOneWithWhereWithoutSavedCryptoAddressesInput, UserUpdateWithoutSavedCryptoAddressesInput>, UserUncheckedUpdateWithoutSavedCryptoAddressesInput>
   }
 
   export type UserCreateNestedOneWithoutTransactionsInput = {
@@ -10070,6 +11576,36 @@ export namespace Prisma {
     skipDuplicates?: boolean
   }
 
+  export type SavedCryptoAddressCreateWithoutUserInput = {
+    id?: string
+    network: string
+    address: string
+    label?: string | null
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SavedCryptoAddressUncheckedCreateWithoutUserInput = {
+    id?: string
+    network: string
+    address: string
+    label?: string | null
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SavedCryptoAddressCreateOrConnectWithoutUserInput = {
+    where: SavedCryptoAddressWhereUniqueInput
+    create: XOR<SavedCryptoAddressCreateWithoutUserInput, SavedCryptoAddressUncheckedCreateWithoutUserInput>
+  }
+
+  export type SavedCryptoAddressCreateManyUserInputEnvelope = {
+    data: SavedCryptoAddressCreateManyUserInput | SavedCryptoAddressCreateManyUserInput[]
+    skipDuplicates?: boolean
+  }
+
   export type NotificationCreateWithoutUserInput = {
     id?: string
     type: $Enums.NotificationType
@@ -10209,6 +11745,36 @@ export namespace Prisma {
     updatedAt?: DateTimeFilter<"SavedRecipient"> | Date | string
   }
 
+  export type SavedCryptoAddressUpsertWithWhereUniqueWithoutUserInput = {
+    where: SavedCryptoAddressWhereUniqueInput
+    update: XOR<SavedCryptoAddressUpdateWithoutUserInput, SavedCryptoAddressUncheckedUpdateWithoutUserInput>
+    create: XOR<SavedCryptoAddressCreateWithoutUserInput, SavedCryptoAddressUncheckedCreateWithoutUserInput>
+  }
+
+  export type SavedCryptoAddressUpdateWithWhereUniqueWithoutUserInput = {
+    where: SavedCryptoAddressWhereUniqueInput
+    data: XOR<SavedCryptoAddressUpdateWithoutUserInput, SavedCryptoAddressUncheckedUpdateWithoutUserInput>
+  }
+
+  export type SavedCryptoAddressUpdateManyWithWhereWithoutUserInput = {
+    where: SavedCryptoAddressScalarWhereInput
+    data: XOR<SavedCryptoAddressUpdateManyMutationInput, SavedCryptoAddressUncheckedUpdateManyWithoutUserInput>
+  }
+
+  export type SavedCryptoAddressScalarWhereInput = {
+    AND?: SavedCryptoAddressScalarWhereInput | SavedCryptoAddressScalarWhereInput[]
+    OR?: SavedCryptoAddressScalarWhereInput[]
+    NOT?: SavedCryptoAddressScalarWhereInput | SavedCryptoAddressScalarWhereInput[]
+    id?: StringFilter<"SavedCryptoAddress"> | string
+    userId?: StringFilter<"SavedCryptoAddress"> | string
+    network?: StringFilter<"SavedCryptoAddress"> | string
+    address?: StringFilter<"SavedCryptoAddress"> | string
+    label?: StringNullableFilter<"SavedCryptoAddress"> | string | null
+    lastUsedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
+    createdAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
+    updatedAt?: DateTimeFilter<"SavedCryptoAddress"> | Date | string
+  }
+
   export type NotificationUpsertWithWhereUniqueWithoutUserInput = {
     where: NotificationWhereUniqueInput
     update: XOR<NotificationUpdateWithoutUserInput, NotificationUncheckedUpdateWithoutUserInput>
@@ -10286,6 +11852,7 @@ export namespace Prisma {
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionCreateNestedManyWithoutUserInput
     savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
   }
 
@@ -10306,6 +11873,7 @@ export namespace Prisma {
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
     savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
   }
 
@@ -10342,6 +11910,7 @@ export namespace Prisma {
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUpdateManyWithoutUserNestedInput
     savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
   }
 
@@ -10362,6 +11931,7 @@ export namespace Prisma {
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
     savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
   }
 
@@ -10382,6 +11952,7 @@ export namespace Prisma {
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionCreateNestedManyWithoutUserInput
     savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     notifications?: NotificationCreateNestedManyWithoutUserInput
   }
 
@@ -10402,6 +11973,7 @@ export namespace Prisma {
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
     savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
   }
 
@@ -10438,6 +12010,7 @@ export namespace Prisma {
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUpdateManyWithoutUserNestedInput
     savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     notifications?: NotificationUpdateManyWithoutUserNestedInput
   }
 
@@ -10458,6 +12031,7 @@ export namespace Prisma {
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
     savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
     notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
   }
 
@@ -10477,6 +12051,7 @@ export namespace Prisma {
     lastLoginAt?: Date | string | null
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     notifications?: NotificationCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
   }
@@ -10497,6 +12072,7 @@ export namespace Prisma {
     lastLoginAt?: Date | string | null
     walletBalance?: Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
   }
@@ -10533,6 +12109,7 @@ export namespace Prisma {
     lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     notifications?: NotificationUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
   }
@@ -10553,6 +12130,107 @@ export namespace Prisma {
     lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
+    notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
+    pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+  }
+
+  export type UserCreateWithoutSavedCryptoAddressesInput = {
+    id?: string
+    privyDid: string
+    walletAddress?: string | null
+    stellarPublicKey?: string | null
+    fullName?: string | null
+    email?: string | null
+    avatarUrl?: string | null
+    totalSentUsd?: Decimal | DecimalJsLike | number | string
+    transactionCount?: number
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
+    transactions?: TransactionCreateNestedManyWithoutUserInput
+    savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
+    notifications?: NotificationCreateNestedManyWithoutUserInput
+    pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
+  }
+
+  export type UserUncheckedCreateWithoutSavedCryptoAddressesInput = {
+    id?: string
+    privyDid: string
+    walletAddress?: string | null
+    stellarPublicKey?: string | null
+    fullName?: string | null
+    email?: string | null
+    avatarUrl?: string | null
+    totalSentUsd?: Decimal | DecimalJsLike | number | string
+    transactionCount?: number
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
+    transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
+    savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
+    notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
+    pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+  }
+
+  export type UserCreateOrConnectWithoutSavedCryptoAddressesInput = {
+    where: UserWhereUniqueInput
+    create: XOR<UserCreateWithoutSavedCryptoAddressesInput, UserUncheckedCreateWithoutSavedCryptoAddressesInput>
+  }
+
+  export type UserUpsertWithoutSavedCryptoAddressesInput = {
+    update: XOR<UserUpdateWithoutSavedCryptoAddressesInput, UserUncheckedUpdateWithoutSavedCryptoAddressesInput>
+    create: XOR<UserCreateWithoutSavedCryptoAddressesInput, UserUncheckedCreateWithoutSavedCryptoAddressesInput>
+    where?: UserWhereInput
+  }
+
+  export type UserUpdateToOneWithWhereWithoutSavedCryptoAddressesInput = {
+    where?: UserWhereInput
+    data: XOR<UserUpdateWithoutSavedCryptoAddressesInput, UserUncheckedUpdateWithoutSavedCryptoAddressesInput>
+  }
+
+  export type UserUpdateWithoutSavedCryptoAddressesInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    privyDid?: StringFieldUpdateOperationsInput | string
+    walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
+    fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactionCount?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactions?: TransactionUpdateManyWithoutUserNestedInput
+    savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
+    notifications?: NotificationUpdateManyWithoutUserNestedInput
+    pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
+  }
+
+  export type UserUncheckedUpdateWithoutSavedCryptoAddressesInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    privyDid?: StringFieldUpdateOperationsInput | string
+    walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    stellarPublicKey?: NullableStringFieldUpdateOperationsInput | string | null
+    fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactionCount?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
+    savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
     notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
   }
@@ -10573,6 +12251,7 @@ export namespace Prisma {
     lastLoginAt?: Date | string | null
     walletBalance?: Decimal | DecimalJsLike | number | string
     savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     notifications?: NotificationCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
   }
@@ -10593,6 +12272,7 @@ export namespace Prisma {
     lastLoginAt?: Date | string | null
     walletBalance?: Decimal | DecimalJsLike | number | string
     savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
   }
@@ -10629,6 +12309,7 @@ export namespace Prisma {
     lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     notifications?: NotificationUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
   }
@@ -10649,6 +12330,7 @@ export namespace Prisma {
     lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
     savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
     notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
   }
@@ -10687,6 +12369,16 @@ export namespace Prisma {
     institutionName: string
     accountIdentifier: string
     accountName: string
+    lastUsedAt?: Date | string
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type SavedCryptoAddressCreateManyUserInput = {
+    id?: string
+    network: string
+    address: string
+    label?: string | null
     lastUsedAt?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -10824,6 +12516,36 @@ export namespace Prisma {
     institutionName?: StringFieldUpdateOperationsInput | string
     accountIdentifier?: StringFieldUpdateOperationsInput | string
     accountName?: StringFieldUpdateOperationsInput | string
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SavedCryptoAddressUpdateWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    network?: StringFieldUpdateOperationsInput | string
+    address?: StringFieldUpdateOperationsInput | string
+    label?: NullableStringFieldUpdateOperationsInput | string | null
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SavedCryptoAddressUncheckedUpdateWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    network?: StringFieldUpdateOperationsInput | string
+    address?: StringFieldUpdateOperationsInput | string
+    label?: NullableStringFieldUpdateOperationsInput | string | null
+    lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type SavedCryptoAddressUncheckedUpdateManyWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    network?: StringFieldUpdateOperationsInput | string
+    address?: StringFieldUpdateOperationsInput | string
+    label?: NullableStringFieldUpdateOperationsInput | string | null
     lastUsedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string

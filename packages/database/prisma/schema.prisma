@@ -27,10 +27,11 @@ model User {
   displayName      String?       @map("display_name")
   lastLoginAt      DateTime?     @map("last_login_at")
   walletBalance    Decimal       @default(0.0) @map("wallet_balance") @db.Decimal(36, 18)
-  transactions      Transaction[]
-  savedRecipients   SavedRecipient[]
-  notifications     Notification[]
-  pushSubscriptions PushSubscription[]
+  transactions        Transaction[]
+  savedRecipients     SavedRecipient[]
+  savedCryptoAddresses SavedCryptoAddress[]
+  notifications       Notification[]
+  pushSubscriptions   PushSubscription[]
 
   @@map("users")
 }
@@ -94,6 +95,24 @@ model SavedRecipient {
   @@unique([userId, currency, institutionCode, accountIdentifier])
   @@index([userId, lastUsedAt(sort: Desc)])
   @@map("saved_recipients")
+}
+
+/** Wallet addresses a user has cashed out crypto to before — auto-backfilled from history, not an explicit "save" step. */
+model SavedCryptoAddress {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  /** 'base' | 'celo' — matches the network literal already used throughout the crypto cash-out flow. */
+  network    String
+  address    String
+  label      String?
+  lastUsedAt DateTime @default(now()) @map("last_used_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, network, address])
+  @@index([userId, lastUsedAt(sort: Desc)])
+  @@map("saved_crypto_addresses")
 }
 
 model Transaction {
