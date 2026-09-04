@@ -17,6 +17,8 @@ interface SecurityState {
   lastUnlockedAt: number | null;
   /** Epoch ms the tab last went hidden; persisted so it survives the process being killed. */
   hiddenAt: number | null;
+  /** One-shot intent: a re-auth prompt is being shown to confirm disabling App Lock. */
+  pendingAction: 'disableSecurity' | null;
 
   // Actions
   setHydrated: (state: boolean) => void;
@@ -36,6 +38,7 @@ interface SecurityState {
    * been killed while backgrounded. Only ever locks, never unlocks.
    */
   evaluateLockState: () => void;
+  setPendingAction: (action: 'disableSecurity' | null) => void;
   clearSecurity: () => void;
 }
 
@@ -52,6 +55,7 @@ export const useSecurityStore = create<SecurityState>()(
       isHydrated: false,
       lastUnlockedAt: null,
       hiddenAt: null,
+      pendingAction: null,
 
       setHydrated: (isHydrated) => set({ isHydrated }),
       setLocked: (isLocked) => set({ isLocked }),
@@ -83,6 +87,8 @@ export const useSecurityStore = create<SecurityState>()(
         }
       },
 
+      setPendingAction: (pendingAction) => set({ pendingAction }),
+
       clearSecurity: () =>
         set({
           isSecurityEnabled: false,
@@ -94,13 +100,18 @@ export const useSecurityStore = create<SecurityState>()(
           isLocked: false,
           lastUnlockedAt: null,
           hiddenAt: null,
+          pendingAction: null,
         }),
     }),
     {
       name: "fx-remit-security-storage",
       storage: createJSONStorage(() => localStorage),
       onRehydrateStorage: () => (state) => {
-        if (state) state.setHydrated(true);
+        if (state) {
+          state.setHydrated(true);
+          state.setPendingAction(null);
+          state.evaluateLockState();
+        }
       },
     },
   ),

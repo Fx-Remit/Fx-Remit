@@ -22,7 +22,8 @@ export const AppShield = React.memo(() => {
     clearSecurity,
     isHydrated,
     setLastUnlockedAt,
-    evaluateLockState,
+    pendingAction,
+    setPendingAction,
   } = useSecurityStore();
 
   const { clear: clearUser } = useUserStore();
@@ -33,23 +34,10 @@ export const AppShield = React.memo(() => {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isBioSupported, setIsBioSupported] = useState(false);
 
-  // Diagnostic: Detect unexpected re-mounts
-  useEffect(() => {
-    console.log('[SECURITY] AppShield Mounted');
-  }, []);
-
   // Check hardware support on mount
   useEffect(() => {
     isBiometricSupported().then(setIsBioSupported);
   }, []);
-
-  // Decide whether to lock as soon as the real persisted state is known.
-  // This is what catches a cold relaunch after the process was killed while
-  // backgrounded, since hiddenAt survives that even though an in-memory
-  // timer would not.
-  useEffect(() => {
-    if (isHydrated) evaluateLockState();
-  }, [isHydrated, evaluateLockState]);
 
   // verifyPin is declared FIRST so handleDigit can reference it without a stale closure
   const verifyPin = useCallback(async (enteredPin: string) => {
@@ -65,7 +53,12 @@ export const AppShield = React.memo(() => {
         setPin('');
         setIsAnimating(true);
         setTimeout(() => {
-          setLocked(false);
+          if (pendingAction === 'disableSecurity') {
+            setPendingAction(null);
+            clearSecurity();
+          } else {
+            setLocked(false);
+          }
           setIsAnimating(false);
         }, 150);
       } else {
@@ -82,7 +75,7 @@ export const AppShield = React.memo(() => {
     } catch {
       setError('Security error');
     }
-  }, [hashedPin, pinSalt, failedAttempts, incrementFailedAttempts, resetFailedAttempts, setLastUnlockedAt, setLocked, logout, clearUser, clearSecurity]);
+  }, [hashedPin, pinSalt, failedAttempts, incrementFailedAttempts, resetFailedAttempts, setLastUnlockedAt, setLocked, logout, clearUser, clearSecurity, pendingAction, setPendingAction]);
 
   // handleDigit is declared AFTER verifyPin so the closure is fresh
   const handleDigit = useCallback((digit: string) => {
@@ -112,11 +105,16 @@ export const AppShield = React.memo(() => {
     if (success) {
       resetFailedAttempts();
       setLastUnlockedAt(Date.now());
-      setLocked(false);
+      if (pendingAction === 'disableSecurity') {
+        setPendingAction(null);
+        clearSecurity();
+      } else {
+        setLocked(false);
+      }
     } else {
       setError('Biometric auth failed');
     }
-  }, [isBiometricEnabled, biometricCredentialId, resetFailedAttempts, setLastUnlockedAt, setLocked]);
+  }, [isBiometricEnabled, biometricCredentialId, resetFailedAttempts, setLastUnlockedAt, setLocked, pendingAction, setPendingAction, clearSecurity]);
 
   // Auto-trigger biometrics if enabled when locked
   useEffect(() => {
@@ -144,9 +142,13 @@ export const AppShield = React.memo(() => {
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold text-gray-900">Protected Account</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {pendingAction === 'disableSecurity' ? 'Confirm Your Identity' : 'Protected Account'}
+          </h1>
           <p className="text-gray-500 text-sm max-w-[240px]">
-            Please verify your identity to continue to your dashboard.
+            {pendingAction === 'disableSecurity'
+              ? 'Verify your PIN or biometrics to remove App Lock.'
+              : 'Please verify your identity to continue to your dashboard.'}
           </p>
         </div>
 

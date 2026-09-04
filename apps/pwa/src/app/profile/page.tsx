@@ -43,7 +43,8 @@ export default function ProfilePage() {
     setPin,
     setBiometricEnabled,
     setBiometricCredentialId,
-    clearSecurity
+    setPendingAction,
+    setLocked,
   } = useSecurityStore();
 
   const router = useRouter();
@@ -266,9 +267,8 @@ export default function ProfilePage() {
                 <div className="h-[1px] bg-gray-50 mx-5" />
                 <MenuRow
                   onClick={() => {
-                    if (window.confirm('Remove App Lock? This will disable your PIN and biometric protection.')) {
-                      clearSecurity();
-                    }
+                    setPendingAction('disableSecurity');
+                    setLocked(true);
                   }}
                   icon={<Lock size={20} />}
                   label="Remove App Lock"
