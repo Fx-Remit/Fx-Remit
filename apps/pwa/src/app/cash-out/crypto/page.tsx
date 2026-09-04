@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronLeft, ChevronDown, X, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronDown, X, AlertCircle, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useState, Suspense, useRef } from 'react';
@@ -10,6 +10,7 @@ import { useUserStore } from '@/store/user-store';
 import { parseUnits, encodeFunctionData, isAddress } from 'viem';
 import { postCancelPending } from '@/lib/cash-out/create-pending-client';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
+import { tokenBalanceForChain } from '@/lib/cash-out/token-balances';
 
 const NETWORK_DATA: Record<string, { name: string; icon: string; chainId: number; hex: string }> = {
   celo: { name: 'Celo Mainnet', icon: '/cel2.svg', chainId: 42220, hex: '0xa4ec' },
@@ -84,6 +85,7 @@ function CryptoCashOutContent() {
   const reserveSessionRef = useRef<CryptoReserveSession | null>(null);
   /** True after broadcast when sync-hash still needs to succeed — bypasses spendable gate. */
   const [syncRetryAvailable, setSyncRetryAvailable] = useState(false);
+  const [removingAddressId, setRemovingAddressId] = useState<string | null>(null);
 
   const { getAccessToken, authenticated } = usePrivy();
   const { wallets } = useWallets();
@@ -114,6 +116,65 @@ function CryptoCashOutContent() {
       ?.walletBalance,
   });
   const availableBalance = spendable.amount;
+
+  // Real on-chain holding of the specific token+network selected — this is
+  // what actually bounds the send (a real eth_sendTransaction from the
+  // user's own wallet), separate from the ledger's spendable USD total.
+  const liveTokenBalance = tokenBalanceForChain(
+    balanceData?.perChain,
+    NETWORK_DATA[network].chainId,
+    token,
+  );
+  const liveTokenBalanceLabel = liveTokenBalance.toFixed(2);
+
+  type SavedAddressRow = { id: string; network: string; address: string; label: string | null };
+
+  const { data: savedAddressesData, isLoading: isLoadingAddresses } = useQuery({
+    queryKey: ['crypto-addresses', dbUser?.id],
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      const res = await fetch('/api/user/crypto-addresses', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load saved addresses');
+      }
+      return (data.addresses || []) as SavedAddressRow[];
+    },
+    enabled: !!dbUser?.id && !!authenticated,
+  });
+
+  const savedAddresses = savedAddressesData || [];
+
+  const selectSavedAddress = (row: SavedAddressRow) => {
+    setWalletAddress(row.address);
+    if (row.network === 'base' || row.network === 'celo') {
+      setNetwork(row.network);
+    }
+  };
+
+  const removeSavedAddress = async (row: SavedAddressRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (removingAddressId) return;
+    setRemovingAddressId(row.id);
+    try {
+      const accessToken = await getAccessToken();
+      const res = await fetch(`/api/user/crypto-addresses/${encodeURIComponent(row.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to remove address');
+      }
+      await queryClient.invalidateQueries({ queryKey: ['crypto-addresses'] });
+    } catch (err) {
+      console.error('[CRYPTO CASHOUT] remove address failed:', err);
+    } finally {
+      setRemovingAddressId(null);
+    }
+  };
 
   const handleSend = async () => {
     setIsConfirmOpen(false);
@@ -160,6 +221,7 @@ function CryptoCashOutContent() {
         setSyncRetryAvailable(false);
         await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
         await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+        await queryClient.invalidateQueries({ queryKey: ['crypto-addresses'] });
         setStatus('success');
         return;
       }
@@ -181,6 +243,12 @@ function CryptoCashOutContent() {
       const requestedUsd = Number(amount);
       if (!Number.isFinite(requestedUsd) || requestedUsd <= 0) {
         throw new Error('Enter a valid amount');
+      }
+
+      if (requestedUsd > liveTokenBalance) {
+        throw new Error(
+          `You don't have enough ${token} on ${NETWORK_DATA[network]?.name || network} in your wallet.`,
+        );
       }
 
       // If the form amount changed since the last reserve, abandon the old row first.
@@ -303,6 +371,7 @@ function CryptoCashOutContent() {
       setSyncRetryAvailable(false);
       await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
       await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+      await queryClient.invalidateQueries({ queryKey: ['crypto-addresses'] });
       console.log('[CRYPTO CASHOUT] Tx Hash:', txHash);
       setStatus('success');
     } catch (err: unknown) {
@@ -458,6 +527,19 @@ function CryptoCashOutContent() {
               Available: ${availableBalance}
               {!spendable.ready ? ' (syncing…)' : ''}
             </p>
+            {!tokenUnsupported && balanceData && (
+              <p
+                style={{
+                  fontWeight: 500,
+                  fontSize: '12px',
+                  color: liveTokenBalance > 0 ? '#888888' : '#E11D48',
+                  lineHeight: '100%',
+                }}
+                className="mt-1 font-medium"
+              >
+                You hold ${liveTokenBalanceLabel} {token} on {NETWORK_DATA[network]?.name}
+              </p>
+            )}
           </div>
         </div>
 
@@ -469,19 +551,64 @@ function CryptoCashOutContent() {
             >
               Saved addresses
             </h2>
-            <button
-              style={{ fontWeight: 500, fontSize: '14px', color: '#519EFF', lineHeight: '100%' }}
-              className="font-bold"
-            >
-              Add new address
-            </button>
           </div>
 
-          <div className="mt-12 flex flex-col items-center">
-            <div className="w-[300px] h-auto mb-6">
-              <img src="/non added.svg" alt="No wallet address" className="w-full h-auto" />
+          {isLoadingAddresses ? (
+            <p className="py-6 text-[15px] font-medium text-[#888888]">Loading addresses…</p>
+          ) : savedAddresses.length === 0 ? (
+            <div className="mt-4 flex w-full flex-col items-center justify-center py-6">
+              <div className="w-[220px] h-auto mb-6">
+                <img src="/non added.svg" alt="No saved addresses" className="w-full h-auto" />
+              </div>
+              <p className="text-center text-[15px] font-medium text-[#888888]">
+                Addresses you cash out to will show up here
+              </p>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              {savedAddresses.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex w-full items-center gap-2 rounded-[16px] border border-gray-100 bg-[#F8FBFF]"
+                >
+                  <button
+                    type="button"
+                    onClick={() => selectSavedAddress(row)}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors active:bg-[#E1EFFF]"
+                  >
+                    {NETWORK_DATA[row.network] ? (
+                      <img
+                        src={NETWORK_DATA[row.network].icon}
+                        alt=""
+                        className="h-11 w-11 shrink-0 rounded-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#E1EFFF] text-[14px] font-bold text-[#2261FE]">
+                        {row.network.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15px] font-bold text-[#1C1C1C]">
+                        {row.label || `${row.address.slice(0, 6)}...${row.address.slice(-4)}`}
+                      </p>
+                      <p className="truncate text-[13px] font-medium text-[#888888]">
+                        {NETWORK_DATA[row.network]?.name || row.network} · {row.address.slice(0, 6)}...{row.address.slice(-4)}
+                      </p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${row.address}`}
+                    disabled={removingAddressId === row.id}
+                    onClick={(e) => void removeSavedAddress(row, e)}
+                    className="mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#888888] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -504,7 +631,8 @@ function CryptoCashOutContent() {
                 !walletAddress ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
-                parseFloat(amount) > parseFloat(availableBalance))
+                parseFloat(amount) > parseFloat(availableBalance) ||
+                parseFloat(amount) > liveTokenBalance)
           }
           onClick={() => {
             if (syncRetryAvailable) {

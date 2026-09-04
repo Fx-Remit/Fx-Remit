@@ -3,6 +3,12 @@ import { RpcClient } from "../evm/rpc.client";
 import { PAYCREST_SETTLEMENT } from "../paycrest/payout.service.js";
 import { NotificationService } from "../notifications/notification.service.js";
 
+/** Chain a manual-wallet crypto cash-out actually settles on (recipientBank: "crypto:<network>"). */
+const CRYPTO_CASH_OUT_CHAIN_ID: Record<string, number> = {
+  base: 8453,
+  celo: 42220,
+};
+
 /** Thrown when createPending cannot reserve spendable ledger. */
 export class InsufficientBalanceError extends Error {
   readonly code = "INSUFFICIENT_BALANCE" as const;
@@ -1572,6 +1578,34 @@ export class TransactionService {
     const preservePaycrestId =
       !!paycrestOrderId &&
       !this.isAppLocalPendingKey(paycrestOrderId, existing.externalId);
+    // Crypto cash-out settles on whichever network the user actually sent on
+    // (recipientBank is "crypto:base" / "crypto:celo") — PAYCREST_SETTLEMENT
+    // is Base-only and only correct for Paycrest bank remittances.
+    const cryptoNetwork = isCrypto
+      ? (existing.recipientBank || '').slice('crypto:'.length)
+      : null;
+    let settlementChainId = PAYCREST_SETTLEMENT.chainId;
+    if (isCrypto && cryptoNetwork) {
+      const mapped = CRYPTO_CASH_OUT_CHAIN_ID[cryptoNetwork];
+      if (mapped != null) {
+        settlementChainId = mapped;
+      } else {
+        // Should be unreachable — create-crypto-pending only ever writes
+        // network: z.enum(['base', 'celo']) into recipientBank. Falling back
+        // to Base silently would reintroduce the exact mislabeling bug this
+        // branch exists to fix, so surface it loudly instead.
+        console.error(
+          JSON.stringify({
+            alert: 'UNMAPPED_CRYPTO_CASH_OUT_NETWORK',
+            severity: 'high',
+            transactionId: existing.id,
+            recipientBank: existing.recipientBank,
+            cryptoNetwork,
+            message: 'Falling back to Paycrest/Base chainId — network needs adding to CRYPTO_CASH_OUT_CHAIN_ID',
+          }),
+        );
+      }
+    }
 
     const attached = await prisma.transaction.updateMany({
       where: {
@@ -1585,7 +1619,7 @@ export class TransactionService {
       data: {
         txHash: hash,
         // Pending rows are created with chainId=0; stamp settlement chain on broadcast.
-        chainId: PAYCREST_SETTLEMENT.chainId,
+        chainId: settlementChainId,
         ...(preservePaycrestId && !existing.anchorTransactionId
           ? { anchorTransactionId: paycrestOrderId }
           : {}),
@@ -1985,7 +2019,7 @@ export class TransactionService {
       return { ...result, user };
     } catch (err: any) {
       if (err?.code === "P2002") {
-        // Concurrent writer won (deposit keys or per-user refundTxHash) — do not credit again.
+        // Concurrent writer won (deposit keys or per-user refundTxHash) do not credit again.
         const raced =
           (await prisma.transaction.findUnique({
             where: {

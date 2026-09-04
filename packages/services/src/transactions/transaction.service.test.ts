@@ -1525,6 +1525,59 @@ describe('TransactionService.attachOnChainHash', () => {
     });
     assert.equal(result?.status, 'COMPLETED');
   });
+
+  it('stamps the real settlement chain for a Celo crypto withdraw, not Paycrest\'s Base chainId', async () => {
+    const existing = sampleTx({
+      userId: 'user-1',
+      status: 'PENDING',
+      txHash: 'pending-crypto_2',
+      recipientBank: 'crypto:celo',
+    });
+    const attached = { ...existing, status: 'COMPLETED', txHash: HASH, chainId: 42220 };
+    prisma.transaction.findFirst = mock.fn(async () => existing) as any;
+    prisma.transaction.findUnique = mock.fn(async () => attached) as any;
+    prisma.transaction.updateMany = mock.fn(async (args: any) => {
+      assert.equal(args.data.chainId, 42220);
+      return { count: 1 };
+    }) as any;
+
+    const result = await TransactionService.attachOnChainHash({
+      userId: 'user-1',
+      orderId: 42n,
+      txHash: HASH,
+    });
+    assert.equal(result?.chainId, 42220);
+  });
+
+  it('falls back to Paycrest/Base chainId (and logs loudly) for an unmapped crypto network', async () => {
+    const existing = sampleTx({
+      userId: 'user-1',
+      status: 'PENDING',
+      txHash: 'pending-crypto_3',
+      recipientBank: 'crypto:solana', // not in CRYPTO_CASH_OUT_CHAIN_ID
+    });
+    const attached = { ...existing, status: 'COMPLETED', txHash: HASH, chainId: 8453 };
+    prisma.transaction.findFirst = mock.fn(async () => existing) as any;
+    prisma.transaction.findUnique = mock.fn(async () => attached) as any;
+    prisma.transaction.updateMany = mock.fn(async (args: any) => {
+      assert.equal(args.data.chainId, 8453);
+      return { count: 1 };
+    }) as any;
+
+    const errorSpy = mock.method(console, 'error', () => {});
+
+    const result = await TransactionService.attachOnChainHash({
+      userId: 'user-1',
+      orderId: 42n,
+      txHash: HASH,
+    });
+    assert.equal(result?.chainId, 8453);
+    assert.ok(
+      errorSpy.mock.calls.some((call) =>
+        String(call.arguments[0]).includes('UNMAPPED_CRYPTO_CASH_OUT_NETWORK'),
+      ),
+    );
+  });
 });
 
 describe('TransactionService REFUND_REQUIRED ops paths (#96)', () => {

@@ -173,6 +173,17 @@ exports.Prisma.SavedRecipientScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.SavedCryptoAddressScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  network: 'network',
+  address: 'address',
+  label: 'label',
+  lastUsedAt: 'lastUsedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.TransactionScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -250,6 +261,7 @@ exports.Prisma.ModelName = {
   Notification: 'Notification',
   PushSubscription: 'PushSubscription',
   SavedRecipient: 'SavedRecipient',
+  SavedCryptoAddress: 'SavedCryptoAddress',
   Transaction: 'Transaction'
 };
 
