@@ -27,7 +27,7 @@ export const AppShield = React.memo(() => {
   } = useSecurityStore();
 
   const { clear: clearUser } = useUserStore();
-  const { logout } = usePrivy();
+  const { logout, exportWallet } = usePrivy();
 
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +56,10 @@ export const AppShield = React.memo(() => {
           if (pendingAction === 'disableSecurity') {
             setPendingAction(null);
             clearSecurity();
+          } else if (pendingAction === 'exportPrivateKey') {
+            setPendingAction(null);
+            setLocked(false);
+            exportWallet();
           } else {
             setLocked(false);
           }
@@ -75,7 +79,7 @@ export const AppShield = React.memo(() => {
     } catch {
       setError('Security error');
     }
-  }, [hashedPin, pinSalt, failedAttempts, incrementFailedAttempts, resetFailedAttempts, setLastUnlockedAt, setLocked, logout, clearUser, clearSecurity, pendingAction, setPendingAction]);
+  }, [hashedPin, pinSalt, failedAttempts, incrementFailedAttempts, resetFailedAttempts, setLastUnlockedAt, setLocked, logout, clearUser, clearSecurity, pendingAction, setPendingAction, exportWallet]);
 
   // handleDigit is declared AFTER verifyPin so the closure is fresh
   const handleDigit = useCallback((digit: string) => {
@@ -108,13 +112,17 @@ export const AppShield = React.memo(() => {
       if (pendingAction === 'disableSecurity') {
         setPendingAction(null);
         clearSecurity();
+      } else if (pendingAction === 'exportPrivateKey') {
+        setPendingAction(null);
+        setLocked(false);
+        exportWallet();
       } else {
         setLocked(false);
       }
     } else {
       setError('Biometric auth failed');
     }
-  }, [isBiometricEnabled, biometricCredentialId, resetFailedAttempts, setLastUnlockedAt, setLocked, pendingAction, setPendingAction, clearSecurity]);
+  }, [isBiometricEnabled, biometricCredentialId, resetFailedAttempts, setLastUnlockedAt, setLocked, pendingAction, setPendingAction, clearSecurity, exportWallet]);
 
   // Auto-trigger biometrics if enabled when locked
   useEffect(() => {
@@ -143,12 +151,18 @@ export const AppShield = React.memo(() => {
 
         <div className="space-y-2">
           <h1 className="text-2xl font-bold text-gray-900">
-            {pendingAction === 'disableSecurity' ? 'Confirm Your Identity' : 'Protected Account'}
+            {pendingAction === 'disableSecurity'
+              ? 'Confirm Your Identity'
+              : pendingAction === 'exportPrivateKey'
+                ? 'Verify Your Identity'
+                : 'Protected Account'}
           </h1>
           <p className="text-gray-500 text-sm max-w-[240px]">
             {pendingAction === 'disableSecurity'
               ? 'Verify your PIN or biometrics to remove App Lock.'
-              : 'Please verify your identity to continue to your dashboard.'}
+              : pendingAction === 'exportPrivateKey'
+                ? 'Verify your PIN or biometrics to export your private key.'
+                : 'Please verify your identity to continue to your dashboard.'}
           </p>
         </div>
 

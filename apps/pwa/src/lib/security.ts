@@ -144,3 +144,16 @@ export async function authenticateBiometrics(credentialId: string): Promise<bool
     return false;
   }
 }
+
+/**
+ * Rejects trivially guessable 6-digit PINs: all-same-digit, and
+ * ascending/descending runs of 6 consecutive digits.
+ */
+export function isWeakPin(pin: string): boolean {
+  if (/^(\d)\1{5}$/.test(pin)) return true;
+
+  const digits = pin.split('').map(Number);
+  const ascending = digits.every((d, i) => i === 0 || d === digits[i - 1] + 1);
+  const descending = digits.every((d, i) => i === 0 || d === digits[i - 1] - 1);
+  return ascending || descending;
+}

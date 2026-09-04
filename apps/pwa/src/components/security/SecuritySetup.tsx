@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Shield, Fingerprint, Delete, X, ArrowLeft, Check } from 'lucide-react';
-import { hashPin, generateSalt, registerBiometrics, isBiometricSupported } from '@/lib/security';
+import { hashPin, generateSalt, registerBiometrics, isBiometricSupported, isWeakPin } from '@/lib/security';
 import { useSecurityStore } from '@/store/security-store';
 
 interface SecuritySetupProps {
   onComplete: () => void;
   onCancel: () => void;
-  userId: string;
+  userId: string | null;
   userName: string;
 }
 
@@ -36,6 +36,11 @@ export const SecuritySetup: React.FC<SecuritySetupProps> = ({
   const proceedToConfirm = useCallback((nextPin?: string) => {
     const p = nextPin ?? pin;
     if (p.length === 6) {
+      if (isWeakPin(p)) {
+        setError('Choose a less predictable PIN.');
+        setPinInput('');
+        return;
+      }
       setStep('CONFIRM');
       setPinInput(p);
     }
@@ -47,7 +52,7 @@ export const SecuritySetup: React.FC<SecuritySetupProps> = ({
     if (p1 === p2) {
       const salt = generateSalt();
       const hashed = await hashPin(p1, salt);
-      setPin(hashed, salt);
+      setPin(hashed, salt, userId);
       if (isBioSupported) {
         setStep('BIOMETRIC');
       } else {
@@ -87,6 +92,12 @@ export const SecuritySetup: React.FC<SecuritySetupProps> = ({
   }, [step]);
 
   const handleEnableBiometrics = async () => {
+    if (!userId) {
+      // No stable user id yet (profile still loading) — PIN is already saved,
+      // just skip biometric enrollment rather than register it against a placeholder.
+      onComplete();
+      return;
+    }
     try {
       const credId = await registerBiometrics(userId, userName);
       setBiometricCredentialId(credId);
