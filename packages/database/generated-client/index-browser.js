@@ -179,6 +179,7 @@ exports.Prisma.SavedCryptoAddressScalarFieldEnum = {
   network: 'network',
   address: 'address',
   label: 'label',
+  firstConfirmedAt: 'firstConfirmedAt',
   lastUsedAt: 'lastUsedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -228,7 +229,8 @@ exports.Prisma.NullsOrder = {
 exports.NotificationType = exports.$Enums.NotificationType = {
   DEPOSIT_CREDITED: 'DEPOSIT_CREDITED',
   REMITTANCE_COMPLETED: 'REMITTANCE_COMPLETED',
-  REMITTANCE_FAILED: 'REMITTANCE_FAILED'
+  REMITTANCE_FAILED: 'REMITTANCE_FAILED',
+  NEW_CRYPTO_ADDRESS: 'NEW_CRYPTO_ADDRESS'
 };
 
 exports.RecipientType = exports.$Enums.RecipientType = {

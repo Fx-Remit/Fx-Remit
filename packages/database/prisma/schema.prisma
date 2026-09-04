@@ -40,6 +40,7 @@ enum NotificationType {
   DEPOSIT_CREDITED
   REMITTANCE_COMPLETED
   REMITTANCE_FAILED
+  NEW_CRYPTO_ADDRESS
 }
 
 model Notification {
@@ -105,6 +106,7 @@ model SavedCryptoAddress {
   network    String
   address    String
   label      String?
+  firstConfirmedAt DateTime? @map("first_confirmed_at")
   lastUsedAt DateTime @default(now()) @map("last_used_at")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
