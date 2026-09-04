@@ -36,33 +36,25 @@ export const wagmiConfig = createConfig({
 });
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const { isSecurityEnabled, setLocked } = useSecurityStore();
+  const { isSecurityEnabled, setHiddenAt, evaluateLockState } = useSecurityStore();
 
+  // Stamps a persisted timestamp rather than arming an in-memory timer, so
+  // the grace-period check survives the process being killed while
+  // backgrounded (a bare setTimeout does not — see security-store.ts).
   useEffect(() => {
     if (!isSecurityEnabled) return;
 
-    const LOCK_GRACE_MS = 60_000; // 1 minute
-    let lockTimer: ReturnType<typeof setTimeout> | null = null;
-
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        lockTimer = setTimeout(() => {
-          setLocked(true);
-        }, LOCK_GRACE_MS);
+        setHiddenAt(Date.now());
       } else {
-        if (lockTimer) {
-          clearTimeout(lockTimer);
-          lockTimer = null;
-        }
+        evaluateLockState();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (lockTimer) clearTimeout(lockTimer);
-    };
-  }, [isSecurityEnabled, setLocked]);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isSecurityEnabled, setHiddenAt, evaluateLockState]);
 
   return (
     <PrivyProvider

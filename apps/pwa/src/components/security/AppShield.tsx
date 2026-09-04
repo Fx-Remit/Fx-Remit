@@ -19,7 +19,11 @@ export const AppShield = React.memo(() => {
     incrementFailedAttempts,
     resetFailedAttempts,
     isSecurityEnabled,
-    clearSecurity
+    clearSecurity,
+    isHydrated,
+    setLastUnlockedAt,
+    pendingAction,
+    setPendingAction,
   } = useSecurityStore();
 
   const { clear: clearUser } = useUserStore();
@@ -29,11 +33,6 @@ export const AppShield = React.memo(() => {
   const [error, setError] = useState<string | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isBioSupported, setIsBioSupported] = useState(false);
-
-  // Diagnostic: Detect unexpected re-mounts
-  useEffect(() => {
-    console.log('[SECURITY] AppShield Mounted');
-  }, []);
 
   // Check hardware support on mount
   useEffect(() => {
@@ -50,10 +49,16 @@ export const AppShield = React.memo(() => {
       const enteredHash = await hashPin(enteredPin, pinSalt);
       if (enteredHash === hashedPin) {
         resetFailedAttempts();
+        setLastUnlockedAt(Date.now());
         setPin('');
         setIsAnimating(true);
         setTimeout(() => {
-          setLocked(false);
+          if (pendingAction === 'disableSecurity') {
+            setPendingAction(null);
+            clearSecurity();
+          } else {
+            setLocked(false);
+          }
           setIsAnimating(false);
         }, 150);
       } else {
@@ -70,7 +75,7 @@ export const AppShield = React.memo(() => {
     } catch {
       setError('Security error');
     }
-  }, [hashedPin, pinSalt, failedAttempts, incrementFailedAttempts, resetFailedAttempts, setLocked, logout, clearUser, clearSecurity]);
+  }, [hashedPin, pinSalt, failedAttempts, incrementFailedAttempts, resetFailedAttempts, setLastUnlockedAt, setLocked, logout, clearUser, clearSecurity, pendingAction, setPendingAction]);
 
   // handleDigit is declared AFTER verifyPin so the closure is fresh
   const handleDigit = useCallback((digit: string) => {
@@ -99,11 +104,17 @@ export const AppShield = React.memo(() => {
     const success = await authenticateBiometrics(biometricCredentialId);
     if (success) {
       resetFailedAttempts();
-      setLocked(false);
+      setLastUnlockedAt(Date.now());
+      if (pendingAction === 'disableSecurity') {
+        setPendingAction(null);
+        clearSecurity();
+      } else {
+        setLocked(false);
+      }
     } else {
       setError('Biometric auth failed');
     }
-  }, [isBiometricEnabled, biometricCredentialId, resetFailedAttempts, setLocked]);
+  }, [isBiometricEnabled, biometricCredentialId, resetFailedAttempts, setLastUnlockedAt, setLocked, pendingAction, setPendingAction, clearSecurity]);
 
   // Auto-trigger biometrics if enabled when locked
   useEffect(() => {
@@ -113,6 +124,13 @@ export const AppShield = React.memo(() => {
       return () => clearTimeout(timer);
     }
   }, [isLocked, isBiometricEnabled, biometricCredentialId, handleBiometricClick]);
+
+  if (!isHydrated) {
+    // The real persisted lock state isn't known yet. Block content rather
+    // than risk a flash of the dashboard while zustand finishes reading
+    // localStorage, in case the true state is "locked".
+    return <div className="fixed inset-0 z-[9999] bg-[#F8FAFD]" />;
+  }
 
   if (!isLocked || !isSecurityEnabled) return null;
 
@@ -124,9 +142,13 @@ export const AppShield = React.memo(() => {
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold text-gray-900">Protected Account</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {pendingAction === 'disableSecurity' ? 'Confirm Your Identity' : 'Protected Account'}
+          </h1>
           <p className="text-gray-500 text-sm max-w-[240px]">
-            Please verify your identity to continue to your dashboard.
+            {pendingAction === 'disableSecurity'
+              ? 'Verify your PIN or biometrics to remove App Lock.'
+              : 'Please verify your identity to continue to your dashboard.'}
           </p>
         </div>
 

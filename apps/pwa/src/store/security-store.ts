@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
+/** How long the app may stay backgrounded before requiring re-verification. */
+export const LOCK_GRACE_MS = 60_000;
+
 interface SecurityState {
   isLocked: boolean;
   isBiometricEnabled: boolean;
@@ -10,6 +13,12 @@ interface SecurityState {
   biometricCredentialId: string | null;
   failedAttempts: number;
   isHydrated: boolean; // Tracks if localStorage has finished loading
+  /** Epoch ms of the last successful PIN/biometric verification. */
+  lastUnlockedAt: number | null;
+  /** Epoch ms the tab last went hidden; persisted so it survives the process being killed. */
+  hiddenAt: number | null;
+  /** One-shot intent: a re-auth prompt is being shown to confirm disabling App Lock. */
+  pendingAction: 'disableSecurity' | null;
 
   // Actions
   setHydrated: (state: boolean) => void;
@@ -20,12 +29,22 @@ interface SecurityState {
   setPin: (pin: string | null, salt: string | null) => void; // Expects hashed pin
   incrementFailedAttempts: () => void;
   resetFailedAttempts: () => void;
+  setLastUnlockedAt: (timestamp: number | null) => void;
+  setHiddenAt: (timestamp: number | null) => void;
+  /**
+   * Decides whether the app should be locked, based on persisted timestamps
+   * rather than an in-memory timer. Safe to call fresh on every mount/
+   * hydration and every visibility-restore, and survives the process having
+   * been killed while backgrounded. Only ever locks, never unlocks.
+   */
+  evaluateLockState: () => void;
+  setPendingAction: (action: 'disableSecurity' | null) => void;
   clearSecurity: () => void;
 }
 
 export const useSecurityStore = create<SecurityState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       isLocked: false,
       isBiometricEnabled: false,
       isSecurityEnabled: false,
@@ -34,6 +53,9 @@ export const useSecurityStore = create<SecurityState>()(
       biometricCredentialId: null,
       failedAttempts: 0,
       isHydrated: false,
+      lastUnlockedAt: null,
+      hiddenAt: null,
+      pendingAction: null,
 
       setHydrated: (isHydrated) => set({ isHydrated }),
       setLocked: (isLocked) => set({ isLocked }),
@@ -50,20 +72,46 @@ export const useSecurityStore = create<SecurityState>()(
 
       resetFailedAttempts: () => set({ failedAttempts: 0 }),
 
+      setLastUnlockedAt: (lastUnlockedAt) => set({ lastUnlockedAt }),
+      setHiddenAt: (hiddenAt) => set({ hiddenAt }),
+
+      evaluateLockState: () => {
+        const { isSecurityEnabled, lastUnlockedAt, hiddenAt } = get();
+        if (!isSecurityEnabled) return;
+        const neverUnlocked = lastUnlockedAt == null;
+        const expiredWhileHidden = hiddenAt != null && Date.now() - hiddenAt > LOCK_GRACE_MS;
+        if (neverUnlocked || expiredWhileHidden) {
+          set({ isLocked: true, hiddenAt: null });
+        } else {
+          set({ hiddenAt: null });
+        }
+      },
+
+      setPendingAction: (pendingAction) => set({ pendingAction }),
+
       clearSecurity: () =>
         set({
           isSecurityEnabled: false,
           isBiometricEnabled: false,
           hashedPin: null,
+          pinSalt: null,
+          biometricCredentialId: null,
           failedAttempts: 0,
           isLocked: false,
+          lastUnlockedAt: null,
+          hiddenAt: null,
+          pendingAction: null,
         }),
     }),
     {
       name: "fx-remit-security-storage",
       storage: createJSONStorage(() => localStorage),
       onRehydrateStorage: () => (state) => {
-        if (state) state.setHydrated(true);
+        if (state) {
+          state.setHydrated(true);
+          state.setPendingAction(null);
+          state.evaluateLockState();
+        }
       },
     },
   ),
