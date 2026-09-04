@@ -1160,6 +1160,27 @@ export class TransactionService {
   }
 
   /**
+   * Chain-agnostic counterpart to findPendingRemittanceForBroadcast — that one
+   * assumes an already-broadcast row settled on PAYCREST_SETTLEMENT.chainId
+   * (Base), which only holds for bank remittances. Crypto cash-out can settle
+   * on Base or Celo, so this looks up by orderId/userId/type only, same as
+   * attachOnChainHash already does.
+   */
+  static async findRemittanceForBroadcast(opts: {
+    userId: string;
+    orderId: bigint;
+  }) {
+    const tx = await prisma.transaction.findFirst({
+      where: {
+        orderId: opts.orderId,
+        userId: opts.userId,
+        type: 'REMITTANCE',
+      },
+    });
+    return tx;
+  }
+
+  /**
    * True when `txHash` is a real EVM transaction hash (gateway / indexer funded).
    * Placeholder hashes use `pending-` / `abandoned-` prefixes instead.
    */
