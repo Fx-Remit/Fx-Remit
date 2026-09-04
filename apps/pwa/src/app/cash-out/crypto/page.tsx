@@ -3,8 +3,8 @@
 import { ChevronLeft, ChevronDown, X, AlertCircle, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useState, Suspense, useRef } from 'react';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useState, useMemo, Suspense, useRef } from 'react';
+import { usePrivy, useWallets, useSigners } from '@privy-io/react-auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserStore } from '@/store/user-store';
 import { parseUnits, encodeFunctionData, isAddress } from 'viem';
@@ -87,10 +87,63 @@ function CryptoCashOutContent() {
   const [syncRetryAvailable, setSyncRetryAvailable] = useState(false);
   const [removingAddressId, setRemovingAddressId] = useState<string | null>(null);
 
-  const { getAccessToken, authenticated } = usePrivy();
+  const { getAccessToken, authenticated, user: privyUser } = usePrivy();
   const { wallets } = useWallets();
+  const { addSigners } = useSigners();
   const { profile: dbUser } = useUserStore();
   const queryClient = useQueryClient();
+
+  const [localDelegated, setLocalDelegated] = useState(false);
+  const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy') ?? wallets[0] ?? null;
+  const isEmbeddedPrivy = embeddedWallet?.walletClientType === 'privy';
+
+  /**
+   * Privy's `delegated` flag is per-wallet-signer, not per-policy, so this is
+   * the same computation bank Instant Send uses — it just happens to also
+   * gate the separate crypto-specific policy grant below.
+   */
+  const isDelegated = useMemo(() => {
+    if (localDelegated) return true;
+    if (!embeddedWallet?.address || !privyUser?.linkedAccounts) return false;
+    const addr = embeddedWallet.address.toLowerCase();
+    return privyUser.linkedAccounts.some(
+      (a) =>
+        a.type === 'wallet' &&
+        (a as { walletClientType?: string }).walletClientType === 'privy' &&
+        (a as { address?: string }).address?.toLowerCase() === addr &&
+        (a as { delegated?: boolean }).delegated === true,
+    );
+  }, [embeddedWallet?.address, privyUser?.linkedAccounts, localDelegated]);
+
+  /**
+   * One-time grant, offered on the first crypto send attempt regardless of
+   * whether *this* destination is trusted yet (it never is, on a first
+   * send) — front-loaded so any address that later clears its trust
+   * cooldown sends silently from the start, with no separate "first
+   * eligible send" consent tap. Declining or failing this never blocks the
+   * send itself; it just falls back to the wallet-signed path below.
+   */
+  const enableInstantCryptoSend = async (): Promise<boolean> => {
+    if (!embeddedWallet?.address || !isEmbeddedPrivy) return false;
+    const keyQuorumId = process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID?.trim();
+    const policyId = process.env.NEXT_PUBLIC_PRIVY_POLICY_ID_CRYPTO?.trim();
+    if (!keyQuorumId || !policyId) {
+      console.error(
+        '[CRYPTO CASHOUT] Instant Send not configured (missing key quorum or crypto policy id)',
+      );
+      return false;
+    }
+    try {
+      await addSigners({
+        address: embeddedWallet.address,
+        signers: [{ signerId: keyQuorumId, policyIds: [policyId] }],
+      });
+      return true;
+    } catch (err) {
+      console.error('[CRYPTO CASHOUT] addSigners failed:', err);
+      return false;
+    }
+  };
 
   const { data: balanceData } = useQuery({
     queryKey: ['live-wallet-balance', dbUser?.walletAddress],
@@ -127,7 +180,14 @@ function CryptoCashOutContent() {
   );
   const liveTokenBalanceLabel = liveTokenBalance.toFixed(2);
 
-  type SavedAddressRow = { id: string; network: string; address: string; label: string | null };
+  type SavedAddressRow = {
+    id: string;
+    network: string;
+    address: string;
+    label: string | null;
+    fastPathEligible: boolean;
+    eligibleAt: string | null;
+  };
 
   const { data: savedAddressesData, isLoading: isLoadingAddresses } = useQuery({
     queryKey: ['crypto-addresses', dbUser?.id],
@@ -325,23 +385,79 @@ function CryptoCashOutContent() {
       };
 
       const provider = (await wallet.getEthereumProvider()) as Eip1193Provider;
-      await ensureChain(wallet, provider, transfer.network);
-
       const amountRaw = parseUnits(reservedUsd, transfer.decimals);
-      const txHash = (await provider.request({
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            from: wallet.address,
-            to: transfer.tokenAddress,
-            data: encodeFunctionData({
-              abi: ERC20_ABI,
-              functionName: 'transfer',
-              args: [transfer.destinationAddress as `0x${string}`, amountRaw],
-            }),
+
+      let canServerBroadcast = isEmbeddedPrivy && isDelegated;
+      if (isEmbeddedPrivy && !canServerBroadcast) {
+        const granted = await enableInstantCryptoSend();
+        if (granted) {
+          setLocalDelegated(true);
+          canServerBroadcast = true;
+        }
+      }
+
+      const isTrustedDestination = savedAddresses.some(
+        (row) =>
+          row.network === transfer.network &&
+          row.address.toLowerCase() === transfer.destinationAddress.toLowerCase() &&
+          row.fastPathEligible,
+      );
+
+      let txHash: string | null = null;
+
+      if (isTrustedDestination && canServerBroadcast) {
+        const broadcastRes = await fetch('/api/transaction/broadcast-crypto-settlement', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
           },
-        ],
-      })) as string;
+          body: JSON.stringify({ orderId }),
+        });
+        const broadcastData = await broadcastRes.json().catch(() => ({}));
+
+        if (broadcastRes.ok && typeof broadcastData.txHash === 'string') {
+          txHash = broadcastData.txHash;
+        } else if (
+          broadcastData.code === 'BROADCAST_IN_PROGRESS' ||
+          broadcastData.code === 'BROADCAST_UNCERTAIN'
+        ) {
+          // May already be on-chain — do not attempt a second send.
+          broadcasted = true;
+          reserveSessionRef.current = null;
+          setSyncRetryAvailable(false);
+          await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
+          await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+          await queryClient.invalidateQueries({ queryKey: ['crypto-addresses'] });
+          setStatus('success');
+          setError(
+            broadcastData.code === 'BROADCAST_UNCERTAIN'
+              ? 'Send may have been submitted — check history before sending again.'
+              : 'Send is already in progress — check history before sending again.',
+          );
+          return;
+        }
+        // Any other error (ADDRESS_NOT_TRUSTED, NOT_DELEGATED, not configured,
+        // etc.) falls through to the real wallet send below — fail safe.
+      }
+
+      if (txHash == null) {
+        await ensureChain(wallet, provider, transfer.network);
+        txHash = (await provider.request({
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from: wallet.address,
+              to: transfer.tokenAddress,
+              data: encodeFunctionData({
+                abi: ERC20_ABI,
+                functionName: 'transfer',
+                args: [transfer.destinationAddress as `0x${string}`, amountRaw],
+              }),
+            },
+          ],
+        })) as string;
+      }
 
       broadcasted = true;
       reserveSessionRef.current = {
@@ -594,6 +710,13 @@ function CryptoCashOutContent() {
                       <p className="truncate text-[13px] font-medium text-[#888888]">
                         {NETWORK_DATA[row.network]?.name || row.network} · {row.address.slice(0, 6)}...{row.address.slice(-4)}
                       </p>
+                      {row.fastPathEligible ? (
+                        <p className="truncate text-[11px] font-medium text-[#2261FE]">Sends instantly</p>
+                      ) : row.eligibleAt ? (
+                        <p className="truncate text-[11px] font-medium text-[#888888]">
+                          Instant send available {new Date(row.eligibleAt).toLocaleDateString()}
+                        </p>
+                      ) : null}
                     </div>
                   </button>
                   <button
@@ -705,6 +828,11 @@ function CryptoCashOutContent() {
             </div>
 
             <div className="space-y-3">
+              {isEmbeddedPrivy && !isDelegated && (
+                <p className="px-2 text-center text-[12px] font-medium text-[#888888]">
+                  First send may ask you to confirm faster sends for this app.
+                </p>
+              )}
               <button
                 onClick={handleSend}
                 style={{ height: '62px', borderRadius: '12px' }}
