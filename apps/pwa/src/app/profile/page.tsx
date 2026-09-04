@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Edit2,
   Bell,
+  Users,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React from 'react';
@@ -183,6 +184,21 @@ export default function ProfilePage() {
               </h3>
               <p className="text-[11px] text-[#6D6D6D] font-medium mt-0.5">Member Since</p>
             </div>
+          </div>
+        </div>
+
+        {/* Account */}
+        <div className="px-6 mb-8 space-y-4">
+          <h3 className="text-[#6D6D6D] text-[14px] font-bold uppercase tracking-widest px-1">
+            Account
+          </h3>
+          <div className="bg-white rounded-[24px] overflow-hidden border border-gray-100 shadow-[0px_4px_25px_rgba(0,0,0,0.02)]">
+            <MenuRow
+              href="/profile/recipients"
+              icon={<Users size={20} className="text-[#2261FE]" />}
+              label="Manage Recipients"
+              subLabel="Saved bank accounts"
+            />
           </div>
         </div>
 
