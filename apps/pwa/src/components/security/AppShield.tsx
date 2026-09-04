@@ -19,7 +19,10 @@ export const AppShield = React.memo(() => {
     incrementFailedAttempts,
     resetFailedAttempts,
     isSecurityEnabled,
-    clearSecurity
+    clearSecurity,
+    isHydrated,
+    setLastUnlockedAt,
+    evaluateLockState,
   } = useSecurityStore();
 
   const { clear: clearUser } = useUserStore();
@@ -40,6 +43,14 @@ export const AppShield = React.memo(() => {
     isBiometricSupported().then(setIsBioSupported);
   }, []);
 
+  // Decide whether to lock as soon as the real persisted state is known.
+  // This is what catches a cold relaunch after the process was killed while
+  // backgrounded, since hiddenAt survives that even though an in-memory
+  // timer would not.
+  useEffect(() => {
+    if (isHydrated) evaluateLockState();
+  }, [isHydrated, evaluateLockState]);
+
   // verifyPin is declared FIRST so handleDigit can reference it without a stale closure
   const verifyPin = useCallback(async (enteredPin: string) => {
     if (!pinSalt || !hashedPin) {
@@ -50,6 +61,7 @@ export const AppShield = React.memo(() => {
       const enteredHash = await hashPin(enteredPin, pinSalt);
       if (enteredHash === hashedPin) {
         resetFailedAttempts();
+        setLastUnlockedAt(Date.now());
         setPin('');
         setIsAnimating(true);
         setTimeout(() => {
@@ -70,7 +82,7 @@ export const AppShield = React.memo(() => {
     } catch {
       setError('Security error');
     }
-  }, [hashedPin, pinSalt, failedAttempts, incrementFailedAttempts, resetFailedAttempts, setLocked, logout, clearUser, clearSecurity]);
+  }, [hashedPin, pinSalt, failedAttempts, incrementFailedAttempts, resetFailedAttempts, setLastUnlockedAt, setLocked, logout, clearUser, clearSecurity]);
 
   // handleDigit is declared AFTER verifyPin so the closure is fresh
   const handleDigit = useCallback((digit: string) => {
@@ -99,11 +111,12 @@ export const AppShield = React.memo(() => {
     const success = await authenticateBiometrics(biometricCredentialId);
     if (success) {
       resetFailedAttempts();
+      setLastUnlockedAt(Date.now());
       setLocked(false);
     } else {
       setError('Biometric auth failed');
     }
-  }, [isBiometricEnabled, biometricCredentialId, resetFailedAttempts, setLocked]);
+  }, [isBiometricEnabled, biometricCredentialId, resetFailedAttempts, setLastUnlockedAt, setLocked]);
 
   // Auto-trigger biometrics if enabled when locked
   useEffect(() => {
@@ -113,6 +126,13 @@ export const AppShield = React.memo(() => {
       return () => clearTimeout(timer);
     }
   }, [isLocked, isBiometricEnabled, biometricCredentialId, handleBiometricClick]);
+
+  if (!isHydrated) {
+    // The real persisted lock state isn't known yet. Block content rather
+    // than risk a flash of the dashboard while zustand finishes reading
+    // localStorage, in case the true state is "locked".
+    return <div className="fixed inset-0 z-[9999] bg-[#F8FAFD]" />;
+  }
 
   if (!isLocked || !isSecurityEnabled) return null;
 
