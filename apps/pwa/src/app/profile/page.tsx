@@ -11,6 +11,7 @@ import {
   Calendar,
   ChevronRight,
   Edit2,
+  Bell,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React from 'react';
@@ -23,9 +24,17 @@ import { BottomNav } from '@/components/layout/BottomNav';
 import { MenuRow } from '@/components/profile/MenuRow';
 import { AboutSheet } from '@/components/profile/AboutSheet';
 import { EditProfileSheet } from '@/components/profile/EditProfileSheet';
+import { Toggle } from '@/components/ui/Toggle';
+import {
+  getPushSubscriptionStatus,
+  subscribeToWebPush,
+  unsubscribeFromWebPush,
+} from '@/lib/push/register';
+
+type PushStatus = 'unsupported' | 'denied' | 'subscribed' | 'unsubscribed' | null;
 
 export default function ProfilePage() {
-  const { logout, exportWallet, user: privyUser } = usePrivy();
+  const { logout, exportWallet, getAccessToken, user: privyUser } = usePrivy();
   const { profile: dbUser, setProfile } = useUserStore();
   const {
     isSecurityEnabled,
@@ -41,10 +50,28 @@ export default function ProfilePage() {
   const [showSetup, setShowSetup] = React.useState(false);
   const [showAbout, setShowAbout] = React.useState(false);
   const [showEdit, setShowEdit] = React.useState(false);
+  const [pushStatus, setPushStatus] = React.useState<PushStatus>(null);
+  const [pushBusy, setPushBusy] = React.useState(false);
 
   React.useEffect(() => {
     isBiometricSupported().then(setIsBioSupported);
   }, []);
+
+  React.useEffect(() => {
+    getPushSubscriptionStatus().then(setPushStatus);
+  }, []);
+
+  const handleTogglePush = async (next: boolean) => {
+    setPushBusy(true);
+    try {
+      const result = next
+        ? await subscribeToWebPush(getAccessToken)
+        : await unsubscribeFromWebPush(getAccessToken);
+      setPushStatus(result.ok ? (next ? 'subscribed' : 'unsubscribed') : await getPushSubscriptionStatus());
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -158,6 +185,37 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* Preferences */}
+        {pushStatus !== 'unsupported' && (
+          <div className="px-6 mb-8 space-y-4">
+            <h3 className="text-[#6D6D6D] text-[14px] font-bold uppercase tracking-widest px-1">
+              Preferences
+            </h3>
+            <div className="bg-white rounded-[24px] overflow-hidden border border-gray-100 shadow-[0px_4px_25px_rgba(0,0,0,0.02)]">
+              <MenuRow
+                icon={<Bell size={20} className="text-[#2261FE]" />}
+                label="Notification Preferences"
+                subLabel={
+                  pushStatus === 'denied'
+                    ? 'Blocked in browser settings'
+                    : pushStatus === 'subscribed'
+                      ? 'Phone alerts on'
+                      : 'Phone alerts off'
+                }
+                trailing={
+                  <Toggle
+                    checked={pushStatus === 'subscribed'}
+                    onChange={handleTogglePush}
+                    busy={pushBusy}
+                    disabled={pushStatus === 'denied'}
+                    aria-label="Toggle notification preferences"
+                  />
+                }
+              />
+            </div>
+          </div>
+        )}
 
         {/* Menu Section */}
         <div className="px-6 space-y-4">
