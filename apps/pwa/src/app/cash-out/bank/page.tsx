@@ -20,8 +20,6 @@ import {
 const TOKENS = [
   { symbol: 'USDT', icon: '/usdt.svg', bankSupported: true },
   { symbol: 'USDC', icon: '/usdc.svg', bankSupported: true },
-  { symbol: 'cUSD', icon: '/cusd.svg', bankSupported: false },
-  { symbol: 'CELO', icon: '/celo.svg', bankSupported: false },
 ];
 
 const CURRENCIES = [

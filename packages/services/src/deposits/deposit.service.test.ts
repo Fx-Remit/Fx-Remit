@@ -19,12 +19,12 @@ describe('DepositService allowlist', () => {
     assert.equal(token, undefined);
   });
 
-  it('allows Celo cUSD', () => {
+  it('rejects Celo cUSD (removed from allowlist)', () => {
     const token = DepositService.findToken(
       42220,
       '0x765DE816845861e75A25fCA122bb6898B8B1282a',
     );
-    assert.equal(token?.symbol, 'cUSD');
+    assert.equal(token, undefined);
   });
 
   it('allows Celo native USDC', () => {

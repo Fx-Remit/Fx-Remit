@@ -123,7 +123,7 @@ export async function POST(req: Request) {
         {
           error:
             upper === 'CELO'
-              ? 'Native CELO cash-out is not supported (ledger is USD; use cUSD, USDC, or USDT)'
+              ? 'Native CELO cash-out is not supported (ledger is USD; use USDC or USDT)'
               : `Token ${sourceToken} is not supported on ${network}`,
         },
         { status: 400 },

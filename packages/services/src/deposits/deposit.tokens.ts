@@ -30,11 +30,6 @@ export const DEPOSIT_TOKENS: Record<number, DepositToken[]> = {
       decimals: 6,
     },
     {
-      address: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
-      symbol: 'cUSD',
-      decimals: 18,
-    },
-    {
       address: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e',
       symbol: 'USDT',
       decimals: 6,

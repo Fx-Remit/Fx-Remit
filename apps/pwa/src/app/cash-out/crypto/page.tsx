@@ -72,13 +72,10 @@ function CryptoCashOutContent() {
   const searchParams = useSearchParams();
   const token = (searchParams.get('token') || 'USDT').toUpperCase();
 
-  /** Native CELO is blocked (USD ledger ≠ CELO units). cUSD stays Celo-only. */
-  const celoUnsupported = token === 'CELO';
-  const isCeloOnlyToken = token === 'CUSD';
+  /** Native CELO and cUSD are not supported for cash-out (USD ledger; USDC/USDT only). */
+  const tokenUnsupported = token === 'CELO' || token === 'CUSD';
   const [walletAddress, setWalletAddress] = useState('');
-  const [network, setNetwork] = useState<'base' | 'celo'>(
-    isCeloOnlyToken ? 'celo' : 'base',
-  );
+  const [network, setNetwork] = useState<'base' | 'celo'>('base');
   const [amount, setAmount] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -128,9 +125,9 @@ function CryptoCashOutContent() {
     let broadcasted = !!reserveSessionRef.current?.txHash;
 
     try {
-      if (celoUnsupported) {
+      if (tokenUnsupported) {
         throw new Error(
-          'Native CELO cash-out is not supported. Use cUSD, USDC, or USDT.',
+          "This token isn't supported for cash-out. Use USDC or USDT.",
         );
       }
 
@@ -213,7 +210,7 @@ function CryptoCashOutContent() {
         body: JSON.stringify({
           amountUsd: requestedUsd,
           destinationAddress: walletAddress,
-          network: isCeloOnlyToken ? 'celo' : network,
+          network,
           token,
           externalId: idempotencyKey,
         }),
@@ -358,12 +355,12 @@ function CryptoCashOutContent() {
             <span className="font-semibold text-[#1C1C1C]">Cashing out {token}</span>
           </div>
 
-          {(error || celoUnsupported || spendable.syncIncomplete) && (
+          {(error || tokenUnsupported || spendable.syncIncomplete) && (
             <div className="p-4 bg-red-50 border border-red-100 rounded-[12px] flex items-center gap-3">
               <AlertCircle size={20} className="text-red-500 flex-shrink-0" />
               <p className="text-red-600 text-[13px] font-medium leading-tight">
-                {celoUnsupported
-                  ? 'Native CELO cash-out is not supported. Use cUSD, USDC, or USDT.'
+                {tokenUnsupported
+                  ? "This token isn't supported for cash-out. Use USDC or USDT."
                   : spendable.syncIncomplete && !error
                     ? 'Balance sync incomplete — cash-out is paused until sync finishes.'
                     : error}
@@ -388,7 +385,7 @@ function CryptoCashOutContent() {
             />
           </div>
 
-          {!isCeloOnlyToken && !celoUnsupported && (
+          {!tokenUnsupported && (
             <div className="relative z-20">
               <label
                 style={{ fontWeight: 500, fontSize: '16px', color: '#1C1C1C', lineHeight: '100%' }}
@@ -500,7 +497,7 @@ function CryptoCashOutContent() {
           }}
           className="flex w-full items-center justify-center bg-[#2261FE] shadow-lg shadow-blue-200/50 transition-transform active:scale-[0.98] disabled:opacity-50"
           disabled={
-            celoUnsupported ||
+            tokenUnsupported ||
             (syncRetryAvailable
               ? false
               : !spendable.ready ||
@@ -560,12 +557,12 @@ function CryptoCashOutContent() {
                   <span className="text-[#888888] text-[14px] font-medium">Network</span>
                   <div className="flex items-center gap-2">
                     <img
-                      src={NETWORK_DATA[isCeloOnlyToken ? 'celo' : network]?.icon}
+                      src={NETWORK_DATA[network]?.icon}
                       alt=""
                       className="w-6 h-6 object-contain"
                     />
                     <span className="text-[#1C1C1C] text-[14px] font-semibold">
-                      {NETWORK_DATA[isCeloOnlyToken ? 'celo' : network]?.name}
+                      {NETWORK_DATA[network]?.name}
                     </span>
                   </div>
                 </div>

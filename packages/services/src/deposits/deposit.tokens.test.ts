@@ -22,7 +22,7 @@ describe('deposit.tokens lookback + decimals', () => {
     assert.ok(celoHours >= 12);
   });
 
-  it('tokenDecimals uses 18 for cUSD and 6 for Base USDC', () => {
+  it('tokenDecimals falls back to 18 for an unlisted Celo address (e.g. former cUSD) and 6 for Base USDC', () => {
     assert.equal(
       tokenDecimals('0x765DE816845861e75A25fCA122bb6898B8B1282a', 42220),
       18,
