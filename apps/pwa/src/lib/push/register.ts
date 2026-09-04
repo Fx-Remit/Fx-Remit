@@ -95,7 +95,6 @@ export async function unsubscribeFromWebPush(
   if (!subscription) return { ok: true };
 
   const endpoint = subscription.endpoint;
-  await subscription.unsubscribe();
 
   const token = await getAccessToken();
   if (!token) return { ok: false, reason: 'Not authenticated' };
@@ -109,5 +108,14 @@ export async function unsubscribeFromWebPush(
     body: JSON.stringify({ endpoint }),
   });
 
-  return res.ok ? { ok: true } : { ok: false, reason: 'Unsubscribe failed' };
+  // 404 means the server already has no row for this endpoint (e.g. pruned
+  // after a failed push send) — nothing left to sync, safe to drop locally too.
+  if (!res.ok && res.status !== 404) {
+    return { ok: false, reason: 'Unsubscribe failed' };
+  }
+
+  // Drop the local subscription only once the server side is confirmed clear,
+  // so a genuine failure (network, auth) leaves both sides consistent for a retry.
+  await subscription.unsubscribe();
+  return { ok: true };
 }
