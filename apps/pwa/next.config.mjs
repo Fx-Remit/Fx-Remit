@@ -23,6 +23,15 @@ const nextConfig = {
       ...config.resolve.alias,
       'slow-redact': require.resolve('slow-redact'),
     };
+    // @fx-remit/services is consumed from source (see its package.json "main")
+    // so dev picks up changes without a separate build step. Its own source
+    // uses Node-ESM-style `.js`-suffixed relative imports (correct once
+    // compiled to dist/*.js) that point at `.ts` files pre-build — webpack
+    // needs telling to follow a `.js` import to the matching `.ts` file.
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      '.js': ['.ts', '.tsx', '.js'],
+    };
     return config;
   },
 };
