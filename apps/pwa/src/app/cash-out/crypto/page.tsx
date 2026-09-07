@@ -10,7 +10,7 @@ import { useUserStore } from '@/store/user-store';
 import { parseUnits, encodeFunctionData, isAddress } from 'viem';
 import { postCancelPending } from '@/lib/cash-out/create-pending-client';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
-import { tokenBalanceForChain } from '@/lib/cash-out/token-balances';
+import { tokenBalanceForChain, aggregateTokenBalancesUsd } from '@/lib/cash-out/token-balances';
 
 const NETWORK_DATA: Record<string, { name: string; icon: string; chainId: number; hex: string }> = {
   celo: { name: 'Celo Mainnet', icon: '/cel2.svg', chainId: 42220, hex: '0xa4ec' },
@@ -76,7 +76,8 @@ function CryptoCashOutContent() {
   /** Native CELO and cUSD are not supported for cash-out (USD ledger; USDC/USDT only). */
   const tokenUnsupported = token === 'CELO' || token === 'CUSD';
   const [walletAddress, setWalletAddress] = useState('');
-  const [network, setNetwork] = useState<'base' | 'celo'>('base');
+  /** null = not yet manually chosen; falls back to whichever chain actually holds the token. */
+  const [manualNetwork, setManualNetwork] = useState<'base' | 'celo' | null>(null);
   const [amount, setAmount] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -170,15 +171,38 @@ function CryptoCashOutContent() {
   });
   const availableBalance = spendable.amount;
 
-  // Real on-chain holding of the specific token+network selected — this is
-  // what actually bounds the send (a real eth_sendTransaction from the
-  // user's own wallet), separate from the ledger's spendable USD total.
-  const liveTokenBalance = tokenBalanceForChain(
-    balanceData?.perChain,
-    NETWORK_DATA[network].chainId,
-    token,
-  );
+  // Per-chain balance for the selected token, so the network picker (and the
+  // auto-pick below) can show/prefer whichever chain the user actually holds
+  // it on, instead of making them guess before finding out too late.
+  const balanceByNetwork: Partial<Record<'base' | 'celo', number>> = {};
+  for (const key of Object.keys(NETWORK_DATA) as Array<'base' | 'celo'>) {
+    balanceByNetwork[key] = tokenBalanceForChain(balanceData?.perChain, NETWORK_DATA[key].chainId, token);
+  }
+
+  // Derived, not stored: falls back to whichever chain has the higher
+  // balance for this token, only once a manual pick overrides it.
+  const autoNetwork: 'base' | 'celo' =
+    (balanceByNetwork.celo ?? 0) > (balanceByNetwork.base ?? 0) ? 'celo' : 'base';
+  const network = manualNetwork ?? autoNetwork;
+
+  // Real on-chain holding on the network this send would actually execute
+  // on — this is what actually bounds the send (a real eth_sendTransaction
+  // from the user's own wallet), separate from the ledger's spendable USD
+  // total. A single on-chain transfer can only ever pull from one chain, so
+  // this — not the cross-chain total below — is the hard cap.
+  const liveTokenBalance = balanceByNetwork[network] ?? 0;
   const liveTokenBalanceLabel = liveTokenBalance.toFixed(2);
+
+  // What the user thinks of as "my balance" — the token total across every
+  // chain they hold it on, matching how a CEX shows balance. Informational
+  // only; sending is still bounded by liveTokenBalance above, since funds
+  // split across chains can't be combined into a single transfer.
+  const tokenTotalBalance = aggregateTokenBalancesUsd(balanceData?.perChain)[token] ?? 0;
+  const tokenTotalBalanceLabel = tokenTotalBalance.toFixed(2);
+  const balanceSplitAcrossChains =
+    tokenTotalBalance > liveTokenBalance + 0.001 &&
+    (balanceByNetwork.base ?? 0) > 0 &&
+    (balanceByNetwork.celo ?? 0) > 0;
 
   type SavedAddressRow = {
     id: string;
@@ -210,7 +234,7 @@ function CryptoCashOutContent() {
   const selectSavedAddress = (row: SavedAddressRow) => {
     setWalletAddress(row.address);
     if (row.network === 'base' || row.network === 'celo') {
-      setNetwork(row.network);
+      setManualNetwork(row.network);
     }
   };
 
@@ -307,7 +331,9 @@ function CryptoCashOutContent() {
 
       if (requestedUsd > liveTokenBalance) {
         throw new Error(
-          `You don't have enough ${token} on ${NETWORK_DATA[network]?.name || network} in your wallet.`,
+          balanceSplitAcrossChains
+            ? `Your ${token} is split across networks — no single network has enough for $${requestedUsd}. Try a smaller amount or a different network.`
+            : `You don't have enough ${token} on ${NETWORK_DATA[network]?.name || network} in your wallet.`,
         );
       }
 
@@ -601,12 +627,19 @@ function CryptoCashOutContent() {
                         key={n.id}
                         type="button"
                         onClick={() => {
-                          setNetwork(n.id);
+                          setManualNetwork(n.id);
                           setIsDropdownOpen(false);
                         }}
                         className="w-full px-4 py-4 text-left text-[15px] text-[#1C1C1C] hover:bg-gray-50 flex items-center justify-between transition-colors border-b last:border-none border-gray-50"
                       >
-                        {n.name}
+                        <span>
+                          {n.name}
+                          {balanceData && (
+                            <span className="ml-2 text-[12px] font-medium text-[#888888]">
+                              ${(balanceByNetwork[n.id] ?? 0).toFixed(2)} {token}
+                            </span>
+                          )}
+                        </span>
                         {network === n.id && <div className="w-2 h-2 rounded-full bg-[#2261FE]" />}
                       </button>
                     ))}
@@ -648,12 +681,17 @@ function CryptoCashOutContent() {
                 style={{
                   fontWeight: 500,
                   fontSize: '12px',
-                  color: liveTokenBalance > 0 ? '#888888' : '#E11D48',
+                  color: tokenTotalBalance > 0 ? '#888888' : '#E11D48',
                   lineHeight: '100%',
                 }}
                 className="mt-1 font-medium"
               >
-                You hold ${liveTokenBalanceLabel} {token} on {NETWORK_DATA[network]?.name}
+                You hold ${tokenTotalBalanceLabel} {token} · sending on {NETWORK_DATA[network]?.name}
+              </p>
+            )}
+            {balanceSplitAcrossChains && (
+              <p className="mt-1 text-[12px] font-medium text-[#E11D48]">
+                Split across networks — only ${liveTokenBalanceLabel} {token} is on {NETWORK_DATA[network]?.name}. Choose a different network above or send a smaller amount.
               </p>
             )}
           </div>
