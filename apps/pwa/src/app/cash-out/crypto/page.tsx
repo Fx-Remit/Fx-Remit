@@ -193,12 +193,20 @@ function CryptoCashOutContent() {
   const liveTokenBalance = balanceByNetwork[network] ?? 0;
   const liveTokenBalanceLabel = liveTokenBalance.toFixed(2);
 
-  // What the user thinks of as "my balance" — the token total across every
-  // chain they hold it on, matching how a CEX shows balance. Informational
-  // only; sending is still bounded by liveTokenBalance above, since funds
+  // Single source of truth for "how much can I actually send right now":
+  // the smaller of the ledger cap (FX Remit's own accounting, enforced
+  // server-side at reservation time) and the real on-chain balance on the
+  // network this send would execute on. Showing only one of these could
+  // read as "available" when the other constraint would still reject the
+  // send server-side, or vice versa — taking the minimum means the number
+  // shown is always actually sendable.
+  const effectiveAvailableUsd = Math.min(parseFloat(availableBalance) || 0, liveTokenBalance);
+  const effectiveAvailableLabel = effectiveAvailableUsd.toFixed(2);
+
+  // Cross-chain token total, used only to detect the "split across
+  // networks" case below — not shown as a headline number, since funds
   // split across chains can't be combined into a single transfer.
   const tokenTotalBalance = aggregateTokenBalancesUsd(balanceData?.perChain)[token] ?? 0;
-  const tokenTotalBalanceLabel = tokenTotalBalance.toFixed(2);
   const balanceSplitAcrossChains =
     tokenTotalBalance > liveTokenBalance + 0.001 &&
     (balanceByNetwork.base ?? 0) > 0 &&
@@ -670,25 +678,19 @@ function CryptoCashOutContent() {
               />
             </div>
             <p
-              style={{ fontWeight: 500, fontSize: '12px', color: '#888888', lineHeight: '100%' }}
+              style={{
+                fontWeight: 500,
+                fontSize: '12px',
+                color: !balanceData || effectiveAvailableUsd > 0 ? '#888888' : '#E11D48',
+                lineHeight: '100%',
+              }}
               className="mt-2 font-medium"
             >
-              Available: ${availableBalance}
+              {!tokenUnsupported && balanceData
+                ? `Available: $${effectiveAvailableLabel} ${token}`
+                : `Available: $${availableBalance}`}
               {!spendable.ready ? ' (syncing…)' : ''}
             </p>
-            {!tokenUnsupported && balanceData && (
-              <p
-                style={{
-                  fontWeight: 500,
-                  fontSize: '12px',
-                  color: tokenTotalBalance > 0 ? '#888888' : '#E11D48',
-                  lineHeight: '100%',
-                }}
-                className="mt-1 font-medium"
-              >
-                You hold ${tokenTotalBalanceLabel} {token} · sending on {NETWORK_DATA[network]?.name}
-              </p>
-            )}
             {balanceSplitAcrossChains && (
               <p className="mt-1 text-[12px] font-medium text-[#E11D48]">
                 Split across networks — only ${liveTokenBalanceLabel} {token} is on {NETWORK_DATA[network]?.name}. Choose a different network above or send a smaller amount.
@@ -792,8 +794,7 @@ function CryptoCashOutContent() {
                 !walletAddress ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
-                parseFloat(amount) > parseFloat(availableBalance) ||
-                parseFloat(amount) > liveTokenBalance)
+                parseFloat(amount) > effectiveAvailableUsd)
           }
           onClick={() => {
             if (syncRetryAvailable) {
