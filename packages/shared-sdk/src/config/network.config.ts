@@ -43,7 +43,7 @@ export const NETWORKS: Record<number, NetworkConfig> = {
     uniswapRouter: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45',
     weth: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
     usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-    routerAddress: '0x2dcc4b4a0ae3b350dd2a0fa3deb6414236b03245',
+    routerAddress: '0x2dCC4B4a0AE3b350DD2a0fa3DEb6414236b03245',
   },
 };
 
