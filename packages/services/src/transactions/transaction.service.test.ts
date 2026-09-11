@@ -1549,6 +1549,29 @@ describe('TransactionService.attachOnChainHash', () => {
     assert.equal(result?.chainId, 42220);
   });
 
+  it('stamps the real settlement chain for an Arbitrum crypto withdraw, not Paycrest\'s Base chainId', async () => {
+    const existing = sampleTx({
+      userId: 'user-1',
+      status: 'PENDING',
+      txHash: 'pending-crypto_arb',
+      recipientBank: 'crypto:arbitrum',
+    });
+    const attached = { ...existing, status: 'COMPLETED', txHash: HASH, chainId: 42161 };
+    prisma.transaction.findFirst = mock.fn(async () => existing) as any;
+    prisma.transaction.findUnique = mock.fn(async () => attached) as any;
+    prisma.transaction.updateMany = mock.fn(async (args: any) => {
+      assert.equal(args.data.chainId, 42161);
+      return { count: 1 };
+    }) as any;
+
+    const result = await TransactionService.attachOnChainHash({
+      userId: 'user-1',
+      orderId: 42n,
+      txHash: HASH,
+    });
+    assert.equal(result?.chainId, 42161);
+  });
+
   it('falls back to Paycrest/Base chainId (and logs loudly) for an unmapped crypto network', async () => {
     const existing = sampleTx({
       userId: 'user-1',

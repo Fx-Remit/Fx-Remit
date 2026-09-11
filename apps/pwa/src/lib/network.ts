@@ -7,6 +7,8 @@ export function networkLabelFromChainId(chainId?: number | string | null): strin
       return 'Base Network';
     case 42220:
       return 'Celo Network';
+    case 42161:
+      return 'Arbitrum Network';
     case 0:
       return 'Pending';
     default:
@@ -54,6 +56,7 @@ export function networkLabelForTransaction(opts: {
   const id = Number(opts.chainId);
   if (id === 8453) return 'Base Network';
   if (id === 42220) return 'Celo Network';
+  if (id === 42161) return 'Arbitrum Network';
 
   const type = (opts.type || '').toUpperCase();
   if (type === 'REMITTANCE' && (id === 0 || !Number.isFinite(id) || id === 0)) {

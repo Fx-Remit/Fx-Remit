@@ -8,6 +8,7 @@ function webhookIds(): string[] {
   return [
     process.env.ALCHEMY_ADDRESS_ACTIVITY_WEBHOOK_ID_BASE?.trim(),
     process.env.ALCHEMY_ADDRESS_ACTIVITY_WEBHOOK_ID_CELO?.trim(),
+    process.env.ALCHEMY_ADDRESS_ACTIVITY_WEBHOOK_ID_ARB?.trim(),
     // Optional single-webhook fallback
     process.env.ALCHEMY_ADDRESS_ACTIVITY_WEBHOOK_ID?.trim(),
   ].filter((id): id is string => Boolean(id));

@@ -19,6 +19,7 @@ const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 const NETWORK_CHAIN_ID = {
   base: 8453,
   celo: 42220,
+  arbitrum: 42161,
 } as const;
 
 const createCryptoPendingSchema = z.object({
@@ -30,7 +31,7 @@ const createCryptoPendingSchema = z.object({
     .string()
     .trim()
     .refine((a) => isAddress(a), 'destinationAddress must be a valid address'),
-  network: z.enum(['base', 'celo']),
+  network: z.enum(['base', 'celo', 'arbitrum']),
   token: z.string().trim().min(1, 'token is required'),
   externalId: z.string().optional(),
 });
@@ -175,14 +176,16 @@ export async function POST(req: Request) {
 
     // Prefer reserved row metadata so a resumed pending cannot desync from transfer intent.
     const networkFromRow = (tx.recipientBank || '').startsWith('crypto:')
-      ? (tx.recipientBank!.slice('crypto:'.length) as 'base' | 'celo')
+      ? (tx.recipientBank!.slice('crypto:'.length) as 'base' | 'celo' | 'arbitrum')
       : network;
     const destFromRow =
       typeof tx.recipientAcc === 'string' && isAddress(tx.recipientAcc)
         ? tx.recipientAcc
         : destinationAddress;
     const resolvedNetwork =
-      networkFromRow === 'base' || networkFromRow === 'celo' ? networkFromRow : network;
+      networkFromRow === 'base' || networkFromRow === 'celo' || networkFromRow === 'arbitrum'
+        ? networkFromRow
+        : network;
     const resumedToken = resolveToken(resolvedNetwork, tx.sourceToken || tokenMeta.symbol);
     const transferMeta = resumedToken || tokenMeta;
 

@@ -1,16 +1,18 @@
 import { createPublicClient, http } from 'viem';
-import { celo, base, mainnet } from 'viem/chains';
+import { celo, base, mainnet, arbitrum } from 'viem/chains';
 
 const RPC_URLS: Record<number, string> = {
   42220: process.env.CELO_RPC_URL || 'https://forno.celo.org',
   8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   1: process.env.MAINNET_RPC_URL || 'https://eth.llamarpc.com',
+  42161: process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
 };
 
 const CHAINS: Record<number, any> = {
   42220: celo,
   8453: base,
   1: mainnet,
+  42161: arbitrum,
 };
 
 export class RpcClient {

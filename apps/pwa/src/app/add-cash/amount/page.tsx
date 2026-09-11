@@ -14,11 +14,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 const NETWORK_NAMES: Record<string, string> = {
   celo: 'Celo network',
   base: 'Base network',
+  arbitrum: 'Arbitrum network',
 };
 
 const CHAIN_IDS: Record<string, number> = {
   celo: 42220,
   base: 8453,
+  arbitrum: 42161,
 };
 
 function AmountPageContent() {

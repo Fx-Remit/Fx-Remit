@@ -19,6 +19,7 @@ export {
 const ALCHEMY_NETWORK: Record<number, string> = {
   8453: 'base-mainnet',
   42220: 'celo-mainnet',
+  42161: 'arb-mainnet',
 };
 
 type AlchemyTransfer = {
@@ -232,6 +233,7 @@ export class DepositService {
     const n = (network || '').toUpperCase();
     if (n.includes('BASE')) return 8453;
     if (n.includes('CELO')) return 42220;
+    if (n.includes('ARB')) return 42161;
     return null;
   }
 
@@ -300,7 +302,7 @@ export class DepositService {
   }
 
   /**
-   * Live allowlisted stable balances across Base + Celo (1:1 USD).
+   * Live allowlisted stable balances across Base + Celo + Arbitrum (1:1 USD).
    * Used for home display; DB wallet_balance remains the spendable ledger.
    */
   static async getLiveBalances(walletAddress: string) {

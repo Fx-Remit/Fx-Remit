@@ -25,6 +25,14 @@ describe('RpcClient — happy paths', () => {
     assert.equal(a, b);
     assert.notEqual(a, c);
   });
+
+  it('resolves a distinct client for Arbitrum (42161)', () => {
+    const base = RpcClient.getClient(8453);
+    const arbitrum = RpcClient.getClient(42161);
+
+    assert.notEqual(base, arbitrum);
+    assert.equal(RpcClient.getClient(42161), arbitrum);
+  });
 });
 
 describe('RpcClient — unhappy paths', () => {
