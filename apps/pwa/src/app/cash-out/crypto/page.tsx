@@ -15,6 +15,7 @@ import { tokenBalanceForChain, aggregateTokenBalancesUsd } from '@/lib/cash-out/
 const NETWORK_DATA: Record<string, { name: string; icon: string; chainId: number; hex: string }> = {
   celo: { name: 'Celo Mainnet', icon: '/cel2.svg', chainId: 42220, hex: '0xa4ec' },
   base: { name: 'Base Mainnet', icon: '/base.svg', chainId: 8453, hex: '0x2105' },
+  arbitrum: { name: 'Arbitrum One', icon: '/arb.svg', chainId: 42161, hex: '0xa4b1' },
 };
 
 const ERC20_ABI = [
@@ -77,7 +78,7 @@ function CryptoCashOutContent() {
   const tokenUnsupported = token === 'CELO' || token === 'CUSD';
   const [walletAddress, setWalletAddress] = useState('');
   /** null = not yet manually chosen; falls back to whichever chain actually holds the token. */
-  const [manualNetwork, setManualNetwork] = useState<'base' | 'celo' | null>(null);
+  const [manualNetwork, setManualNetwork] = useState<'base' | 'celo' | 'arbitrum' | null>(null);
   const [amount, setAmount] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -174,15 +175,16 @@ function CryptoCashOutContent() {
   // Per-chain balance for the selected token, so the network picker (and the
   // auto-pick below) can show/prefer whichever chain the user actually holds
   // it on, instead of making them guess before finding out too late.
-  const balanceByNetwork: Partial<Record<'base' | 'celo', number>> = {};
-  for (const key of Object.keys(NETWORK_DATA) as Array<'base' | 'celo'>) {
+  const balanceByNetwork: Partial<Record<'base' | 'celo' | 'arbitrum', number>> = {};
+  for (const key of Object.keys(NETWORK_DATA) as Array<'base' | 'celo' | 'arbitrum'>) {
     balanceByNetwork[key] = tokenBalanceForChain(balanceData?.perChain, NETWORK_DATA[key].chainId, token);
   }
 
-  // Derived, not stored: falls back to whichever chain has the higher
+  // Derived, not stored: falls back to whichever chain has the highest
   // balance for this token, only once a manual pick overrides it.
-  const autoNetwork: 'base' | 'celo' =
-    (balanceByNetwork.celo ?? 0) > (balanceByNetwork.base ?? 0) ? 'celo' : 'base';
+  const autoNetwork: 'base' | 'celo' | 'arbitrum' = (
+    Object.keys(NETWORK_DATA) as Array<'base' | 'celo' | 'arbitrum'>
+  ).reduce((best, key) => ((balanceByNetwork[key] ?? 0) > (balanceByNetwork[best] ?? 0) ? key : best), 'base' as 'base' | 'celo' | 'arbitrum');
   const network = manualNetwork ?? autoNetwork;
 
   // Real on-chain holding on the network this send would actually execute
@@ -207,10 +209,9 @@ function CryptoCashOutContent() {
   // networks" case below — not shown as a headline number, since funds
   // split across chains can't be combined into a single transfer.
   const tokenTotalBalance = aggregateTokenBalancesUsd(balanceData?.perChain)[token] ?? 0;
+  const chainsWithBalance = Object.values(balanceByNetwork).filter((v) => (v ?? 0) > 0).length;
   const balanceSplitAcrossChains =
-    tokenTotalBalance > liveTokenBalance + 0.001 &&
-    (balanceByNetwork.base ?? 0) > 0 &&
-    (balanceByNetwork.celo ?? 0) > 0;
+    tokenTotalBalance > liveTokenBalance + 0.001 && chainsWithBalance > 1;
 
   type SavedAddressRow = {
     id: string;
@@ -241,7 +242,7 @@ function CryptoCashOutContent() {
 
   const selectSavedAddress = (row: SavedAddressRow) => {
     setWalletAddress(row.address);
-    if (row.network === 'base' || row.network === 'celo') {
+    if (row.network === 'base' || row.network === 'celo' || row.network === 'arbitrum') {
       setManualNetwork(row.network);
     }
   };
@@ -394,7 +395,7 @@ function CryptoCashOutContent() {
       );
       const transfer = pendingData.transfer as {
         chainId: number;
-        network: 'base' | 'celo';
+        network: 'base' | 'celo' | 'arbitrum';
         tokenAddress: `0x${string}`;
         decimals: number;
         destinationAddress: string;
@@ -549,6 +550,7 @@ function CryptoCashOutContent() {
   const networks = [
     { id: 'celo' as const, name: 'Celo network' },
     { id: 'base' as const, name: 'Base network' },
+    { id: 'arbitrum' as const, name: 'Arbitrum network' },
   ];
 
   const selectedNetwork = networks.find((n) => n.id === network)?.name || 'Choose network';

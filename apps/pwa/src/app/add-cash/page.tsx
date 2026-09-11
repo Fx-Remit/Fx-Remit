@@ -32,6 +32,11 @@ const NETWORKS = [
     name: 'Base',
     icon: '/base.svg',
   },
+  {
+    id: 'arbitrum',
+    name: 'Arbitrum',
+    icon: '/arb.svg',
+  },
 ];
 
 export default function AddCashPage() {

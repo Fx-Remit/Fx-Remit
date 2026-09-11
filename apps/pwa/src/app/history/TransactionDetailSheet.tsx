@@ -236,7 +236,9 @@ export function TransactionDetailSheet({
                     ? '/base.svg'
                     : Number(transaction.chainId) === 42220
                       ? '/celo.svg'
-                      : undefined
+                      : Number(transaction.chainId) === 42161
+                        ? '/arb.svg'
+                        : undefined
                 }
               />
               {transaction.type !== 'DEPOSIT' && (
@@ -252,7 +254,9 @@ export function TransactionDetailSheet({
                   href={
                     Number(transaction.chainId) === 42220
                       ? `https://celoscan.io/tx/${transaction.txHash}`
-                      : `https://basescan.org/tx/${transaction.txHash}`
+                      : Number(transaction.chainId) === 42161
+                        ? `https://arbiscan.io/tx/${transaction.txHash}`
+                        : `https://basescan.org/tx/${transaction.txHash}`
                   }
                   target="_blank"
                   rel="noopener noreferrer"

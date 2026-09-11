@@ -35,9 +35,22 @@ export const DEPOSIT_TOKENS: Record<number, DepositToken[]> = {
       decimals: 6,
     },
   ],
+  // Arbitrum One
+  42161: [
+    {
+      address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+      symbol: 'USDC',
+      decimals: 6,
+    },
+    {
+      address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
+      symbol: 'USDT',
+      decimals: 6,
+    },
+  ],
 };
 
-export const DEPOSIT_CHAIN_IDS = [8453, 42220] as const;
+export const DEPOSIT_CHAIN_IDS = [8453, 42220, 42161] as const;
 
 /** Known token decimals for remittance amount normalization (includes gas tokens). */
 const EXTRA_DECIMALS: Record<string, number> = {
@@ -45,6 +58,7 @@ const EXTRA_DECIMALS: Record<string, number> = {
   '0x0000000000000000000000000000000000000000': 18,
   '0x4200000000000000000000000000000000000006': 18, // Base WETH
   '0x471ece3750da237f93b8e339c536989b8978a438': 18, // Celo CELO
+  '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': 18, // Arbitrum WETH
 };
 
 export function tokenDecimals(tokenAddress: string, chainId: number): number {
@@ -52,7 +66,7 @@ export function tokenDecimals(tokenAddress: string, chainId: number): number {
   const listed = DEPOSIT_TOKENS[chainId]?.find((t) => t.address.toLowerCase() === addr);
   if (listed) return listed.decimals;
   if (EXTRA_DECIMALS[addr] !== undefined) return EXTRA_DECIMALS[addr];
-  // Stable default for unknown ERC-20 remittance outs on Base/Celo is often 6
+  // Stable default for unknown ERC-20 remittance outs on Base/Celo/Arbitrum is often 6
   return chainId === 42220 ? 18 : 6;
 }
 
@@ -60,20 +74,24 @@ export function alchemyNetworkToChainId(network?: string): number | null {
   const n = (network || '').toUpperCase();
   if (n.includes('BASE')) return 8453;
   if (n.includes('CELO')) return 42220;
+  if (n.includes('ARB')) return 42161;
   return null;
 }
 
 /**
  * Cron lookback must exceed daily gap (≥26–48h).
- * Base ~2s/block → 90k ≈ 50h; Celo ~1s/block → 180k ≈ 50h.
+ * Base ~2s/block → 90k ≈ 50h; Celo ~1s/block → 180k ≈ 50h;
+ * Arbitrum One ~0.25s/block → 720k ≈ 50h.
  */
 export const DEPOSIT_RECONCILE_LOOKBACK_BLOCKS: Record<number, number> = {
   8453: 90_000,
   42220: 180_000,
+  42161: 720_000,
 };
 
 /** Add Cash / balance sync lookback (~24–25h). */
 export const DEPOSIT_SYNC_LOOKBACK_BLOCKS: Record<number, number> = {
   8453: 45_000,
   42220: 90_000,
+  42161: 360_000,
 };

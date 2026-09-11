@@ -15,6 +15,10 @@ const ALLOWLIST: Record<number, string[]> = {
     "0x765DE816845861e75A25fCA122bb6898B8B1282a",
     "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
   ],
+  42161: [
+    "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+    "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+  ],
 };
 
 const getAlchemyNetwork = (chainId: number): Network => {
@@ -23,9 +27,11 @@ const getAlchemyNetwork = (chainId: number): Network => {
       return Network.BASE_MAINNET;
     case 42220:
       return Network.CELO_MAINNET;
+    case 42161:
+      return Network.ARB_MAINNET;
     default:
       throw new Error(
-        `Unsupported chainId ${chainId}. FX Remit EVM supports Base (8453) and Celo (42220) only.`,
+        `Unsupported chainId ${chainId}. FX Remit EVM supports Base (8453), Celo (42220), and Arbitrum One (42161).`,
       );
   }
 };

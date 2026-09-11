@@ -16,6 +16,10 @@ const config: HardhatUserConfig = {
       url: process.env.CELO_RPC_URL || '',
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
+    arbitrumOne: {
+      url: process.env.ARBITRUM_RPC_URL || '',
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
   },
 };
 

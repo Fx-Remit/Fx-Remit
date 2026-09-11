@@ -9,7 +9,7 @@
  *
  * Env:
  *   PAYCREST_API_KEY or NEXT_PUBLIC_PAYCREST_API_KEY (required)
- *   EVM_SMOKE_NETWORKS=base,celo (tried in order per corridor)
+ *   EVM_SMOKE_NETWORKS=base,celo,arbitrum-one (tried in order per corridor)
  *   EVM_SMOKE_CORRIDORS=NGN,KES (default both; KES may soft-fail if no liquidity)
  *   EVM_SMOKE_STRICT=1 (treat soft failures as hard)
  *   EVM_SMOKE_AMOUNT=1 (rate reference amount)
@@ -52,7 +52,7 @@ function networks(): string[] {
   const raw =
     process.env.EVM_SMOKE_NETWORKS ||
     process.env.EVM_SMOKE_NETWORK ||
-    'base,celo';
+    'base,celo,arbitrum-one';
   return raw
     .split(',')
     .map((n) => n.trim().toLowerCase())

@@ -9,7 +9,7 @@ const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim() ?? '';
 const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET?.trim() ?? '';
 const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
-const SUPPORTED = new Set<number>([8453, 42220]);
+const SUPPORTED = new Set<number>([8453, 42220, 42161]);
 
 /**
  * Poll Alchemy for inbound allowlisted ERC-20 transfers and credit the ledger.
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
     if (!SUPPORTED.has(chainId)) {
       return NextResponse.json(
-        { error: 'Unsupported chain. Use Base (8453) or Celo (42220).' },
+        { error: 'Unsupported chain. Use Base (8453), Celo (42220), or Arbitrum One (42161).' },
         { status: 400 },
       );
     }

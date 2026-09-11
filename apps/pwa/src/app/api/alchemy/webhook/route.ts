@@ -9,6 +9,7 @@ function alchemySecrets(): string[] {
     process.env.ALCHEMY_WEBHOOK_SECRET,
     process.env.ALCHEMY_WEBHOOK_SECRET_BASE,
     process.env.ALCHEMY_WEBHOOK_SECRET_CELO,
+    process.env.ALCHEMY_WEBHOOK_SECRET_ARB,
   ].filter((s): s is string => Boolean(s?.trim()));
 }
 

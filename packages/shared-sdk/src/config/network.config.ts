@@ -1,5 +1,5 @@
 /**
- * FX Remit network registry — supported EVM chains: Base and Celo only.
+ * FX Remit network registry supported EVM chains: Base, Celo, and Arbitrum One.
  */
 
 export interface NetworkConfig {
@@ -35,13 +35,23 @@ export const NETWORKS: Record<number, NetworkConfig> = {
     usdc: '0x765DE816845861e75A25fCA122bb6898B8B1282a', // cUSD
     routerAddress: '0x767B35703C98f63e71aB61d68a406931ADdb3FeB',
   },
+  // Arbitrum One
+  42161: {
+    chainId: 42161,
+    name: 'Arbitrum',
+    gatewayAddress: '0xE8bc3B607CfE68F47000E3d200310D49041148Fc',
+    uniswapRouter: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45',
+    weth: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
+    usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    routerAddress: '0x2dcc4b4a0ae3b350dd2a0fa3deb6414236b03245',
+  },
 };
 
 export const getNetworkConfig = (chainId: number): NetworkConfig => {
   const config = NETWORKS[chainId];
   if (!config) {
     throw new Error(
-      `Unsupported network chainId ${chainId}. FX Remit EVM supports Base (8453) and Celo (42220) only.`,
+      `Unsupported network chainId ${chainId}. FX Remit EVM supports Base (8453), Celo (42220), and Arbitrum One (42161).`,
     );
   }
   return config;
@@ -49,4 +59,4 @@ export const getNetworkConfig = (chainId: number): NetworkConfig => {
 
 export const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 
-export const SUPPORTED_EVM_CHAIN_IDS = [8453, 42220] as const;
+export const SUPPORTED_EVM_CHAIN_IDS = [8453, 42220, 42161] as const;
