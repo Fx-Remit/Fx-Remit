@@ -10,6 +10,7 @@ import {
   mintAbandonToken,
   InsufficientBalanceError,
   RecipientService,
+  withUniqueOrderId,
 } from '@fx-remit/services';
 
 export const dynamic = "force-dynamic";
@@ -182,7 +183,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const orderId = BigInt(Date.now());
     const appExternalId =
       frontendId ||
       `pnd_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -250,18 +250,20 @@ export async function POST(req: Request) {
     // Doing this before Paycrest avoids orphan provider orders on insufficient balance.
     let tx;
     try {
-      tx = await TransactionService.createPending({
-        userId: user.id,
-        orderId,
-        externalId: appExternalId,
-        sourceToken,
-        amountUsd,
-        payoutFiat,
-        recipientName,
-        recipientBank,
-        recipientAcc,
-        recipientBankCode: bankCode?.trim() || null,
-      });
+      tx = await withUniqueOrderId((orderId) =>
+        TransactionService.createPending({
+          userId: user.id,
+          orderId,
+          externalId: appExternalId,
+          sourceToken,
+          amountUsd,
+          payoutFiat,
+          recipientName,
+          recipientBank,
+          recipientAcc,
+          recipientBankCode: bankCode?.trim() || null,
+        }),
+      );
     } catch (err) {
       const code = errorCode(err);
       if (err instanceof InsufficientBalanceError || code === 'INSUFFICIENT_BALANCE') {

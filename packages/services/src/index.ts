@@ -10,6 +10,7 @@ export * from './paycrest/payout.service';
 export * from './paycrest/pricing.service';
 export * from './paycrest/quote-bind.service';
 export * from './transactions/transaction.service';
+export * from './transactions/order-id';
 export * from './recipients/recipient.service';
 export * from './crypto-addresses/crypto-address.service';
 export * from './notifications/notification.service';
