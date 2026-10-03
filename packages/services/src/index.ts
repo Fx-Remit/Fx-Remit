@@ -17,6 +17,7 @@ export * from './notifications/notification.service';
 export * from './reconciliation/reconciliation.service';
 export * from './evm/instant-send.policy';
 export * from './evm/instant-send.broadcast';
+export * from './evm/forwarder-payout';
 export * from './evm/crypto-instant-send.policy';
 export * from './evm/crypto-instant-send.broadcast';
 export * from './stellar/index.js';

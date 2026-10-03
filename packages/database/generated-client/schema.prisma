@@ -152,6 +152,15 @@ model Transaction {
    * On-chain Paycrest crypto refund hash linked for ops (#90). Per-user unique.
    */
   refundTxHash        String?         @map("refund_tx_hash")
+  /**
+   * Bank payout funding path chosen on first send: "direct" | "forwarder". Retries reuse it.
+   */
+  fundingPath         String?         @map("funding_path")
+  /**
+   * PayoutForwarder relayer tx, saved before broadcast so a retry resends the same tx.
+   */
+  fundingTxHash       String?         @map("funding_tx_hash")
+  fundingTxRaw        String?         @map("funding_tx_raw")
   user                User            @relation(fields: [userId], references: [id])
 
   @@unique([txHash, logIndex])

@@ -458,6 +458,18 @@ export function ConfirmTransactionSheet({
           onSendingChange?.(false);
           return;
         } else if (
+          broadcastData.code === 'PAYOUT_NOT_AUTHORIZED' ||
+          broadcastData.code === 'PAYOUT_REVERTED' ||
+          broadcastData.code === 'PAYOUT_DROPPED' ||
+          broadcastData.code === 'FORWARDER_UNAVAILABLE'
+        ) {
+          // Forwarder path: the server confirmed nothing moved and released the claim.
+          // Keep session + reserve so Send can really be tapped again.
+          setError("Couldn't send this payout. Tap Send to try again.");
+          setStatus('idle');
+          onSendingChange?.(false);
+          return;
+        } else if (
           broadcastData.code === 'BROADCAST_IN_PROGRESS' ||
           broadcastData.code === 'BROADCAST_UNCERTAIN'
         ) {
