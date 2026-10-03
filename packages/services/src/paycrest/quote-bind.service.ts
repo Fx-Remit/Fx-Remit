@@ -26,13 +26,16 @@ export type BoundCreatePendingQuote = {
   wholesaleRate: number;
   retailRate: number;
   markupBps: number;
-  /** Fresh server quote TTL (ms epoch); not the client-supplied valid_until. */
+  feeBps: number;
+  feeUsd: string;
+  bankAmount: string;
+  senderFee: string;
   validUntil: number;
 };
 
 /**
  * Binds retail FX at create-pending: reject stale client quotes, then
- * recompute payoutFiat from live wholesale + retail markup.
+ * recompute the fee, the Paycrest order split and payoutFiat from live wholesale.
  */
 export class QuoteBindService {
   /**
@@ -91,16 +94,20 @@ export class QuoteBindService {
     }
 
     const retail = PricingService.generateQuote(wholesaleResp.rate);
-    const payoutFiat = PricingService.computePayoutFiat(
-      input.amountUsd,
-      retail.retail_rate,
-    );
+    const split = PricingService.splitPayout(input.amountUsd, wholesaleResp.rate.rate, {
+      feeBps: retail.fee_bps,
+      spreadBps: retail.markup_bps,
+    });
 
     return {
-      payoutFiat,
+      payoutFiat: split.payoutFiat,
       wholesaleRate: wholesaleResp.rate.rate,
       retailRate: retail.retail_rate,
       markupBps: retail.markup_bps,
+      feeBps: retail.fee_bps,
+      feeUsd: split.feeUsd,
+      bankAmount: split.bankAmount,
+      senderFee: split.senderFee,
       validUntil: retail.valid_until,
     };
   }

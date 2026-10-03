@@ -138,6 +138,36 @@ describe('broadcastSettlementTransfer', () => {
     );
   });
 
+  it('refuses to send more than the ledger reserved (sender fee added on top)', async () => {
+    mock.method(TransactionService, 'findPendingRemittanceForBroadcast', async () => ({
+      id: 'tx-1',
+      userId: 'u1',
+      orderId: 9n,
+      txHash: 'pending-pc-order-9',
+      amountUsd: { toString: () => '50' },
+      externalId: 'ext-9',
+      type: 'REMITTANCE',
+    }));
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true as const,
+      order: { id: 'pc-order-9', providerAccount: { receiveAddress: RECEIVE, amountToTransfer: '50.25' } },
+      settlement: {
+        network: PAYCREST_SETTLEMENT.network,
+        chainId: PAYCREST_SETTLEMENT.chainId,
+        token: PAYCREST_SETTLEMENT.token,
+        tokenAddress: PAYCREST_SETTLEMENT.tokenAddress,
+        decimals: PAYCREST_SETTLEMENT.decimals,
+      },
+    }));
+    const claim = mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+
+    await assert.rejects(
+      () => broadcastSettlementTransfer({ privyDid: 'did:privy:x', userId: 'u1', walletAddress: WALLET, orderId: 9n }),
+      (err: unknown) => err instanceof InstantSendWalletError && err.code === 'AMOUNT_MISMATCH',
+    );
+    assert.equal(claim.mock.callCount(), 0);
+  });
+
   it('rejects amount over Instant Send policy cap', async () => {
     mock.method(
       TransactionService,

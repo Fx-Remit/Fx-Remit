@@ -105,7 +105,8 @@ export class ReconciliationService {
           }
 
           const recoveryResult = await PayoutService.createPaycrestOrder({
-            amount: tx.amountUsd.toString(),
+            // Same split as create-pending, saved on the row at reserve time.
+            ...TransactionService.paycrestOrderPricing(tx),
             sourceToken: tx.sourceToken,
             destinationCurrency: 'NGN',
             externalId: tx.externalId,

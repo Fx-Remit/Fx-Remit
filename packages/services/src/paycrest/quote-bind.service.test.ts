@@ -66,6 +66,9 @@ describe('QuoteBindService', () => {
   });
 
   it('resolveForCreatePending overwrites fiat from live retail quote', async () => {
+    // Example values only; real fee/spread live in server env.
+    process.env.PAYOUT_FEE_BPS = '100';
+    process.env.PAYOUT_SPREAD_BPS = '200';
     mock.method(PayoutService, 'fetchRate', async () => ({
       success: true,
       rate: {
@@ -86,12 +89,18 @@ describe('QuoteBindService', () => {
       nowMs: now,
     });
 
-    // 1600 * (1 - 0.0075) = 1588 retail
-    assert.equal(bound.retailRate, 1588);
+    // Shown rate 1600 × 0.98 = 1568. Fee 1% of $10 = $0.10.
+    // User receives (10 − 0.10) × 1568 = 15523.2, which is the bank part 9.702 × 1600.
+    assert.equal(bound.retailRate, 1568);
     assert.equal(bound.wholesaleRate, 1600);
-    assert.equal(bound.payoutFiat, 15880);
-    assert.equal(bound.markupBps, 75);
+    assert.equal(bound.feeBps, 100);
+    assert.equal(bound.feeUsd, '0.100000');
+    assert.equal(bound.bankAmount, '9.702000');
+    assert.equal(bound.senderFee, '0.298000');
+    assert.equal(bound.payoutFiat, 15523.2);
     assert.ok(bound.validUntil > now);
+    delete process.env.PAYOUT_FEE_BPS;
+    delete process.env.PAYOUT_SPREAD_BPS;
   });
 
   it('resolveForCreatePending fails closed on stale client quote', async () => {
