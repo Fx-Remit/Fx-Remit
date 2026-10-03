@@ -1605,6 +1605,8 @@ export class TransactionService {
     userId: string;
     orderId: bigint;
     paycrestOrderId: string;
+    /** Forwarder release before anything was sent: unpin the path so the order isn't stranded if the forwarder is later disabled. */
+    resetFundingPath?: boolean;
   }): Promise<boolean> {
     const claimHash = `broadcasting-${params.paycrestOrderId}`;
     const pendingHash = `pending-${params.paycrestOrderId}`;
@@ -1621,6 +1623,7 @@ export class TransactionService {
       },
       data: {
         txHash: pendingHash,
+        ...(params.resetFundingPath ? { fundingPath: null } : {}),
         updatedAt: new Date(),
       },
     });

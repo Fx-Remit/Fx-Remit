@@ -350,6 +350,57 @@ describe('broadcastForwarderPayout: sending', () => {
     assert.equal(chain.calls.sent.length, 0);
   });
 
+  it('keeps the claim and signs nothing when the order is already funded on-chain', async () => {
+    const chain = fakeChain({ funded: true });
+    stubOrder();
+    mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    const release = mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    const sign = mock.method(forwarderDeps, 'signAuthorization', async () => SIGNATURE);
+
+    await assert.rejects(run, code('BROADCAST_UNCERTAIN'));
+    assert.equal(sign.mock.callCount(), 0);
+    assert.equal(release.mock.callCount(), 0);
+    assert.equal(chain.calls.sent.length, 0);
+  });
+
+  it('keeps the claim when the dry run fails because someone else funded the order meanwhile', async () => {
+    fakeChain({ dryRunFails: true });
+    stubOrder();
+    let reads = 0;
+    mock.method(forwarderDeps, 'isFunded', async () => ++reads > 1);
+    mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    const release = mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    mock.method(forwarderDeps, 'signAuthorization', async () => SIGNATURE);
+
+    await assert.rejects(run, code('BROADCAST_UNCERTAIN'));
+    assert.equal(release.mock.callCount(), 0);
+  });
+
+  it('unpins the path when releasing before anything was sent', async () => {
+    fakeChain();
+    stubOrder();
+    mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    const release = mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    mock.method(forwarderDeps, 'signAuthorization', async () => {
+      throw new Error('policy violation');
+    });
+
+    await assert.rejects(run, code('PAYOUT_NOT_AUTHORIZED'));
+    assert.equal((release.mock.calls[0].arguments[0] as { resetFundingPath?: boolean }).resetFundingPath, true);
+  });
+
+  it('never says "nothing moved" when the release did not happen', async () => {
+    fakeChain();
+    stubOrder();
+    mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    mock.method(TransactionService, 'releaseBroadcastClaim', async () => false);
+    mock.method(forwarderDeps, 'signAuthorization', async () => {
+      throw new Error('policy violation');
+    });
+
+    await assert.rejects(run, code('BROADCAST_IN_PROGRESS'));
+  });
+
   it('releases the claim when the dry run fails, before any gas is spent', async () => {
     const chain = fakeChain({ dryRunFails: true });
     stubOrder();

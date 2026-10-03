@@ -33,9 +33,9 @@ const RELAYER_LOCK_ID = 4_665_873_266n;
 const AUTHORIZATION_TTL_MS = 10 * 60_000;
 /** Refuse to fund a Paycrest order that expires sooner than this. */
 const MIN_ORDER_LIFETIME_MS = 3 * 60_000;
-const RECEIPT_WAIT_MS = 30_000;
+const RECEIPT_WAIT_MS = 25_000;
 const RECEIPT_POLL_MS = 1_500;
-const RELAYER_LOCK_WAIT_MS = 20_000;
+const RELAYER_LOCK_WAIT_MS = 12_000;
 /** After an authorization expires, wait this long before trusting "not funded" reads. */
 const EXPIRY_GRACE_MS = 5 * 60_000;
 
@@ -351,8 +351,23 @@ export async function broadcastForwarderPayout(opts: {
     throw new InstantSendWalletError('BROADCAST_IN_PROGRESS', 'Broadcast already in progress for this order');
   }
   const claimTxHash = `broadcasting-${paycrestOrderId}`;
-  const releaseClaim = () =>
-    TransactionService.releaseBroadcastClaim({ userId: opts.userId, orderId: opts.orderId, paycrestOrderId });
+  const fundingCtx: FundingContext = { userId: opts.userId, orderId: opts.orderId, paycrestOrderId, forwarder, payer, sink, amount };
+  /** Release a claim when nothing was sent. If it didn't release, never report "nothing moved". */
+  const releaseClaim = async () => {
+    const released = await TransactionService.releaseBroadcastClaim({
+      userId: opts.userId,
+      orderId: opts.orderId,
+      paycrestOrderId,
+      resetFundingPath: true,
+    });
+    if (!released) {
+      throw new InstantSendWalletError('BROADCAST_IN_PROGRESS', 'Payment is already sending — check history before trying again.');
+    }
+  };
+
+  // Anyone holding a previously exposed authorization can call payout(); the contract
+  // is the truth on whether USDC already left for this order.
+  await assertNotFundedOnChain(fundingCtx);
 
   // 1. The user's wallet authorizes exactly this order, destination and amount.
   let data: Hex;
@@ -388,6 +403,8 @@ export async function broadcastForwarderPayout(opts: {
     // Dry run before any gas is spent; a revert here means nothing was sent.
     await client.call({ account: forwarderDeps.relayerAddress(), to: forwarder, data });
   } catch (err) {
+    // A dry run also reverts when the order was funded by someone else: check before releasing.
+    await assertNotFundedOnChain(fundingCtx);
     await releaseClaim();
     console.error('[ForwarderPayout] authorization or dry run failed; claim released', {
       orderId: opts.orderId.toString(),
@@ -436,10 +453,7 @@ export async function broadcastForwarderPayout(opts: {
   }
 
   const fundingHash = (saved as { hash: Hex } | null)!.hash;
-  return settleStoredFunding(
-    { userId: opts.userId, orderId: opts.orderId, paycrestOrderId, forwarder, payer, sink, amount },
-    fundingHash,
-  );
+  return settleStoredFunding(fundingCtx, fundingHash);
 }
 
 /** A claim with a saved relayer tx: find out what happened to it, resend it, or retire it. */
@@ -503,6 +517,31 @@ function uncertain(ctx: FundingContext, hash: Hex, err?: unknown) {
     });
   }
   return new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
+}
+
+/**
+ * Keep the claim (and say "may have been submitted") when the contract reports the order
+ * funded, or when that can't be read. Releasing then would let the reserve be restored
+ * after USDC already left.
+ */
+async function assertNotFundedOnChain(ctx: FundingContext): Promise<void> {
+  let funded: boolean;
+  try {
+    funded = await forwarderDeps.isFunded(ctx.forwarder, ctx.orderId);
+  } catch (err) {
+    throw uncertain(ctx, '0x' as Hex, err);
+  }
+  if (funded) {
+    console.error(
+      JSON.stringify({
+        alert: 'FORWARDER_ORDER_FUNDED_BY_OTHER_TX',
+        severity: 'high',
+        orderId: ctx.orderId.toString(),
+        message: 'Order is funded on-chain without a matching saved tx; claim kept for ops to attach the funding tx',
+      }),
+    );
+    throw uncertain(ctx, '0x' as Hex);
+  }
 }
 
 /**
