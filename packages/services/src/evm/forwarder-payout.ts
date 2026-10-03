@@ -14,6 +14,7 @@ import {
   parseTransaction,
   parseUnits,
   TransactionReceiptNotFoundError,
+  zeroAddress,
   type Address,
   type Hex,
   type TransactionReceipt,
@@ -38,6 +39,8 @@ const RECEIPT_POLL_MS = 1_500;
 const RELAYER_LOCK_WAIT_MS = 12_000;
 /** After an authorization expires, wait this long before trusting "not funded" reads. */
 const EXPIRY_GRACE_MS = 5 * 60_000;
+/** A forwarder claim older than this with no outcome is picked up by recovery. */
+const STUCK_CLAIM_AGE_MS = 15 * 60_000;
 
 export const PAYOUT_FORWARDER_ABI = parseAbi([
   'function payout(uint256 orderId, address payer, address sink, uint256 amount, uint256 validBefore, uint8 v, bytes32 r, bytes32 s)',
@@ -457,28 +460,27 @@ export async function broadcastForwarderPayout(opts: {
 }
 
 /** A claim with a saved relayer tx: find out what happened to it, resend it, or retire it. */
-async function resumeStoredFunding(remittance: Remittance, forwarder: Address) {
-  const hash = remittance.fundingTxHash as Hex;
-  const raw = remittance.fundingTxRaw as Hex;
-  const paycrestOrderId = TransactionService.paycrestOrderIdFromTxHash(remittance.txHash);
-  if (!paycrestOrderId || keccak256(raw) !== hash) {
-    console.error('[ForwarderPayout] stored funding tx is inconsistent; ops review needed', {
-      orderId: remittance.orderId.toString(),
-    });
-    throw new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
-  }
+type SavedFundingRow = Pick<Remittance, 'userId' | 'orderId' | 'txHash' | 'fundingTxHash' | 'fundingTxRaw'>;
 
+/** Decode and sanity-check the relayer tx saved on a claimed row. */
+function decodeSavedFunding(row: SavedFundingRow, forwarder: Address) {
+  const hash = row.fundingTxHash as Hex;
+  const raw = row.fundingTxRaw as Hex;
+  const paycrestOrderId = TransactionService.paycrestOrderIdFromTxHash(row.txHash);
+  const inconsistent = () => {
+    console.error('[ForwarderPayout] stored funding tx is inconsistent; ops review needed', {
+      orderId: row.orderId.toString(),
+    });
+    return new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
+  };
+  if (!paycrestOrderId || keccak256(raw) !== hash) throw inconsistent();
   const tx = parseTransaction(raw);
-  if (!tx.data) {
-    throw new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
-  }
+  if (!tx.data) throw inconsistent();
   const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_ABI, data: tx.data });
   const [orderId, payer, sink, amount, validBefore] = call.args as readonly [bigint, Address, Address, bigint, bigint, ...unknown[]];
-  if (!tx.to || getAddress(tx.to) !== forwarder || orderId !== remittance.orderId) {
-    throw new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
-  }
+  if (!tx.to || getAddress(tx.to) !== forwarder || orderId !== row.orderId) throw inconsistent();
   const ctx: FundingContext = {
-    userId: remittance.userId,
+    userId: row.userId,
     orderId,
     paycrestOrderId,
     forwarder,
@@ -486,13 +488,22 @@ async function resumeStoredFunding(remittance: Remittance, forwarder: Address) {
     sink: getAddress(sink),
     amount,
   };
+  return { ctx, hash, raw, validBefore };
+}
 
+/** True once the saved tx's authorization has expired past the grace period. */
+function authorizationExpired(validBefore: bigint): boolean {
+  return forwarderDeps.now() > Number(validBefore) * 1000 + EXPIRY_GRACE_MS;
+}
+
+async function resumeStoredFunding(remittance: Remittance, forwarder: Address) {
+  const { ctx, hash, raw, validBefore } = decodeSavedFunding(remittance, forwarder);
   try {
     if (!(await forwarderDeps.getReceipt(hash))) {
       // No receipt. Once the user's authorization has expired (plus a grace period),
       // this tx can never fund the order, so a "not funded" read can be trusted even
       // from a lagging node. Before that, never retire it: resend the same payload.
-      if (forwarderDeps.now() > Number(validBefore) * 1000 + EXPIRY_GRACE_MS) {
+      if (authorizationExpired(validBefore)) {
         await discardIfUnfunded(ctx, hash, 'PAYOUT_DROPPED');
       }
       try {
@@ -506,6 +517,131 @@ async function resumeStoredFunding(remittance: Remittance, forwarder: Address) {
     throw uncertain(ctx, hash, err);
   }
   return settleStoredFunding(ctx, hash);
+}
+
+export type ForwarderRecoveryOutcome =
+  | 'attached'
+  | 'retired'
+  | 'released'
+  | 'rebroadcast'
+  | 'waiting'
+  | 'kept-for-ops'
+  | 'error';
+
+/**
+ * Nightly / ops recovery for forwarder claims stuck in broadcasting-*. One pass, no waiting:
+ * - saved tx landed and matches → attach the hash;
+ * - saved tx reverted, or unmined after its authorization expired → retire it, only if
+ *   the contract reports the order unfunded;
+ * - saved tx unmined and still valid → resend the same payload;
+ * - nothing saved (the request died before broadcasting) → release, only if unfunded.
+ * Anything funded without a matching tx is kept and alerted for ops.
+ */
+export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; limit?: number; orderId?: bigint } = {}) {
+  const forwarder = payoutForwarderAddress();
+  if (!forwarder || !isPayoutForwarderConfigured()) {
+    return { skipped: 'forwarder not configured' as const, results: [] as { orderId: string; outcome: ForwarderRecoveryOutcome }[] };
+  }
+  const cutoff = new Date(forwarderDeps.now() - (opts.olderThanMs ?? STUCK_CLAIM_AGE_MS));
+  const rows = await prisma.transaction.findMany({
+    where: {
+      type: 'REMITTANCE',
+      status: { in: ['PENDING', 'PROCESSING'] },
+      txHash: { startsWith: 'broadcasting-' },
+      fundingPath: 'forwarder',
+      updatedAt: { lte: cutoff },
+      ...(opts.orderId !== undefined ? { orderId: opts.orderId } : {}),
+    },
+    select: { userId: true, orderId: true, txHash: true, fundingTxHash: true, fundingTxRaw: true },
+    orderBy: { updatedAt: 'asc' },
+    take: opts.limit ?? 50,
+  });
+
+  const results: { orderId: string; outcome: ForwarderRecoveryOutcome }[] = [];
+  for (const row of rows) {
+    let outcome: ForwarderRecoveryOutcome;
+    try {
+      outcome = await recoverOneClaim(row, forwarder);
+    } catch (err) {
+      const errCode = err instanceof InstantSendWalletError ? err.code : null;
+      outcome =
+        errCode === 'PAYOUT_DROPPED' || errCode === 'PAYOUT_REVERTED'
+          ? 'retired'
+          : errCode === 'BROADCAST_UNCERTAIN'
+            ? 'kept-for-ops'
+            : errCode === 'BROADCAST_IN_PROGRESS'
+              ? 'waiting'
+              : 'error';
+      if (outcome === 'error') {
+        console.error('[ForwarderRecovery] unexpected error', {
+          orderId: row.orderId.toString(),
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    results.push({ orderId: row.orderId.toString(), outcome });
+  }
+  return { results };
+}
+
+async function recoverOneClaim(row: SavedFundingRow, forwarder: Address): Promise<ForwarderRecoveryOutcome> {
+  if (!row.fundingTxHash || !row.fundingTxRaw) {
+    // Claimed, but the request died before a tx was saved, so nothing was broadcast.
+    const paycrestOrderId = TransactionService.paycrestOrderIdFromTxHash(row.txHash);
+    if (!paycrestOrderId) return 'error';
+    await assertNotFundedOnChain({
+      userId: row.userId,
+      orderId: row.orderId,
+      paycrestOrderId,
+      forwarder,
+      payer: zeroAddress,
+      sink: zeroAddress,
+      amount: 0n,
+    });
+    const released = await TransactionService.releaseBroadcastClaim({
+      userId: row.userId,
+      orderId: row.orderId,
+      paycrestOrderId,
+      resetFundingPath: true,
+    });
+    return released ? 'released' : 'waiting';
+  }
+
+  const { ctx, hash, raw, validBefore } = decodeSavedFunding(row, forwarder);
+  let receipt: TransactionReceipt | null;
+  try {
+    receipt = await forwarderDeps.getReceipt(hash);
+  } catch (err) {
+    throw uncertain(ctx, hash, err);
+  }
+  if (receipt) {
+    if (receipt.status !== 'success') await discardIfUnfunded(ctx, hash, 'PAYOUT_REVERTED');
+    if (!fundingReceiptMatches(receipt, ctx)) {
+      console.error(
+        JSON.stringify({
+          alert: 'FORWARDER_RECEIPT_MISMATCH',
+          severity: 'high',
+          orderId: ctx.orderId.toString(),
+          txHash: hash,
+          message: 'Saved tx receipt lacks the expected PayoutFunded / USDC transfers; claim kept for ops review',
+        }),
+      );
+      return 'kept-for-ops';
+    }
+    await TransactionService.attachOnChainHash({ userId: ctx.userId, orderId: ctx.orderId, txHash: hash });
+    return 'attached';
+  }
+  if (authorizationExpired(validBefore)) await discardIfUnfunded(ctx, hash, 'PAYOUT_DROPPED');
+  if (forwarderDeps.now() >= Number(validBefore) * 1000) {
+    // Expired but still inside the grace period: resending would only revert. Wait.
+    return 'waiting';
+  }
+  try {
+    await forwarderDeps.sendRaw(raw);
+  } catch {
+    // Already known, or replaced: the next pass decides.
+  }
+  return 'rebroadcast';
 }
 
 function uncertain(ctx: FundingContext, hash: Hex, err?: unknown) {
