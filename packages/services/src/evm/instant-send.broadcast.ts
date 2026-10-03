@@ -238,6 +238,7 @@ export async function broadcastSettlementTransfer(opts: {
     userId: opts.userId,
     orderId: opts.orderId,
     pendingTxHash,
+    fundingPath: 'direct',
   });
   if (!claimed) {
     const again = await TransactionService.findPendingRemittanceForBroadcast({

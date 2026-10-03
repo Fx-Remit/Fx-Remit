@@ -7323,6 +7323,9 @@ export namespace Prisma {
     updatedAt: Date | null
     type: $Enums.TransactionType | null
     refundTxHash: string | null
+    fundingPath: string | null
+    fundingTxHash: string | null
+    fundingTxRaw: string | null
   }
 
   export type TransactionMaxAggregateOutputType = {
@@ -7350,6 +7353,9 @@ export namespace Prisma {
     updatedAt: Date | null
     type: $Enums.TransactionType | null
     refundTxHash: string | null
+    fundingPath: string | null
+    fundingTxHash: string | null
+    fundingTxRaw: string | null
   }
 
   export type TransactionCountAggregateOutputType = {
@@ -7377,6 +7383,9 @@ export namespace Prisma {
     updatedAt: number
     type: number
     refundTxHash: number
+    fundingPath: number
+    fundingTxHash: number
+    fundingTxRaw: number
     _all: number
   }
 
@@ -7424,6 +7433,9 @@ export namespace Prisma {
     updatedAt?: true
     type?: true
     refundTxHash?: true
+    fundingPath?: true
+    fundingTxHash?: true
+    fundingTxRaw?: true
   }
 
   export type TransactionMaxAggregateInputType = {
@@ -7451,6 +7463,9 @@ export namespace Prisma {
     updatedAt?: true
     type?: true
     refundTxHash?: true
+    fundingPath?: true
+    fundingTxHash?: true
+    fundingTxRaw?: true
   }
 
   export type TransactionCountAggregateInputType = {
@@ -7478,6 +7493,9 @@ export namespace Prisma {
     updatedAt?: true
     type?: true
     refundTxHash?: true
+    fundingPath?: true
+    fundingTxHash?: true
+    fundingTxRaw?: true
     _all?: true
   }
 
@@ -7592,6 +7610,9 @@ export namespace Prisma {
     updatedAt: Date
     type: $Enums.TransactionType
     refundTxHash: string | null
+    fundingPath: string | null
+    fundingTxHash: string | null
+    fundingTxRaw: string | null
     _count: TransactionCountAggregateOutputType | null
     _avg: TransactionAvgAggregateOutputType | null
     _sum: TransactionSumAggregateOutputType | null
@@ -7638,6 +7659,9 @@ export namespace Prisma {
     updatedAt?: boolean
     type?: boolean
     refundTxHash?: boolean
+    fundingPath?: boolean
+    fundingTxHash?: boolean
+    fundingTxRaw?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -7666,6 +7690,9 @@ export namespace Prisma {
     updatedAt?: boolean
     type?: boolean
     refundTxHash?: boolean
+    fundingPath?: boolean
+    fundingTxHash?: boolean
+    fundingTxRaw?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -7694,6 +7721,9 @@ export namespace Prisma {
     updatedAt?: boolean
     type?: boolean
     refundTxHash?: boolean
+    fundingPath?: boolean
+    fundingTxHash?: boolean
+    fundingTxRaw?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -7722,9 +7752,12 @@ export namespace Prisma {
     updatedAt?: boolean
     type?: boolean
     refundTxHash?: boolean
+    fundingPath?: boolean
+    fundingTxHash?: boolean
+    fundingTxRaw?: boolean
   }
 
-  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "rail" | "stellarPaymentHash" | "anchorTransactionId" | "corridor" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "recipientBankCode" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type" | "refundTxHash", ExtArgs["result"]["transaction"]>
+  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "rail" | "stellarPaymentHash" | "anchorTransactionId" | "corridor" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "recipientBankCode" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type" | "refundTxHash" | "fundingPath" | "fundingTxHash" | "fundingTxRaw", ExtArgs["result"]["transaction"]>
   export type TransactionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     user?: boolean | UserDefaultArgs<ExtArgs>
   }
@@ -7771,6 +7804,15 @@ export namespace Prisma {
        * * On-chain Paycrest crypto refund hash linked for ops (#90). Per-user unique.
        */
       refundTxHash: string | null
+      /**
+       * * Bank payout funding path chosen on first send: "direct" | "forwarder". Retries reuse it.
+       */
+      fundingPath: string | null
+      /**
+       * * PayoutForwarder relayer tx, saved before broadcast so a retry resends the same tx.
+       */
+      fundingTxHash: string | null
+      fundingTxRaw: string | null
     }, ExtArgs["result"]["transaction"]>
     composites: {}
   }
@@ -8219,6 +8261,9 @@ export namespace Prisma {
     readonly updatedAt: FieldRef<"Transaction", 'DateTime'>
     readonly type: FieldRef<"Transaction", 'TransactionType'>
     readonly refundTxHash: FieldRef<"Transaction", 'String'>
+    readonly fundingPath: FieldRef<"Transaction", 'String'>
+    readonly fundingTxHash: FieldRef<"Transaction", 'String'>
+    readonly fundingTxRaw: FieldRef<"Transaction", 'String'>
   }
     
 
@@ -8756,7 +8801,10 @@ export namespace Prisma {
     logIndex: 'logIndex',
     updatedAt: 'updatedAt',
     type: 'type',
-    refundTxHash: 'refundTxHash'
+    refundTxHash: 'refundTxHash',
+    fundingPath: 'fundingPath',
+    fundingTxHash: 'fundingTxHash',
+    fundingTxRaw: 'fundingTxRaw'
   };
 
   export type TransactionScalarFieldEnum = (typeof TransactionScalarFieldEnum)[keyof typeof TransactionScalarFieldEnum]
@@ -9393,6 +9441,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
     type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     refundTxHash?: StringNullableFilter<"Transaction"> | string | null
+    fundingPath?: StringNullableFilter<"Transaction"> | string | null
+    fundingTxHash?: StringNullableFilter<"Transaction"> | string | null
+    fundingTxRaw?: StringNullableFilter<"Transaction"> | string | null
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
   }
 
@@ -9421,6 +9472,9 @@ export namespace Prisma {
     updatedAt?: SortOrder
     type?: SortOrder
     refundTxHash?: SortOrderInput | SortOrder
+    fundingPath?: SortOrderInput | SortOrder
+    fundingTxHash?: SortOrderInput | SortOrder
+    fundingTxRaw?: SortOrderInput | SortOrder
     user?: UserOrderByWithRelationInput
   }
 
@@ -9456,6 +9510,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
     type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     refundTxHash?: StringNullableFilter<"Transaction"> | string | null
+    fundingPath?: StringNullableFilter<"Transaction"> | string | null
+    fundingTxHash?: StringNullableFilter<"Transaction"> | string | null
+    fundingTxRaw?: StringNullableFilter<"Transaction"> | string | null
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
   }, "id" | "stellarPaymentHash" | "externalId" | "txHash_logIndex" | "chainId_blockNumber_logIndex" | "orderId_chainId" | "userId_refundTxHash">
 
@@ -9484,6 +9541,9 @@ export namespace Prisma {
     updatedAt?: SortOrder
     type?: SortOrder
     refundTxHash?: SortOrderInput | SortOrder
+    fundingPath?: SortOrderInput | SortOrder
+    fundingTxHash?: SortOrderInput | SortOrder
+    fundingTxRaw?: SortOrderInput | SortOrder
     _count?: TransactionCountOrderByAggregateInput
     _avg?: TransactionAvgOrderByAggregateInput
     _max?: TransactionMaxOrderByAggregateInput
@@ -9519,6 +9579,9 @@ export namespace Prisma {
     updatedAt?: DateTimeWithAggregatesFilter<"Transaction"> | Date | string
     type?: EnumTransactionTypeWithAggregatesFilter<"Transaction"> | $Enums.TransactionType
     refundTxHash?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    fundingPath?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    fundingTxHash?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    fundingTxRaw?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
   }
 
   export type UserCreateInput = {
@@ -10016,6 +10079,9 @@ export namespace Prisma {
     updatedAt?: Date | string
     type?: $Enums.TransactionType
     refundTxHash?: string | null
+    fundingPath?: string | null
+    fundingTxHash?: string | null
+    fundingTxRaw?: string | null
     user: UserCreateNestedOneWithoutTransactionsInput
   }
 
@@ -10044,6 +10110,9 @@ export namespace Prisma {
     updatedAt?: Date | string
     type?: $Enums.TransactionType
     refundTxHash?: string | null
+    fundingPath?: string | null
+    fundingTxHash?: string | null
+    fundingTxRaw?: string | null
   }
 
   export type TransactionUpdateInput = {
@@ -10070,6 +10139,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     refundTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
     user?: UserUpdateOneRequiredWithoutTransactionsNestedInput
   }
 
@@ -10098,6 +10170,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     refundTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionCreateManyInput = {
@@ -10125,6 +10200,9 @@ export namespace Prisma {
     updatedAt?: Date | string
     type?: $Enums.TransactionType
     refundTxHash?: string | null
+    fundingPath?: string | null
+    fundingTxHash?: string | null
+    fundingTxRaw?: string | null
   }
 
   export type TransactionUpdateManyMutationInput = {
@@ -10151,6 +10229,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     refundTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionUncheckedUpdateManyInput = {
@@ -10178,6 +10259,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     refundTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type StringFilter<$PrismaModel = never> = {
@@ -10748,6 +10832,9 @@ export namespace Prisma {
     updatedAt?: SortOrder
     type?: SortOrder
     refundTxHash?: SortOrder
+    fundingPath?: SortOrder
+    fundingTxHash?: SortOrder
+    fundingTxRaw?: SortOrder
   }
 
   export type TransactionAvgOrderByAggregateInput = {
@@ -10784,6 +10871,9 @@ export namespace Prisma {
     updatedAt?: SortOrder
     type?: SortOrder
     refundTxHash?: SortOrder
+    fundingPath?: SortOrder
+    fundingTxHash?: SortOrder
+    fundingTxRaw?: SortOrder
   }
 
   export type TransactionMinOrderByAggregateInput = {
@@ -10811,6 +10901,9 @@ export namespace Prisma {
     updatedAt?: SortOrder
     type?: SortOrder
     refundTxHash?: SortOrder
+    fundingPath?: SortOrder
+    fundingTxHash?: SortOrder
+    fundingTxRaw?: SortOrder
   }
 
   export type TransactionSumOrderByAggregateInput = {
@@ -11532,6 +11625,9 @@ export namespace Prisma {
     updatedAt?: Date | string
     type?: $Enums.TransactionType
     refundTxHash?: string | null
+    fundingPath?: string | null
+    fundingTxHash?: string | null
+    fundingTxRaw?: string | null
   }
 
   export type TransactionUncheckedCreateWithoutUserInput = {
@@ -11558,6 +11654,9 @@ export namespace Prisma {
     updatedAt?: Date | string
     type?: $Enums.TransactionType
     refundTxHash?: string | null
+    fundingPath?: string | null
+    fundingTxHash?: string | null
+    fundingTxRaw?: string | null
   }
 
   export type TransactionCreateOrConnectWithoutUserInput = {
@@ -11742,6 +11841,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFilter<"Transaction"> | Date | string
     type?: EnumTransactionTypeFilter<"Transaction"> | $Enums.TransactionType
     refundTxHash?: StringNullableFilter<"Transaction"> | string | null
+    fundingPath?: StringNullableFilter<"Transaction"> | string | null
+    fundingTxHash?: StringNullableFilter<"Transaction"> | string | null
+    fundingTxRaw?: StringNullableFilter<"Transaction"> | string | null
   }
 
   export type SavedRecipientUpsertWithWhereUniqueWithoutUserInput = {
@@ -12392,6 +12494,9 @@ export namespace Prisma {
     updatedAt?: Date | string
     type?: $Enums.TransactionType
     refundTxHash?: string | null
+    fundingPath?: string | null
+    fundingTxHash?: string | null
+    fundingTxRaw?: string | null
   }
 
   export type SavedRecipientCreateManyUserInput = {
@@ -12462,6 +12567,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     refundTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionUncheckedUpdateWithoutUserInput = {
@@ -12488,6 +12596,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     refundTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionUncheckedUpdateManyWithoutUserInput = {
@@ -12514,6 +12625,9 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     type?: EnumTransactionTypeFieldUpdateOperationsInput | $Enums.TransactionType
     refundTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
+    fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SavedRecipientUpdateWithoutUserInput = {

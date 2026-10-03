@@ -1512,6 +1512,8 @@ export class TransactionService {
     userId: string;
     orderId: bigint;
     pendingTxHash: string;
+    /** Bank payouts record their funding path on the first claim; retries must reuse it. */
+    fundingPath?: 'direct' | 'forwarder';
   }): Promise<boolean> {
     const claimHash = this.broadcastClaimHashFromPending(params.pendingTxHash);
     if (!claimHash) return false;
@@ -1523,13 +1525,77 @@ export class TransactionService {
         userId: params.userId,
         type: 'REMITTANCE',
         txHash: params.pendingTxHash,
+        ...(params.fundingPath
+          ? { OR: [{ fundingPath: null }, { fundingPath: params.fundingPath }] }
+          : {}),
       },
       data: {
         txHash: claimHash,
+        ...(params.fundingPath ? { fundingPath: params.fundingPath } : {}),
         updatedAt: new Date(),
       },
     });
     return claimed.count === 1;
+  }
+
+  /**
+   * Store the signed PayoutForwarder relayer tx on a claimed row before broadcast,
+   * so a timeout resends this exact tx instead of signing a new one.
+   */
+  static async saveFundingTx(params: {
+    userId: string;
+    orderId: bigint;
+    claimTxHash: string;
+    fundingTxHash: string;
+    fundingTxRaw: string;
+  }): Promise<boolean> {
+    const saved = await prisma.transaction.updateMany({
+      where: {
+        orderId: params.orderId,
+        chainId: 0,
+        userId: params.userId,
+        type: 'REMITTANCE',
+        txHash: params.claimTxHash,
+        fundingPath: 'forwarder',
+        fundingTxHash: null,
+      },
+      data: {
+        fundingTxHash: params.fundingTxHash,
+        fundingTxRaw: params.fundingTxRaw,
+        updatedAt: new Date(),
+      },
+    });
+    return saved.count === 1;
+  }
+
+  /**
+   * A stored funding tx that can no longer land (reverted, or its relayer nonce was
+   * used by another tx): clear it and release the claim so the order can be funded
+   * again through the same path.
+   */
+  static async discardFundingTx(params: {
+    userId: string;
+    orderId: bigint;
+    paycrestOrderId: string;
+    fundingTxHash: string;
+  }): Promise<boolean> {
+    const cleared = await prisma.transaction.updateMany({
+      where: {
+        orderId: params.orderId,
+        chainId: 0,
+        userId: params.userId,
+        type: 'REMITTANCE',
+        txHash: `broadcasting-${params.paycrestOrderId}`,
+        fundingTxHash: params.fundingTxHash,
+      },
+      data: {
+        txHash: `pending-${params.paycrestOrderId}`,
+        fundingTxHash: null,
+        fundingTxRaw: null,
+        updatedAt: new Date(),
+      },
+    });
+    return cleared.count === 1;
   }
 
   /**
@@ -1549,6 +1615,9 @@ export class TransactionService {
         userId: params.userId,
         type: 'REMITTANCE',
         txHash: claimHash,
+        // A saved PayoutForwarder tx can still be mined; only discardFundingTx (after
+        // the contract confirms the order is unfunded) may retire it.
+        fundingTxHash: null,
       },
       data: {
         txHash: pendingHash,

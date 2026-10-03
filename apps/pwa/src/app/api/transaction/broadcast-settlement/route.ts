@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
 import {
+  broadcastForwarderPayout,
   broadcastSettlementTransfer,
+  isPayoutForwarderEnabledFor,
   InstantSendNotConfiguredError,
   InstantSendWalletError,
   TransactionService,
@@ -10,6 +12,8 @@ import {
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
+// Forwarder payouts sign, broadcast and wait for a receipt; give them room to finish.
+export const maxDuration = 60;
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim() ?? '';
 const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET?.trim() ?? '';
@@ -78,7 +82,19 @@ export async function POST(req: Request) {
     }
 
     try {
-      const result = await broadcastSettlementTransfer({
+      // The path chosen on an order's first send is reused on every retry; switching
+      // paths mid-order could fund it twice (the forwarder can't see a direct transfer).
+      const remittance = await TransactionService.findPendingRemittanceForBroadcast({
+        userId: user.id,
+        orderId,
+      });
+      const useForwarder =
+        remittance?.fundingPath === 'forwarder' ||
+        (!remittance?.fundingPath &&
+          isPayoutForwarderEnabledFor({ id: user.id, privyDid: claims.userId }));
+
+      const send = useForwarder ? broadcastForwarderPayout : broadcastSettlementTransfer;
+      const result = await send({
         privyDid: claims.userId,
         userId: user.id,
         walletAddress: user.walletAddress,
