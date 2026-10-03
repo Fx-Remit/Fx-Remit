@@ -58,6 +58,10 @@ const EXTERNAL_WALLET_BLOCKED =
 /** Server could not sign or send; nothing moved, so the reserve stays for a retry. */
 const SEND_FAILED_RETRY = "Couldn't send this payout. Tap Send to try again.";
 
+/** Server signing is not set up; the reserve is released. */
+const SEND_UNAVAILABLE =
+  'Bank payouts are unavailable right now. Your balance has not been charged.';
+
 /**
  * Presentational confirm sheet. Prefetch lifecycle is owned by the parent
  * Confirm click / Close click this component never starts work on render.
@@ -380,15 +384,18 @@ export function ConfirmTransactionSheet({
         setStatus('idle');
         onSendingChange?.(false);
         return;
+      } else if (broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED') {
+        // Deployment setting, not a passing failure: retrying can't help. Fails before
+        // the claim, so the catch below releases the reserve.
+        throw new Error(SEND_UNAVAILABLE);
       } else if (
-        broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED' ||
         broadcastData.code === 'PAYOUT_NOT_AUTHORIZED' ||
         broadcastData.code === 'PAYOUT_REVERTED' ||
         broadcastData.code === 'PAYOUT_DROPPED' ||
         broadcastData.code === 'FORWARDER_UNAVAILABLE'
       ) {
-        // Server confirmed nothing moved (not configured fails before the claim;
-        // forwarder codes release it). Keep session + reserve so Send can be tapped again.
+        // Forwarder confirmed nothing moved and released the claim.
+        // Keep session + reserve so Send can be tapped again.
         setError(SEND_FAILED_RETRY);
         setStatus('idle');
         onSendingChange?.(false);
@@ -447,6 +454,7 @@ export function ConfirmTransactionSheet({
   const busy =
     status === 'creating' || status === 'sending' || status === 'granting';
   const sendDisabled = busy || status === 'success' || isExternalWallet;
+  const bannerText = displayError ?? (isExternalWallet ? EXTERNAL_WALLET_BLOCKED : null);
 
   const sendLabel =
     status === 'granting'
@@ -486,7 +494,7 @@ export function ConfirmTransactionSheet({
                   Preparing secure payout…
                 </p>
               )}
-              {prefetchPhase === 'ready' && status === 'idle' && !displayError && (
+              {prefetchPhase === 'ready' && status === 'idle' && !bannerText && (
                 <p className="mt-2 text-[12px] font-medium text-[#2261FE]">
                   Ready to send
                 </p>
@@ -534,17 +542,17 @@ export function ConfirmTransactionSheet({
             </div>
           </div>
 
-          {(displayError || isExternalWallet) && (
+          {bannerText && (
             <div
               className={`mb-4 flex w-full max-w-[390px] items-center gap-3 rounded-[12px] border p-4 ${
-                displayError.includes('already prepared')
+                bannerText.includes('already prepared')
                   ? 'border-amber-100 bg-amber-50'
                   : 'border-red-100 bg-red-50'
               }`}
             >
               <div
                 className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
-                  displayError.includes('already prepared')
+                  bannerText.includes('already prepared')
                     ? 'bg-amber-100'
                     : 'bg-red-100'
                 }`}
@@ -552,7 +560,7 @@ export function ConfirmTransactionSheet({
                 <AlertCircle
                   size={16}
                   className={
-                    displayError.includes('already prepared')
+                    bannerText.includes('already prepared')
                       ? 'text-amber-600'
                       : 'text-red-500'
                   }
@@ -560,12 +568,12 @@ export function ConfirmTransactionSheet({
               </div>
               <p
                 className={`text-[13px] font-medium leading-tight ${
-                  displayError.includes('already prepared')
+                  bannerText.includes('already prepared')
                     ? 'text-amber-900'
                     : 'text-red-600'
                 }`}
               >
-                {displayError ?? EXTERNAL_WALLET_BLOCKED}
+                {bannerText}
               </p>
             </div>
           )}
