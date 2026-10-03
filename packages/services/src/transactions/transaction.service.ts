@@ -76,6 +76,9 @@ const TRANSACTION_API_SELECT = {
   recipientBank: true,
   recipientAcc: true,
   recipientBankCode: true,
+  orderBankAmount: true,
+  orderSenderFee: true,
+  orderRate: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -1796,6 +1799,39 @@ export class TransactionService {
    * - FAILED abandoned (pending-* hash) → re-reserve and reopen
    * Different cash-outs must use different externalIds even if USD amounts match.
    */
+  /** How long after reserving the locked rate is still sent to Paycrest. */
+  static readonly LOCKED_RATE_TTL_MS = 5 * 60_000;
+
+  /**
+   * Paycrest order fields for a reserved bank payout.
+   * - Rows reserved with a bound split send the bank part and our sender fee, so Paycrest asks
+   *   for exactly amountUsd. The locked rate is sent only while the reservation is fresh; a late
+   *   retry (resume, recovery) lets Paycrest price at market rather than pin a stale rate.
+   * - Rows reserved before the split existed send the full amount with an explicit zero sender
+   *   fee, so a dashboard default fee can't push amountToTransfer above the reserve.
+   */
+  static paycrestOrderPricing(
+    tx: {
+      amountUsd: { toString(): string };
+      updatedAt?: Date | null;
+      orderBankAmount?: string | null;
+      orderSenderFee?: string | null;
+      orderRate?: string | null;
+    },
+    nowMs: number = Date.now(),
+  ): { amount: string; senderFee: string; rate?: string } {
+    if (tx.orderBankAmount && tx.orderSenderFee) {
+      const fresh =
+        !!tx.orderRate && !!tx.updatedAt && nowMs - tx.updatedAt.getTime() < this.LOCKED_RATE_TTL_MS;
+      return {
+        amount: tx.orderBankAmount,
+        senderFee: tx.orderSenderFee,
+        ...(fresh ? { rate: tx.orderRate! } : {}),
+      };
+    }
+    return { amount: tx.amountUsd.toString(), senderFee: '0' };
+  }
+
   static async createPending(data: {
     userId: string;
     orderId: bigint;
@@ -1807,6 +1843,8 @@ export class TransactionService {
     recipientBank: string;
     recipientAcc: string;
     recipientBankCode?: string | null;
+    /** Paycrest order split bound with the quote; saved so every later order create reuses it. */
+    orderPricing?: { bankAmount: string; senderFee: string; rate: string } | null;
   }): Promise<TransactionApiRow> {
     const amount = new Prisma.Decimal(data.amountUsd);
     const payoutFiat = new Prisma.Decimal(data.payoutFiat);
@@ -1863,6 +1901,10 @@ export class TransactionService {
               recipientBank: data.recipientBank,
               recipientAcc: data.recipientAcc,
               recipientBankCode: data.recipientBankCode?.trim() || null,
+              // Always overwrite: a re-reserved row must not keep a split from an earlier attempt.
+              orderBankAmount: data.orderPricing?.bankAmount ?? null,
+              orderSenderFee: data.orderPricing?.senderFee ?? null,
+              orderRate: data.orderPricing?.rate ?? null,
               txHash: `pending-${data.externalId}`,
               chainId: 0,
               // Avoid @@unique([chainId, blockNumber, logIndex]) collisions on (0,0,0)
@@ -1910,6 +1952,10 @@ export class TransactionService {
           recipientBank: data.recipientBank,
           recipientAcc: data.recipientAcc,
           recipientBankCode: data.recipientBankCode?.trim() || null,
+              // Always overwrite: a re-reserved row must not keep a split from an earlier attempt.
+              orderBankAmount: data.orderPricing?.bankAmount ?? null,
+              orderSenderFee: data.orderPricing?.senderFee ?? null,
+              orderRate: data.orderPricing?.rate ?? null,
           status: "PENDING",
           type: "REMITTANCE",
           txHash: `pending-${data.externalId}`,

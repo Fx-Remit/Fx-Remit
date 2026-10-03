@@ -73,14 +73,25 @@ describe('GET /api/quote — happy paths', () => {
       };
     });
 
-    const res = await GET(quoteReq('source=USDC&destination=NGN&amount=100'));
-    assert.equal(res.status, 200);
-    const body = await res.json();
-    assert.equal(body.success, true);
-    assert.equal(body.quote.wholesale_rate, 1600);
-    assert.equal(body.quote.retail_rate, PricingService.calculateRetailRate(1600));
-    assert.equal(body.quote.spread_bps, 75);
-    assert.equal(fetchRate.mock.callCount(), 1);
+    // Example values only; real fee/spread live in server env.
+    process.env.PAYOUT_FEE_BPS = '100';
+    process.env.PAYOUT_SPREAD_BPS = '200';
+    try {
+      const res = await GET(quoteReq('source=USDC&destination=NGN&amount=100'));
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.success, true);
+      assert.equal(body.quote.retail_rate, 1568);
+      assert.equal(body.quote.fee_bps, 100);
+      // Nothing that reveals the wholesale rate or the spread.
+      assert.equal('wholesale_rate' in body.quote, false);
+      assert.equal('spread_bps' in body.quote, false);
+      assert.equal(JSON.stringify(body).includes('1600'), false);
+      assert.equal(fetchRate.mock.callCount(), 1);
+    } finally {
+      delete process.env.PAYOUT_FEE_BPS;
+      delete process.env.PAYOUT_SPREAD_BPS;
+    }
   });
 });
 

@@ -16,8 +16,7 @@ function AddAccountForm() {
   const token = searchParams.get('token') || 'USDT';
   const currency = searchParams.get('currency') || 'NGN';
   const rate = searchParams.get('rate') || '0';
-  const wholesaleRate = searchParams.get('wholesaleRate') || '0';
-  const spread = searchParams.get('spread') || '75';
+  const fee = searchParams.get('fee') || '0';
   const { getAccessToken } = usePrivy();
   const fiatCurrency = normalizeFiatCurrency(currency);
 
@@ -114,8 +113,7 @@ function AddAccountForm() {
       bankCode: bankCode,
       idempotencyKey,
       rate,
-      wholesaleRate,
-      spread,
+      fee,
     });
     router.push(`/cash-out/bank/confirm?${params.toString()}`);
   };

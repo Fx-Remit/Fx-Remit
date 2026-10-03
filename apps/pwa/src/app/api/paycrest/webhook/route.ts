@@ -3,6 +3,13 @@ import crypto from 'crypto';
 import { Status } from '@fx-remit/database';
 import { TransactionService } from '@fx-remit/services';
 
+/** Constant-time compare, so response timing can't reveal how much of a forged signature matched. */
+function signatureMatches(signature: string, expected: string): boolean {
+  const given = Buffer.from(signature);
+  const want = Buffer.from(expected);
+  return given.length === want.length && crypto.timingSafeEqual(given, want);
+}
+
 /**
  * Paycrest v2 Webhook Receiver
  * - Verifies X-Paycrest-Signature header using HMAC-SHA256.
@@ -30,7 +37,7 @@ export async function POST(req: NextRequest) {
       .update(body)
       .digest('hex');
 
-    if (signature !== expectedSignature) {
+    if (!signatureMatches(signature, expectedSignature)) {
       console.error('Invalid X-Paycrest-Signature');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

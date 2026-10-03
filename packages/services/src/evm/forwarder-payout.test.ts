@@ -28,8 +28,10 @@ import {
   forwarderDeps,
   isPayoutForwarderEnabledFor,
   PAYOUT_FORWARDER_ABI,
+  recoverStuckForwarderClaims,
   type ForwarderPublicClient,
 } from './forwarder-payout.js';
+import { prisma } from '@fx-remit/database';
 
 const FORWARDER = getAddress('0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83');
 const USDC = getAddress(PAYCREST_SETTLEMENT.tokenAddress);
@@ -625,5 +627,124 @@ describe('broadcastForwarderPayout: resuming a saved tx', () => {
     await assert.rejects(run, code('PAYOUT_DROPPED'));
     assert.equal(discard.mock.callCount(), 1);
     assert.equal(chain.calls.sent.length, 0);
+  });
+});
+
+describe('recoverStuckForwarderClaims (nightly / ops)', () => {
+  const EXPIRED = BigInt(Math.floor(NOW / 1000) - 3600);
+  const originalFindMany = prisma.transaction.findMany;
+  afterEach(() => {
+    prisma.transaction.findMany = originalFindMany;
+  });
+
+  async function stuckRow(opts: { saved?: boolean; validBefore?: bigint } = {}) {
+    const raw = opts.saved === false ? null : await signedPayoutTx(7, opts.validBefore);
+    prisma.transaction.findMany = mock.fn(async () => [
+      {
+        userId: 'u1',
+        orderId: ORDER,
+        txHash: `broadcasting-${PAYCREST_ID}`,
+        fundingTxHash: raw ? keccak256(raw) : null,
+        fundingTxRaw: raw,
+      },
+    ]) as any;
+    return raw;
+  }
+
+  const outcome = async () => {
+    const res = await recoverStuckForwarderClaims();
+    assert.ok(!('skipped' in res));
+    return res.results[0]?.outcome;
+  };
+
+  it('skips when the forwarder is not configured', async () => {
+    const key = process.env.RELAYER_PRIVATE_KEY;
+    delete process.env.RELAYER_PRIVATE_KEY;
+    try {
+      const res = await recoverStuckForwarderClaims();
+      assert.ok('skipped' in res);
+    } finally {
+      process.env.RELAYER_PRIVATE_KEY = key;
+    }
+  });
+
+  it('attaches a saved tx that landed after the request gave up', async () => {
+    const chain = fakeChain();
+    const raw = (await stuckRow())!;
+    chain.receipts.set(keccak256(raw), receipt());
+    const attach = mock.method(TransactionService, 'attachOnChainHash', async () => ({}) as never);
+    assert.equal(await outcome(), 'attached');
+    assert.equal((attach.mock.calls[0].arguments[0] as { txHash: string }).txHash, keccak256(raw));
+  });
+
+  it('retires a reverted saved tx when the order is unfunded', async () => {
+    const chain = fakeChain();
+    const raw = (await stuckRow())!;
+    chain.receipts.set(keccak256(raw), receipt({ status: 'reverted' }));
+    const discard = mock.method(TransactionService, 'discardFundingTx', async () => true);
+    assert.equal(await outcome(), 'retired');
+    assert.equal(discard.mock.callCount(), 1);
+  });
+
+  it('keeps a reverted saved tx for ops when the order is funded', async () => {
+    const chain = fakeChain({ funded: true });
+    const raw = (await stuckRow())!;
+    chain.receipts.set(keccak256(raw), receipt({ status: 'reverted' }));
+    const discard = mock.method(TransactionService, 'discardFundingTx', async () => true);
+    assert.equal(await outcome(), 'kept-for-ops');
+    assert.equal(discard.mock.callCount(), 0);
+  });
+
+  it('resends an unmined saved tx that is still valid', async () => {
+    const chain = fakeChain();
+    const raw = (await stuckRow())!;
+    const discard = mock.method(TransactionService, 'discardFundingTx', async () => true);
+    assert.equal(await outcome(), 'rebroadcast');
+    assert.deepEqual(chain.calls.sent, [raw]);
+    assert.equal(discard.mock.callCount(), 0);
+  });
+
+  it('waits, without resending, when the authorization just expired but the grace period has not passed', async () => {
+    const chain = fakeChain();
+    await stuckRow({ validBefore: BigInt(Math.floor(NOW / 1000) - 60) });
+    const discard = mock.method(TransactionService, 'discardFundingTx', async () => true);
+    assert.equal(await outcome(), 'waiting');
+    assert.equal(chain.calls.sent.length, 0);
+    assert.equal(discard.mock.callCount(), 0);
+  });
+
+  it('retires an unmined saved tx once its authorization expired and the order is unfunded', async () => {
+    fakeChain();
+    await stuckRow({ validBefore: EXPIRED });
+    const discard = mock.method(TransactionService, 'discardFundingTx', async () => true);
+    assert.equal(await outcome(), 'retired');
+    assert.equal(discard.mock.callCount(), 1);
+  });
+
+  it('releases a claim with nothing saved when the order is unfunded', async () => {
+    fakeChain();
+    await stuckRow({ saved: false });
+    const release = mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    assert.equal(await outcome(), 'released');
+    assert.equal((release.mock.calls[0].arguments[0] as { resetFundingPath?: boolean }).resetFundingPath, true);
+  });
+
+  it('keeps a claim with nothing saved when the order is funded', async () => {
+    fakeChain({ funded: true });
+    await stuckRow({ saved: false });
+    const release = mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    assert.equal(await outcome(), 'kept-for-ops');
+    assert.equal(release.mock.callCount(), 0);
+  });
+
+  it('keeps the claim when the receipt lookup errors', async () => {
+    fakeChain();
+    await stuckRow();
+    mock.method(forwarderDeps, 'getReceipt', async () => {
+      throw new Error('rate limited');
+    });
+    const discard = mock.method(TransactionService, 'discardFundingTx', async () => true);
+    assert.equal(await outcome(), 'kept-for-ops');
+    assert.equal(discard.mock.callCount(), 0);
   });
 });

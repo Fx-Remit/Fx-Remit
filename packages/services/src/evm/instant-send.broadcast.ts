@@ -208,6 +208,12 @@ export async function broadcastSettlementTransfer(opts: {
   if (amountRaw <= 0n) {
     throw new InstantSendWalletError('INVALID_AMOUNT', 'Settlement amount must be positive');
   }
+  if (amountRaw !== parseUnits(remittance.amountUsd.toString(), decimals)) {
+    throw new InstantSendWalletError(
+      'AMOUNT_MISMATCH',
+      `Paycrest asks for ${amountHuman} but ${remittance.amountUsd.toString()} is reserved`,
+    );
+  }
   if (amountRaw > INSTANT_SEND_MAX_USDC_RAW) {
     throw new InstantSendWalletError(
       'AMOUNT_CAP',
