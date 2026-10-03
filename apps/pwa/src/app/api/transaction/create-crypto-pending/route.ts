@@ -6,6 +6,7 @@ import {
   mintAbandonToken,
   InsufficientBalanceError,
   DEPOSIT_TOKENS,
+  withUniqueOrderId,
 } from '@fx-remit/services';
 import { z } from 'zod';
 import { isAddress } from 'viem';
@@ -140,23 +141,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const orderId = BigInt(Date.now());
     const appExternalId =
       frontendId || `crypto_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
     let tx;
     try {
-      tx = await TransactionService.createPending({
-        userId: user.id,
-        orderId,
-        externalId: appExternalId,
-        sourceToken: tokenMeta.symbol,
-        amountUsd,
-        payoutFiat: amountUsd,
-        recipientName: 'Crypto withdraw',
-        recipientBank: `crypto:${network}`,
-        recipientAcc: destinationAddress,
-      });
+      tx = await withUniqueOrderId((orderId) =>
+        TransactionService.createPending({
+          userId: user.id,
+          orderId,
+          externalId: appExternalId,
+          sourceToken: tokenMeta.symbol,
+          amountUsd,
+          payoutFiat: amountUsd,
+          recipientName: 'Crypto withdraw',
+          recipientBank: `crypto:${network}`,
+          recipientAcc: destinationAddress,
+        }),
+      );
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {
         return NextResponse.json(
