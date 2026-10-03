@@ -13,7 +13,7 @@ function adapterUniqueViolation(fields: string[]) {
     `Unique constraint failed on the fields: (${fields.map((f) => `\`${f}\``).join(', ')})`,
     {
       code: 'P2002',
-      clientVersion: '7.6.0',
+      clientVersion: Prisma.prismaVersion.client,
       meta: {
         modelName: 'Transaction',
         driverAdapterError: {
