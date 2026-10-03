@@ -13,12 +13,33 @@ export function newOrderId(now: number = Date.now()): bigint {
   return BigInt(now) * 1000n + BigInt(randomInt(1000));
 }
 
-/** Prisma unique violation on a constraint that includes the order id. */
+/**
+ * Prisma unique violation on a constraint that includes the order id.
+ *
+ * Prisma 7 with @prisma/adapter-pg puts the columns under
+ * `meta.driverAdapterError.cause.constraint.fields` (no `meta.target`); older
+ * engines used `meta.target`. Both forms, and the message, are checked.
+ *
+ * `block_number` counts too: pending rows store `blockNumber = orderId` with
+ * chainId 0, so an order-id clash can surface on (chain_id, block_number, log_index).
+ */
 export function isOrderIdCollision(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
-  const e = err as { code?: unknown; meta?: { target?: unknown } };
+  const e = err as {
+    code?: unknown;
+    message?: unknown;
+    meta?: {
+      target?: unknown;
+      driverAdapterError?: { cause?: { constraint?: unknown } };
+    };
+  };
   if (e.code !== 'P2002') return false;
-  return /order_?id|block_?number/i.test(JSON.stringify(e.meta?.target ?? ''));
+  const where = JSON.stringify([
+    e.meta?.target ?? null,
+    e.meta?.driverAdapterError?.cause?.constraint ?? null,
+    typeof e.message === 'string' ? e.message : null,
+  ]);
+  return /order_?id|block_?number/i.test(where);
 }
 
 /**
