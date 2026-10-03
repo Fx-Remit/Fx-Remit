@@ -39,6 +39,8 @@ library FXRemitConstants {
         0x471EcE3750Da237f93B8E339c536989b8978a438;
     address public constant CELO_CUSD =
         0x765DE816845861e75A25fCA122bb6898B8B1282a;
+    address public constant CELO_USDC =
+        0xcebA9300f2b948710d2653dD7B07f33A8B32118C;
     address public constant CELO_MENTO_EXCHANGE_ID =
         0x471EcE3750Da237f93B8E339c536989b8978a438;
 }
