@@ -17,6 +17,7 @@ import {
   RESERVED_STILL_LIVE_MESSAGE,
 } from '@/lib/cash-out/create-pending-client';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
+import { formatCashOutFee } from '@/lib/cash-out/fee';
 import { fetchFreshQuoteValidUntil } from '@/lib/cash-out/fetch-retail-quote';
 
 function CashOutConfirmContent() {
@@ -72,7 +73,7 @@ function CashOutConfirmContent() {
   const idempotencyKey = searchParams.get('idempotencyKey') || '';
 
   const rate = searchParams.get('rate') || '0';
-  const spread = searchParams.get('spread') || '75';
+  const feeBps = Number(searchParams.get('fee') || '0');
 
   const { profile: dbUser } = useUserStore();
 
@@ -104,7 +105,7 @@ function CashOutConfirmContent() {
     boundPayoutFiat != null ? boundPayoutFiat : Number(receiveAmount);
 
   const isBank = type === 'bank';
-  const feePercentText = `${(Number(spread) / 100).toFixed(2)}%`;
+  const feeText = formatCashOutFee(sendAmount, feeBps);
   const formattedRate =
     Number(rate) > 0
       ? `1 ${token} = ${Number(rate).toLocaleString()} ${currency}`
@@ -449,8 +450,8 @@ function CashOutConfirmContent() {
 
         <div className="flex flex-col gap-3 mb-8 w-full max-w-[370px] mx-auto">
           <div className="flex items-center justify-between">
-            <span className="text-[#888888] text-[14px] font-medium">Fees</span>
-            <span className="text-[#1C1C1C] text-[14px] font-bold">{feePercentText}</span>
+            <span className="text-[#888888] text-[14px] font-medium">Fee</span>
+            <span className="text-[#1C1C1C] text-[14px] font-bold">{feeText}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[14px] font-medium">Exchange rate</span>
@@ -525,7 +526,7 @@ function CashOutConfirmContent() {
           accNum={accountNumber}
           accName={accountName}
           bankName={bankName}
-          spreadBps={Number(spread)}
+          feeBps={feeBps}
           onPayoutFiatBound={(payoutFiat) => {
             setBoundPayoutFiat(payoutFiat);
           }}

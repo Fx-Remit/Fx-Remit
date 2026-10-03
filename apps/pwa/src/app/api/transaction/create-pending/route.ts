@@ -23,7 +23,12 @@ const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 import { z } from 'zod';
 
 const createPendingSchema = z.object({
-  amountUsd: z.coerce.number().positive("amountUsd must be a positive number").max(10_000, "Transaction amount exceeds maximum of $10,000"),
+  amountUsd: z.coerce
+    .number()
+    .positive("amountUsd must be a positive number")
+    .max(10_000, "Transaction amount exceeds maximum of $10,000")
+    // USDC has 6 decimals: the reserve must equal what can be sent exactly.
+    .refine((v) => Math.abs(v * 1e6 - Math.round(v * 1e6)) < 1e-6, "amountUsd supports at most 6 decimals"),
   /** Ignored when present — server recomputes from live retail quote (#98). */
   payoutFiat: z.coerce.number().positive().optional(),
   /** Client quote TTL (ms epoch) from /api/quote; must still be fresh. */
@@ -262,6 +267,14 @@ export async function POST(req: Request) {
           recipientBank,
           recipientAcc,
           recipientBankCode: bankCode?.trim() || null,
+          // Saved on the row: every later order create for this payout uses this split.
+          orderPricing: boundQuote
+            ? {
+                bankAmount: boundQuote.bankAmount,
+                senderFee: boundQuote.senderFee,
+                rate: String(boundQuote.wholesaleRate),
+              }
+            : null,
         }),
       );
     } catch (err) {
@@ -283,9 +296,9 @@ export async function POST(req: Request) {
     const abandonToken = mintAbandonToken(externalKey, user.id);
     // Authoritative fiat is always the persisted row (resume keeps original bind).
     const quoteMeta = {
-      wholesaleRate: boundQuote?.wholesaleRate,
       retailRate: boundQuote?.retailRate,
-      markupBps: boundQuote?.markupBps,
+      feeBps: boundQuote?.feeBps,
+      feeUsd: boundQuote?.feeUsd,
       validUntil: boundQuote?.validUntil,
       payoutFiat: Number(tx.payoutFiat),
     };
@@ -331,8 +344,13 @@ export async function POST(req: Request) {
 
     // Create the Paycrest order. On failure, refund only when *this* call held
     // the create claim and Paycrest returned a definite 4xx (no fundable order).
+    // Paycrest order split saved on the row at reserve time (retries and resumes reuse it).
+    const orderPricing = TransactionService.paycrestOrderPricing(tx);
+
     const paycrestResp = await PayoutService.createPaycrestOrder({
-      amount: amountUsd.toString(),
+      amount: orderPricing.amount,
+      senderFee: orderPricing.senderFee,
+      rate: orderPricing.rate,
       sourceToken,
       destinationCurrency: destinationCurrency || "NGN",
       recipient: {

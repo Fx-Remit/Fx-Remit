@@ -37,6 +37,9 @@ export class PayoutService {
     externalId?: string;
     /** Override settlement network (default: Base). */
     network?: string;
+    /** Locked wholesale rate for this order. */
+    rate?: string | number;
+    senderFee?: string;
   }) {
     const requested = (params.sourceToken || '').toUpperCase();
     const settlementToken = PAYCREST_SETTLEMENT.token;
@@ -179,6 +182,8 @@ export class PayoutService {
           },
         },
         reference: params.externalId,
+        rate: params.rate,
+        senderFee: params.senderFee,
       });
 
       // Only advance still-open reserves. If the client abandoned (FAILED) while

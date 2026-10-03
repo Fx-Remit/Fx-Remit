@@ -257,6 +257,8 @@ export class PaycrestClient {
           },
         },
         reference: orderData.reference,
+        ...(orderData.rate != null ? { rate: String(orderData.rate) } : {}),
+        ...(orderData.senderFee != null ? { senderFee: String(orderData.senderFee) } : {}),
       };
       const response = await this.client.post("/sender/orders", payload);
       return response.data.data || response.data;

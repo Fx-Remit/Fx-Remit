@@ -7326,6 +7326,9 @@ export namespace Prisma {
     fundingPath: string | null
     fundingTxHash: string | null
     fundingTxRaw: string | null
+    orderBankAmount: string | null
+    orderSenderFee: string | null
+    orderRate: string | null
   }
 
   export type TransactionMaxAggregateOutputType = {
@@ -7356,6 +7359,9 @@ export namespace Prisma {
     fundingPath: string | null
     fundingTxHash: string | null
     fundingTxRaw: string | null
+    orderBankAmount: string | null
+    orderSenderFee: string | null
+    orderRate: string | null
   }
 
   export type TransactionCountAggregateOutputType = {
@@ -7386,6 +7392,9 @@ export namespace Prisma {
     fundingPath: number
     fundingTxHash: number
     fundingTxRaw: number
+    orderBankAmount: number
+    orderSenderFee: number
+    orderRate: number
     _all: number
   }
 
@@ -7436,6 +7445,9 @@ export namespace Prisma {
     fundingPath?: true
     fundingTxHash?: true
     fundingTxRaw?: true
+    orderBankAmount?: true
+    orderSenderFee?: true
+    orderRate?: true
   }
 
   export type TransactionMaxAggregateInputType = {
@@ -7466,6 +7478,9 @@ export namespace Prisma {
     fundingPath?: true
     fundingTxHash?: true
     fundingTxRaw?: true
+    orderBankAmount?: true
+    orderSenderFee?: true
+    orderRate?: true
   }
 
   export type TransactionCountAggregateInputType = {
@@ -7496,6 +7511,9 @@ export namespace Prisma {
     fundingPath?: true
     fundingTxHash?: true
     fundingTxRaw?: true
+    orderBankAmount?: true
+    orderSenderFee?: true
+    orderRate?: true
     _all?: true
   }
 
@@ -7613,6 +7631,9 @@ export namespace Prisma {
     fundingPath: string | null
     fundingTxHash: string | null
     fundingTxRaw: string | null
+    orderBankAmount: string | null
+    orderSenderFee: string | null
+    orderRate: string | null
     _count: TransactionCountAggregateOutputType | null
     _avg: TransactionAvgAggregateOutputType | null
     _sum: TransactionSumAggregateOutputType | null
@@ -7662,6 +7683,9 @@ export namespace Prisma {
     fundingPath?: boolean
     fundingTxHash?: boolean
     fundingTxRaw?: boolean
+    orderBankAmount?: boolean
+    orderSenderFee?: boolean
+    orderRate?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -7693,6 +7717,9 @@ export namespace Prisma {
     fundingPath?: boolean
     fundingTxHash?: boolean
     fundingTxRaw?: boolean
+    orderBankAmount?: boolean
+    orderSenderFee?: boolean
+    orderRate?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -7724,6 +7751,9 @@ export namespace Prisma {
     fundingPath?: boolean
     fundingTxHash?: boolean
     fundingTxRaw?: boolean
+    orderBankAmount?: boolean
+    orderSenderFee?: boolean
+    orderRate?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -7755,9 +7785,12 @@ export namespace Prisma {
     fundingPath?: boolean
     fundingTxHash?: boolean
     fundingTxRaw?: boolean
+    orderBankAmount?: boolean
+    orderSenderFee?: boolean
+    orderRate?: boolean
   }
 
-  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "rail" | "stellarPaymentHash" | "anchorTransactionId" | "corridor" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "recipientBankCode" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type" | "refundTxHash" | "fundingPath" | "fundingTxHash" | "fundingTxRaw", ExtArgs["result"]["transaction"]>
+  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "rail" | "stellarPaymentHash" | "anchorTransactionId" | "corridor" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "recipientBankCode" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type" | "refundTxHash" | "fundingPath" | "fundingTxHash" | "fundingTxRaw" | "orderBankAmount" | "orderSenderFee" | "orderRate", ExtArgs["result"]["transaction"]>
   export type TransactionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     user?: boolean | UserDefaultArgs<ExtArgs>
   }
@@ -7813,6 +7846,12 @@ export namespace Prisma {
        */
       fundingTxHash: string | null
       fundingTxRaw: string | null
+      /**
+       * * Paycrest order split saved at reserve time (6dp USDC strings + locked wholesale rate). Null on rows reserved before it existed.
+       */
+      orderBankAmount: string | null
+      orderSenderFee: string | null
+      orderRate: string | null
     }, ExtArgs["result"]["transaction"]>
     composites: {}
   }
@@ -8264,6 +8303,9 @@ export namespace Prisma {
     readonly fundingPath: FieldRef<"Transaction", 'String'>
     readonly fundingTxHash: FieldRef<"Transaction", 'String'>
     readonly fundingTxRaw: FieldRef<"Transaction", 'String'>
+    readonly orderBankAmount: FieldRef<"Transaction", 'String'>
+    readonly orderSenderFee: FieldRef<"Transaction", 'String'>
+    readonly orderRate: FieldRef<"Transaction", 'String'>
   }
     
 
@@ -8804,7 +8846,10 @@ export namespace Prisma {
     refundTxHash: 'refundTxHash',
     fundingPath: 'fundingPath',
     fundingTxHash: 'fundingTxHash',
-    fundingTxRaw: 'fundingTxRaw'
+    fundingTxRaw: 'fundingTxRaw',
+    orderBankAmount: 'orderBankAmount',
+    orderSenderFee: 'orderSenderFee',
+    orderRate: 'orderRate'
   };
 
   export type TransactionScalarFieldEnum = (typeof TransactionScalarFieldEnum)[keyof typeof TransactionScalarFieldEnum]
@@ -9444,6 +9489,9 @@ export namespace Prisma {
     fundingPath?: StringNullableFilter<"Transaction"> | string | null
     fundingTxHash?: StringNullableFilter<"Transaction"> | string | null
     fundingTxRaw?: StringNullableFilter<"Transaction"> | string | null
+    orderBankAmount?: StringNullableFilter<"Transaction"> | string | null
+    orderSenderFee?: StringNullableFilter<"Transaction"> | string | null
+    orderRate?: StringNullableFilter<"Transaction"> | string | null
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
   }
 
@@ -9475,6 +9523,9 @@ export namespace Prisma {
     fundingPath?: SortOrderInput | SortOrder
     fundingTxHash?: SortOrderInput | SortOrder
     fundingTxRaw?: SortOrderInput | SortOrder
+    orderBankAmount?: SortOrderInput | SortOrder
+    orderSenderFee?: SortOrderInput | SortOrder
+    orderRate?: SortOrderInput | SortOrder
     user?: UserOrderByWithRelationInput
   }
 
@@ -9513,6 +9564,9 @@ export namespace Prisma {
     fundingPath?: StringNullableFilter<"Transaction"> | string | null
     fundingTxHash?: StringNullableFilter<"Transaction"> | string | null
     fundingTxRaw?: StringNullableFilter<"Transaction"> | string | null
+    orderBankAmount?: StringNullableFilter<"Transaction"> | string | null
+    orderSenderFee?: StringNullableFilter<"Transaction"> | string | null
+    orderRate?: StringNullableFilter<"Transaction"> | string | null
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
   }, "id" | "stellarPaymentHash" | "externalId" | "txHash_logIndex" | "chainId_blockNumber_logIndex" | "orderId_chainId" | "userId_refundTxHash">
 
@@ -9544,6 +9598,9 @@ export namespace Prisma {
     fundingPath?: SortOrderInput | SortOrder
     fundingTxHash?: SortOrderInput | SortOrder
     fundingTxRaw?: SortOrderInput | SortOrder
+    orderBankAmount?: SortOrderInput | SortOrder
+    orderSenderFee?: SortOrderInput | SortOrder
+    orderRate?: SortOrderInput | SortOrder
     _count?: TransactionCountOrderByAggregateInput
     _avg?: TransactionAvgOrderByAggregateInput
     _max?: TransactionMaxOrderByAggregateInput
@@ -9582,6 +9639,9 @@ export namespace Prisma {
     fundingPath?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     fundingTxHash?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     fundingTxRaw?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    orderBankAmount?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    orderSenderFee?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    orderRate?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
   }
 
   export type UserCreateInput = {
@@ -10082,6 +10142,9 @@ export namespace Prisma {
     fundingPath?: string | null
     fundingTxHash?: string | null
     fundingTxRaw?: string | null
+    orderBankAmount?: string | null
+    orderSenderFee?: string | null
+    orderRate?: string | null
     user: UserCreateNestedOneWithoutTransactionsInput
   }
 
@@ -10113,6 +10176,9 @@ export namespace Prisma {
     fundingPath?: string | null
     fundingTxHash?: string | null
     fundingTxRaw?: string | null
+    orderBankAmount?: string | null
+    orderSenderFee?: string | null
+    orderRate?: string | null
   }
 
   export type TransactionUpdateInput = {
@@ -10142,6 +10208,9 @@ export namespace Prisma {
     fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
+    orderBankAmount?: NullableStringFieldUpdateOperationsInput | string | null
+    orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
+    orderRate?: NullableStringFieldUpdateOperationsInput | string | null
     user?: UserUpdateOneRequiredWithoutTransactionsNestedInput
   }
 
@@ -10173,6 +10242,9 @@ export namespace Prisma {
     fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
+    orderBankAmount?: NullableStringFieldUpdateOperationsInput | string | null
+    orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
+    orderRate?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionCreateManyInput = {
@@ -10203,6 +10275,9 @@ export namespace Prisma {
     fundingPath?: string | null
     fundingTxHash?: string | null
     fundingTxRaw?: string | null
+    orderBankAmount?: string | null
+    orderSenderFee?: string | null
+    orderRate?: string | null
   }
 
   export type TransactionUpdateManyMutationInput = {
@@ -10232,6 +10307,9 @@ export namespace Prisma {
     fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
+    orderBankAmount?: NullableStringFieldUpdateOperationsInput | string | null
+    orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
+    orderRate?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionUncheckedUpdateManyInput = {
@@ -10262,6 +10340,9 @@ export namespace Prisma {
     fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
+    orderBankAmount?: NullableStringFieldUpdateOperationsInput | string | null
+    orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
+    orderRate?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type StringFilter<$PrismaModel = never> = {
@@ -10835,6 +10916,9 @@ export namespace Prisma {
     fundingPath?: SortOrder
     fundingTxHash?: SortOrder
     fundingTxRaw?: SortOrder
+    orderBankAmount?: SortOrder
+    orderSenderFee?: SortOrder
+    orderRate?: SortOrder
   }
 
   export type TransactionAvgOrderByAggregateInput = {
@@ -10874,6 +10958,9 @@ export namespace Prisma {
     fundingPath?: SortOrder
     fundingTxHash?: SortOrder
     fundingTxRaw?: SortOrder
+    orderBankAmount?: SortOrder
+    orderSenderFee?: SortOrder
+    orderRate?: SortOrder
   }
 
   export type TransactionMinOrderByAggregateInput = {
@@ -10904,6 +10991,9 @@ export namespace Prisma {
     fundingPath?: SortOrder
     fundingTxHash?: SortOrder
     fundingTxRaw?: SortOrder
+    orderBankAmount?: SortOrder
+    orderSenderFee?: SortOrder
+    orderRate?: SortOrder
   }
 
   export type TransactionSumOrderByAggregateInput = {
@@ -11628,6 +11718,9 @@ export namespace Prisma {
     fundingPath?: string | null
     fundingTxHash?: string | null
     fundingTxRaw?: string | null
+    orderBankAmount?: string | null
+    orderSenderFee?: string | null
+    orderRate?: string | null
   }
 
   export type TransactionUncheckedCreateWithoutUserInput = {
@@ -11657,6 +11750,9 @@ export namespace Prisma {
     fundingPath?: string | null
     fundingTxHash?: string | null
     fundingTxRaw?: string | null
+    orderBankAmount?: string | null
+    orderSenderFee?: string | null
+    orderRate?: string | null
   }
 
   export type TransactionCreateOrConnectWithoutUserInput = {
@@ -11844,6 +11940,9 @@ export namespace Prisma {
     fundingPath?: StringNullableFilter<"Transaction"> | string | null
     fundingTxHash?: StringNullableFilter<"Transaction"> | string | null
     fundingTxRaw?: StringNullableFilter<"Transaction"> | string | null
+    orderBankAmount?: StringNullableFilter<"Transaction"> | string | null
+    orderSenderFee?: StringNullableFilter<"Transaction"> | string | null
+    orderRate?: StringNullableFilter<"Transaction"> | string | null
   }
 
   export type SavedRecipientUpsertWithWhereUniqueWithoutUserInput = {
@@ -12497,6 +12596,9 @@ export namespace Prisma {
     fundingPath?: string | null
     fundingTxHash?: string | null
     fundingTxRaw?: string | null
+    orderBankAmount?: string | null
+    orderSenderFee?: string | null
+    orderRate?: string | null
   }
 
   export type SavedRecipientCreateManyUserInput = {
@@ -12570,6 +12672,9 @@ export namespace Prisma {
     fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
+    orderBankAmount?: NullableStringFieldUpdateOperationsInput | string | null
+    orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
+    orderRate?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionUncheckedUpdateWithoutUserInput = {
@@ -12599,6 +12704,9 @@ export namespace Prisma {
     fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
+    orderBankAmount?: NullableStringFieldUpdateOperationsInput | string | null
+    orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
+    orderRate?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionUncheckedUpdateManyWithoutUserInput = {
@@ -12628,6 +12736,9 @@ export namespace Prisma {
     fundingPath?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxHash?: NullableStringFieldUpdateOperationsInput | string | null
     fundingTxRaw?: NullableStringFieldUpdateOperationsInput | string | null
+    orderBankAmount?: NullableStringFieldUpdateOperationsInput | string | null
+    orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
+    orderRate?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SavedRecipientUpdateWithoutUserInput = {

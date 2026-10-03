@@ -149,6 +149,10 @@ model Transaction {
   /** PayoutForwarder relayer tx, saved before broadcast so a retry resends the same tx. */
   fundingTxHash String?         @map("funding_tx_hash")
   fundingTxRaw  String?         @map("funding_tx_raw")
+  /** Paycrest order split saved at reserve time (6dp USDC strings + locked wholesale rate). Null on rows reserved before it existed. */
+  orderBankAmount String?       @map("order_bank_amount")
+  orderSenderFee  String?       @map("order_sender_fee")
+  orderRate       String?       @map("order_rate")
   user          User            @relation(fields: [userId], references: [id])
 
   @@unique([txHash, logIndex])

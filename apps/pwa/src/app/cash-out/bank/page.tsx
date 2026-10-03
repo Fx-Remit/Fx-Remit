@@ -9,7 +9,7 @@ import { useUserStore } from '@/store/user-store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useDebounce } from '@/hooks/use-debounce';
-import { Decimal } from 'decimal.js';
+import { cashOutReceive, cashOutSendFor, formatCashOutFee } from '@/lib/cash-out/fee';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
 import {
   aggregateTokenBalancesUsd,
@@ -35,8 +35,8 @@ const MIN_SEND_USD = 1;
 type QuoteResult = {
   comingSoon?: boolean;
   retail_rate?: number;
-  wholesale_rate?: number;
-  spread_bps?: number;
+  /** Visible fee in basis points. */
+  fee_bps?: number;
   valid_until?: number;
 };
 
@@ -180,20 +180,21 @@ export default function BankCashOutPage() {
   const comingSoon = quote?.comingSoon === true;
   const rate =
     !comingSoon && typeof quote?.retail_rate === 'number' ? quote.retail_rate : null;
+  const feeBps = !comingSoon && typeof quote?.fee_bps === 'number' ? quote.fee_bps : 0;
 
-  // Derived bidirectional state
+  // Derived bidirectional state: the recipient gets (send − fee) × rate.
   const sendAmount =
     lastEdited === 'send'
       ? amountInput
       : rate && amountInput && !isNaN(Number(amountInput))
-        ? new Decimal(amountInput).div(rate).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString()
+        ? cashOutSendFor(amountInput, feeBps, rate).toString()
         : '';
 
   const receiveAmount =
     lastEdited === 'receive'
       ? amountInput
       : rate && amountInput && !isNaN(Number(amountInput))
-        ? new Decimal(amountInput).mul(rate).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString()
+        ? cashOutReceive(amountInput, feeBps, rate).toString()
         : '';
 
   const sendUsd = Number(sendAmount);
@@ -209,8 +210,7 @@ export default function BankCashOutPage() {
       token: token,
       currency: currency || 'NGN',
       rate: rate?.toString() || '0',
-      wholesaleRate: !comingSoon ? quote?.wholesale_rate?.toString() || '0' : '0',
-      spread: !comingSoon ? quote?.spread_bps?.toString() || '75' : '75',
+      fee: String(feeBps),
     });
 
   const goToAddAccount = () => {
@@ -335,11 +335,7 @@ export default function BankCashOutPage() {
           <div className="flex items-center justify-between">
             <span className="text-[#888888] text-[15px] font-medium">Fees</span>
             <span className="text-[#1C1C1C] text-[15px] font-bold">
-              {comingSoon
-                ? '—'
-                : quote?.spread_bps
-                  ? `${(quote.spread_bps / 100).toFixed(2)}%`
-                  : '0.75%'}
+              {comingSoon ? '—' : formatCashOutFee(sendAmount, feeBps)}
             </span>
           </div>
           <div className="flex items-center justify-between">

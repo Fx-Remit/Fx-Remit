@@ -21,6 +21,7 @@ import {
   abandonPrefetchSession,
   postCreatePending,
 } from '@/lib/cash-out/create-pending-client';
+import { formatCashOutFee } from '@/lib/cash-out/fee';
 import { fetchFreshQuoteValidUntil } from '@/lib/cash-out/fetch-retail-quote';
 
 export type PrefetchPhase = 'preparing' | 'ready' | 'error';
@@ -57,7 +58,8 @@ interface ConfirmTransactionSheetProps {
   accNum: string;
   accName: string;
   bankName: string;
-  spreadBps?: number;
+  /** Visible fee in basis points (the spread is already inside the rate). */
+  feeBps?: number;
   /** Parent tracks Send in-flight for UI; abandon still runs until consumed. */
   onSendingChange?: (sending: boolean) => void;
   /** Server-bound fiat from create-pending (prefetch or Send retry). */
@@ -98,7 +100,7 @@ export function ConfirmTransactionSheet({
   accNum,
   accName,
   bankName,
-  spreadBps,
+  feeBps = 0,
   onSendingChange,
   onPayoutFiatBound,
 }: ConfirmTransactionSheetProps) {
@@ -112,9 +114,8 @@ export function ConfirmTransactionSheet({
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  const feePercent = spreadBps ? spreadBps / 100 : 0.75;
   const netAmount = receiveAmount;
-  const amountBeforeFee = receiveAmount / (1 - feePercent / 100);
+  const feeText = formatCashOutFee(sendAmount, feeBps);
   const currencyName = currency === 'NGN' ? 'Naira' : currency;
   const firstName = accName.split(' ')[0];
 
@@ -632,11 +633,7 @@ export function ConfirmTransactionSheet({
                     </span>
                   </div>
                 </div>
-                <DetailRow
-                  label={`Amount in ${currency}`}
-                  value={`${amountBeforeFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencyName}`}
-                />
-                <DetailRow label="Processing fee" value={`${feePercent.toFixed(2)}%`} />
+                <DetailRow label="Fee" value={feeText} />
                 <DetailRow
                   label="Recipient gets"
                   value={`${netAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencyName}`}
