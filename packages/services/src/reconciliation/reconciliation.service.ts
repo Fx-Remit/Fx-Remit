@@ -2,6 +2,7 @@ import { prisma } from '@fx-remit/database';
 import { PayoutService } from '../paycrest/payout.service';
 import { DepositService } from '../deposits/deposit.service';
 import { TransactionService } from '../transactions/transaction.service';
+import { recoverStuckForwarderClaims } from '../evm/forwarder-payout';
 
 export class ReconciliationService {
   static async reconcileFundedProcessingRemittances() {
@@ -184,6 +185,14 @@ export class ReconciliationService {
    */
   static async reconcileAll() {
     const expiredPendings = await this.expireAbandonedPendings();
+    // Before escalating stale claims: settle the forwarder ones the chain can already explain.
+    let forwarderClaims: Awaited<ReturnType<typeof recoverStuckForwarderClaims>> | { error: string };
+    try {
+      forwarderClaims = await recoverStuckForwarderClaims();
+    } catch (err) {
+      console.error('[ReconciliationService] Forwarder claim recovery failed', err);
+      forwarderClaims = { error: err instanceof Error ? err.message : String(err) };
+    }
     const staleBroadcastClaims =
       await TransactionService.escalateStaleBroadcastClaims();
     const expiredRefundRequired =
@@ -227,6 +236,7 @@ export class ReconciliationService {
 
     return {
       expiredPendings,
+      forwarderClaims,
       staleBroadcastClaims,
       expiredRefundRequired,
       fundedProcessing,
