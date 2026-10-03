@@ -124,6 +124,18 @@ describe('POST /api/paycrest/webhook — unhappy paths', () => {
     assert.equal(res.status, 401);
   });
 
+  it('returns 401 when a full-length signature is wrong (constant-time compare)', async () => {
+    const body = JSON.stringify({ event: 'payment_order.settled', data: { id: 'x' } });
+    const res = await POST(
+      new NextRequest('http://localhost/api/paycrest/webhook', {
+        method: 'POST',
+        headers: { 'x-paycrest-signature': 'a'.repeat(64) },
+        body,
+      }),
+    );
+    assert.equal(res.status, 401);
+  });
+
   it('returns 500 when PAYCREST_SECRET_KEY missing', async () => {
     const prev = process.env.PAYCREST_SECRET_KEY;
     delete process.env.PAYCREST_SECRET_KEY;
