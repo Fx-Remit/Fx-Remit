@@ -7,6 +7,7 @@ import { prisma } from '@fx-remit/database';
 import {
   TransactionService,
   InsufficientBalanceError,
+  ExternalIdConflictError,
   ProviderOrderStillLiveError,
 } from './transaction.service.js';
 import { PayoutService } from '../paycrest/payout.service.js';
@@ -106,6 +107,33 @@ describe('TransactionService.serialize — happy paths', () => {
     assert.equal(serialized.type, 'REMITTANCE');
     assert.equal(typeof JSON.stringify(serialized), 'string');
     assert.equal((serialized as any).orderId === 42n, false);
+  });
+
+  // Example values only; real fee/spread live in server env.
+  it('returns the confirmed fee and rate, never the saved split or wholesale rate', () => {
+    const serialized = TransactionService.serialize(
+      sampleTx({
+        amountUsd: 50 as any,
+        payoutFiat: 66408.93 as any,
+        orderFeeUsd: '0.250000',
+        orderBankAmount: '49.376875',
+        orderSenderFee: '0.623125',
+        orderRate: '1344.94',
+      } as any) as any,
+    );
+    assert.equal(serialized.feeUsd, 0.25);
+    // wholesale × bank ÷ (sent − fee): the retail rate the confirm screen showed.
+    assert.equal(serialized.rate, 1334.85295);
+    const json = JSON.stringify(serialized);
+    for (const hidden of ['orderBankAmount', 'orderSenderFee', 'orderRate', 'orderFeeUsd', '1344.94', '0.623125']) {
+      assert.equal(json.includes(hidden), false, hidden);
+    }
+  });
+
+  it('returns no fee or rate for rows reserved before the fee was saved', () => {
+    const serialized = TransactionService.serialize(sampleTx() as any);
+    assert.equal(serialized.feeUsd, null);
+    assert.equal(serialized.rate, null);
   });
 });
 
@@ -757,6 +785,42 @@ describe('TransactionService.createPending — unhappy paths', () => {
       },
     );
   });
+  for (const [status, txHash, existingBank, requestedBank] of [
+    ['PENDING', 'pending-ext-1', 'OPay', 'crypto:base'],
+    ['PENDING', 'pending-ext-1', 'crypto:base', 'OPay'],
+    // FAILED re-reserve rewrites recipientBank and debits again: must be blocked first.
+    ['FAILED', 'abandoned-ext-1', 'OPay', 'crypto:base'],
+    ['FAILED', 'pending-ext-1', 'crypto:base', 'OPay'],
+  ]) {
+    it(`refuses to resume a ${status} ${existingBank} reservation as ${requestedBank}`, async () => {
+      prisma.transaction.findUnique = mock.fn(async () =>
+        sampleTx({ status, txHash, userId: 'user-1', externalId: 'ext-1', recipientBank: existingBank } as any),
+      ) as any;
+      prisma.$transaction = mock.fn(async () => {
+        throw new Error('should not reserve');
+      }) as any;
+
+      await assert.rejects(
+        () =>
+          TransactionService.createPending({
+            userId: 'user-1',
+            orderId: 9n,
+            externalId: 'ext-1',
+            sourceToken: 'USDC',
+            amountUsd: 25,
+            payoutFiat: 25,
+            recipientName: 'Crypto withdraw',
+            recipientBank: requestedBank,
+            recipientAcc: '0x000000000000000000000000000000000000bEEF',
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof ExternalIdConflictError);
+          assert.equal(err.code, 'EXTERNAL_ID_CONFLICT');
+          return true;
+        },
+      );
+    });
+  }
 });
 
 describe('TransactionService.cancelAbandonedPending', () => {

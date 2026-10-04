@@ -9,6 +9,7 @@ import {
   QuoteUnavailableError,
   mintAbandonToken,
   InsufficientBalanceError,
+  ExternalIdConflictError,
   RecipientService,
   withUniqueOrderId,
 } from '@fx-remit/services';
@@ -35,7 +36,12 @@ const createPendingSchema = z.object({
   quoteValidUntil: z.coerce.number().positive("quoteValidUntil is required"),
   destinationCurrency: z.string().trim().min(1).optional().default("NGN"),
   recipientName: z.string().trim().min(1, "recipientName is required"),
-  recipientBank: z.string().trim().min(1, "recipientBank is required"),
+  recipientBank: z
+    .string()
+    .trim()
+    .min(1, "recipientBank is required")
+    // crypto: marks crypto cash-outs; a bank payout must never claim that kind.
+    .refine((v) => !v.toLowerCase().startsWith("crypto:"), "recipientBank is not a bank"),
   recipientAcc: z.string().trim().min(1, "recipientAcc is required"),
   token: z.string().trim().min(1, "token is required"),
   bankCode: z.string().optional(),
@@ -273,12 +279,19 @@ export async function POST(req: Request) {
                 bankAmount: boundQuote.bankAmount,
                 senderFee: boundQuote.senderFee,
                 rate: String(boundQuote.wholesaleRate),
+                feeUsd: boundQuote.feeUsd,
               }
             : null,
         }),
       );
     } catch (err) {
       const code = errorCode(err);
+      if (err instanceof ExternalIdConflictError || code === 'EXTERNAL_ID_CONFLICT') {
+        return NextResponse.json(
+          { error: 'This payout ID is already used by a different cash-out', code: err.code },
+          { status: 409 },
+        );
+      }
       if (err instanceof InsufficientBalanceError || code === 'INSUFFICIENT_BALANCE') {
         return NextResponse.json(
           {

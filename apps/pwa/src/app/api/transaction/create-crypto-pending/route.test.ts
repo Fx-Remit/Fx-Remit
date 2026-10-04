@@ -6,7 +6,7 @@ import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma, Prisma } from '@fx-remit/database';
-import { InsufficientBalanceError, TransactionService } from '@fx-remit/services';
+import { ExternalIdConflictError, InsufficientBalanceError, TransactionService } from '@fx-remit/services';
 import { POST } from './route';
 
 afterEach(() => {
@@ -72,5 +72,47 @@ describe('POST /api/transaction/create-crypto-pending order id', () => {
 
     assert.equal(res.status, 402);
     assert.equal(createPending.mock.callCount(), 1);
+  });
+});
+
+describe('POST /api/transaction/create-crypto-pending response', () => {
+  it('returns 409 when the externalId belongs to a bank payout', async () => {
+    stubBeforeCreate();
+    mock.method(TransactionService, 'createPending', async () => {
+      throw new ExternalIdConflictError('ext-1');
+    });
+    const res = await POST(request());
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).code, 'EXTERNAL_ID_CONFLICT');
+  });
+
+  it('never returns server-only pricing columns', async () => {
+    stubBeforeCreate();
+    mock.method(TransactionService, 'createPending', async () => ({
+      id: 'tx-1',
+      userId: 'user-1',
+      orderId: 1_790_000_000_000_001n,
+      blockNumber: 1_790_000_000_000_001n,
+      externalId: 'ext-1',
+      status: 'PENDING',
+      txHash: 'pending-ext-1',
+      sourceToken: 'USDC',
+      amountUsd: { toString: () => '25' },
+      payoutFiat: { toString: () => '25' },
+      recipientBank: 'crypto:base',
+      recipientAcc: '0x000000000000000000000000000000000000bEEF',
+      orderBankAmount: '24.000000',
+      orderSenderFee: '1.000000',
+      orderRate: '1344.94',
+      createdAt: new Date(),
+    }));
+    const res = await POST(request());
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.transaction.orderId, '1790000000000001');
+    assert.equal(body.transaction.amountUsd, '25');
+    for (const hidden of ['orderBankAmount', 'orderSenderFee', 'orderRate', 'userId']) {
+      assert.equal(hidden in body.transaction, false, hidden);
+    }
   });
 });

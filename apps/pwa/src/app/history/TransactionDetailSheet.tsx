@@ -3,27 +3,12 @@
 import { X, Copy, ExternalLink, Check, Clock, AlertCircle } from 'lucide-react';
 import React from 'react';
 import { isPlaceholderTxHash } from '@/lib/network';
+import type { TransactionDetail } from '@/lib/history/transaction-detail';
 
 interface TransactionDetailSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  transaction: {
-    id: string;
-    type: string;
-    pair: string;
-    date: string;
-    status: 'completed' | 'pending' | 'failed';
-    sentAmount: string;
-    sentToken: string;
-    receivedAmount: string;
-    receivedToken: string;
-    orderId?: string;
-    chainId?: number;
-    network?: string;
-    provider?: string;
-    rate?: string;
-    txHash?: string;
-  } | null;
+  transaction: TransactionDetail | null;
 }
 
 export function TransactionDetailSheet({
@@ -206,11 +191,31 @@ export function TransactionDetailSheet({
                   transaction.orderId ? navigator.clipboard.writeText(transaction.orderId) : null
                 }
               />
+              {transaction.recipient && (
+                <>
+                  {transaction.recipient.bank ? (
+                    <>
+                      {transaction.recipient.name && (
+                        <DetailRow label="Recipient" value={transaction.recipient.name} />
+                      )}
+                      <DetailRow
+                        label="Bank"
+                        value={[transaction.recipient.bank, transaction.recipient.account]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      />
+                    </>
+                  ) : (
+                    <DetailRow label="Sent to" value={transaction.recipient.account} />
+                  )}
+                </>
+              )}
               {transaction.type !== 'DEPOSIT' && (
                 <>
                   {exchangeRate && (
                     <DetailRow label="Exchange rate" value={exchangeRate} />
                   )}
+                  {transaction.fee && <DetailRow label="Fee" value={transaction.fee} />}
                   <DetailRow
                     label="Recipient gets"
                     value={recipientGets}
