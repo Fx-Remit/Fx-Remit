@@ -21,3 +21,4 @@ export * from './evm/forwarder-payout';
 export * from './evm/settlement-proof';
 export * from './evm/crypto-instant-send.policy';
 export * from './evm/crypto-instant-send.broadcast';
+export * from './stats/public-stats.service';
