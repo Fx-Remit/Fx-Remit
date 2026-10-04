@@ -23,6 +23,18 @@ export class InsufficientBalanceError extends Error {
 }
 
 /**
+ * Thrown when an externalId is reused across cash-out kinds (bank ↔ crypto). Resuming the
+ * other kind's reservation would hand its funds and saved order to the wrong flow.
+ */
+export class ExternalIdConflictError extends Error {
+  readonly code = "EXTERNAL_ID_CONFLICT" as const;
+  constructor(readonly externalId: string) {
+    super(`externalId ${externalId} belongs to a different kind of cash-out`);
+    this.name = "ExternalIdConflictError";
+  }
+}
+
+/**
  * Thrown when cancel/expire would restore ledger while a Paycrest order is
  * still fundable or provider status cannot be confirmed safe.
  */
@@ -1860,6 +1872,10 @@ export class TransactionService {
       }
       if (existing.type !== "REMITTANCE") {
         throw new Error(`externalId ${data.externalId} is not a remittance`);
+      }
+      const isCrypto = (bank: string | null | undefined) => (bank ?? "").startsWith("crypto:");
+      if (isCrypto(existing.recipientBank) !== isCrypto(data.recipientBank)) {
+        throw new ExternalIdConflictError(data.externalId);
       }
 
       // In-flight retry — funds already reserved

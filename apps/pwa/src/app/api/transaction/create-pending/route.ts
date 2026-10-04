@@ -9,6 +9,7 @@ import {
   QuoteUnavailableError,
   mintAbandonToken,
   InsufficientBalanceError,
+  ExternalIdConflictError,
   RecipientService,
   withUniqueOrderId,
 } from '@fx-remit/services';
@@ -279,6 +280,12 @@ export async function POST(req: Request) {
       );
     } catch (err) {
       const code = errorCode(err);
+      if (err instanceof ExternalIdConflictError) {
+        return NextResponse.json(
+          { error: 'This payout ID is already used by a different cash-out', code: err.code },
+          { status: 409 },
+        );
+      }
       if (err instanceof InsufficientBalanceError || code === 'INSUFFICIENT_BALANCE') {
         return NextResponse.json(
           {
