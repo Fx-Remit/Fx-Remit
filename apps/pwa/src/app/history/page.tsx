@@ -8,7 +8,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
-import { toTransactionDetail } from '@/lib/history/transaction-detail';
+import { recipientLabel, toTransactionDetail } from '@/lib/history/transaction-detail';
 import { formatTxHashLabel } from '@/lib/network';
 import { BottomNav } from '@/components/layout/BottomNav';
 
@@ -106,7 +106,9 @@ function HistoryPageContent() {
           <div className="space-y-6">
             {/* Grouped by Date (Simplified list for now) */}
             <div className="bg-white rounded-[32px] shadow-sm border border-gray-100/50 overflow-hidden divide-y divide-gray-50">
-              {transactions.map((tx: any) => (
+              {transactions.map((tx: any) => {
+                const recipient = recipientLabel(tx);
+                return (
                 <div 
                   key={tx.id} 
                   onClick={() => setManualSelectedTx(toTransactionDetail(tx))}
@@ -134,7 +136,7 @@ function HistoryPageContent() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-gray-900 text-[16px] truncate">
-                      {tx.type === 'DEPOSIT' ? 'Deposit' : (tx.recipientName ? `Sent to ${tx.recipientName}` : 'Remittance Sent')}
+                      {tx.type === 'DEPOSIT' ? 'Deposit' : (recipient ? `Sent to ${recipient.who}` : 'Remittance Sent')}
                     </p>
                     <div className="flex items-center gap-2">
                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
@@ -144,7 +146,7 @@ function HistoryPageContent() {
                          {tx.status}
                        </span>
                        <p className="text-gray-400 text-xs truncate">
-                         {formatTxHashLabel(tx.txHash)}
+                         {recipient?.where || formatTxHashLabel(tx.txHash)}
                        </p>
                     </div>
                   </div>
@@ -157,7 +159,8 @@ function HistoryPageContent() {
                     </p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

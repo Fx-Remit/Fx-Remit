@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { maskAccount, shortAddress, toTransactionDetail } from './transaction-detail';
+import { maskAccount, recipientLabel, shortAddress, toTransactionDetail } from './transaction-detail';
 
 const base = {
   id: 'tx-1',
@@ -61,5 +61,23 @@ describe('masking helpers', () => {
 
   it('shortens long addresses', () => {
     assert.equal(shortAddress('0x3766aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a51'), '0x3766…3a51');
+  });
+});
+
+describe('recipientLabel', () => {
+  it('names the bank recipient and where the money went', () => {
+    assert.deepEqual(recipientLabel(base), { who: 'Ada Obi', where: 'OPay · •••• 1191' });
+  });
+
+  it('shows the short address and network for crypto cash-outs', () => {
+    assert.deepEqual(
+      recipientLabel({ ...base, recipientName: 'Crypto withdraw', recipientBank: 'crypto:celo', recipientAcc: '0x3766aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a51' }),
+      { who: '0x3766…3a51', where: 'Celo wallet' },
+    );
+  });
+
+  it('returns null for deposits and rows without a recipient', () => {
+    assert.equal(recipientLabel({ ...base, type: 'DEPOSIT' }), null);
+    assert.equal(recipientLabel({ ...base, recipientName: null }), null);
   });
 });
