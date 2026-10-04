@@ -1,4 +1,5 @@
 import { prisma, Status, Transaction, TransactionType, Prisma } from "@fx-remit/database";
+import { Decimal } from "decimal.js";
 import { RpcClient } from "../evm/rpc.client";
 import { PAYCREST_SETTLEMENT } from "../paycrest/payout.service.js";
 import { NotificationService } from "../notifications/notification.service.js";
@@ -91,6 +92,7 @@ const TRANSACTION_API_SELECT = {
   orderBankAmount: true,
   orderSenderFee: true,
   orderRate: true,
+  orderFeeUsd: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -134,6 +136,10 @@ export interface TransactionResponse {
   recipientBank: string | null;
   recipientAcc: string | null;
   recipientBankCode: string | null;
+  /** Visible fee in USD; null on rows reserved before it was saved. */
+  feeUsd: number | null;
+  /** Rate the user confirmed (fiat per USD after the fee); null when feeUsd is null. */
+  rate: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -143,6 +149,45 @@ export class TransactionService {
    * Serialize a Prisma Transaction model to a JSON-safe response object.
    * Explicit field pick — never spread Prisma rows (BigInt/`Decimal` break JSON.stringify).
    */
+  /**
+   * Fee and rate exactly as the user confirmed them; the saved split and wholesale
+   * rate never reach the client. The confirmed rate is wholesale × bank ÷ (sent − fee),
+   * which avoids the cent rounding in payoutFiat.
+   */
+  static displayPricing(tx: {
+    amountUsd: { toString(): string };
+    payoutFiat: { toString(): string };
+    orderFeeUsd?: string | null;
+    orderBankAmount?: string | null;
+    orderRate?: string | null;
+  }): { feeUsd: number | null; rate: number | null } {
+    let fee: Decimal;
+    try {
+      if (tx.orderFeeUsd == null) return { feeUsd: null, rate: null };
+      fee = new Decimal(tx.orderFeeUsd);
+    } catch {
+      return { feeUsd: null, rate: null };
+    }
+    if (fee.isNegative()) return { feeUsd: null, rate: null };
+    const net = new Decimal(tx.amountUsd.toString()).minus(fee);
+    if (net.lte(0)) return { feeUsd: fee.toNumber(), rate: null };
+    let rate: Decimal | null = null;
+    try {
+      if (tx.orderRate && tx.orderBankAmount) {
+        rate = new Decimal(tx.orderRate).mul(tx.orderBankAmount).div(net);
+      } else {
+        const fiat = new Decimal(tx.payoutFiat.toString());
+        if (fiat.gt(0)) rate = fiat.div(net);
+      }
+    } catch {
+      rate = null;
+    }
+    return {
+      feeUsd: fee.toNumber(),
+      rate: rate && rate.gt(0) ? rate.toDecimalPlaces(8, Decimal.ROUND_DOWN).toNumber() : null,
+    };
+  }
+
   static serialize(tx: TransactionApiRow): TransactionResponse {
     return {
       id: tx.id,
@@ -162,6 +207,7 @@ export class TransactionService {
       recipientBank: tx.recipientBank,
       recipientAcc: tx.recipientAcc,
       recipientBankCode: tx.recipientBankCode,
+      ...this.displayPricing(tx),
       createdAt: tx.createdAt.toISOString(),
       updatedAt: tx.updatedAt.toISOString(),
     };
@@ -1856,7 +1902,7 @@ export class TransactionService {
     recipientAcc: string;
     recipientBankCode?: string | null;
     /** Paycrest order split bound with the quote; saved so every later order create reuses it. */
-    orderPricing?: { bankAmount: string; senderFee: string; rate: string } | null;
+    orderPricing?: { bankAmount: string; senderFee: string; rate: string; feeUsd?: string } | null;
   }): Promise<TransactionApiRow> {
     const amount = new Prisma.Decimal(data.amountUsd);
     const payoutFiat = new Prisma.Decimal(data.payoutFiat);
@@ -1922,6 +1968,7 @@ export class TransactionService {
               orderBankAmount: data.orderPricing?.bankAmount ?? null,
               orderSenderFee: data.orderPricing?.senderFee ?? null,
               orderRate: data.orderPricing?.rate ?? null,
+              orderFeeUsd: data.orderPricing?.feeUsd ?? null,
               txHash: `pending-${data.externalId}`,
               chainId: 0,
               // Avoid @@unique([chainId, blockNumber, logIndex]) collisions on (0,0,0)
@@ -1973,6 +2020,7 @@ export class TransactionService {
               orderBankAmount: data.orderPricing?.bankAmount ?? null,
               orderSenderFee: data.orderPricing?.senderFee ?? null,
               orderRate: data.orderPricing?.rate ?? null,
+              orderFeeUsd: data.orderPricing?.feeUsd ?? null,
           status: "PENDING",
           type: "REMITTANCE",
           txHash: `pending-${data.externalId}`,

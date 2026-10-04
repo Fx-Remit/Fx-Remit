@@ -145,6 +145,8 @@ model Transaction {
   orderBankAmount String?       @map("order_bank_amount")
   orderSenderFee  String?       @map("order_sender_fee")
   orderRate       String?       @map("order_rate")
+  /** Visible fee (6dp USDC) the user confirmed; history shows it. Null on older rows. */
+  orderFeeUsd     String?       @map("order_fee_usd")
   user          User            @relation(fields: [userId], references: [id])
 
   @@unique([txHash, logIndex])

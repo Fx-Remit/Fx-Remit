@@ -9,7 +9,8 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from '../history/TransactionDetailSheet';
-import { networkLabelForTransaction, formatTxHashLabel } from '@/lib/network';
+import { toTransactionDetail } from '@/lib/history/transaction-detail';
+import { formatTxHashLabel } from '@/lib/network';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { registerPushServiceWorker } from '@/lib/push/register';
 import { defaultAvatarUrl } from '@/lib/avatar';
@@ -96,26 +97,6 @@ export default function HomePage() {
 
   const [selectedTx, setSelectedTx] = useState<any>(null);
 
-  const mapToDetail = (tx: any) => ({
-    id: tx.id,
-    type: tx.type || 'REMITTANCE',
-    pair: `${tx.sourceToken || 'USDT'}/NGN`,
-    date: new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
-    status: (tx.status?.toLowerCase() === 'verified' || tx.status?.toLowerCase() === 'completed') ? 'completed' : tx.status?.toLowerCase() === 'failed' ? 'failed' : 'pending',
-    sentAmount: Number(tx.amountUsd).toFixed(2),
-    sentToken: tx.sourceToken || 'USDT',
-    receivedAmount: Number(tx.payoutFiat || 0).toFixed(2),
-    receivedToken: 'NGN',
-    orderId: tx.orderId,
-    chainId: tx.chainId,
-    network: networkLabelForTransaction({
-      chainId: tx.chainId,
-      type: tx.type,
-      txHash: tx.txHash,
-    }),
-    provider: tx.type === 'DEPOSIT' ? 'Wallet deposit' : 'Paycrest',
-    txHash: tx.txHash,
-  });
 
   return (
     <div className="min-h-screen bg-[#f8fafd] pb-28">
@@ -274,7 +255,7 @@ export default function HomePage() {
             {transactions.map((tx: any) => (
               <div 
                 key={tx.id} 
-                onClick={() => setSelectedTx(mapToDetail(tx))}
+                onClick={() => setSelectedTx(toTransactionDetail(tx))}
                 className="flex items-center gap-4 px-4 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
               >
                 <div

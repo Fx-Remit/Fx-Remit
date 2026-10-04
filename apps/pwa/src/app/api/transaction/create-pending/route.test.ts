@@ -143,6 +143,7 @@ describe('POST /api/transaction/create-pending order pricing', () => {
       bankAmount: '49.376875',
       senderFee: '0.623125',
       rate: '1344.94',
+      feeUsd: '0.250000',
     });
     const args = createOrder.mock.calls[0].arguments[0] as OrderArgs;
     assert.deepEqual([args.amount, args.senderFee, args.rate], ['49.376875', '0.623125', '1344.94']);

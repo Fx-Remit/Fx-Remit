@@ -279,6 +279,7 @@ export async function POST(req: Request) {
                 bankAmount: boundQuote.bankAmount,
                 senderFee: boundQuote.senderFee,
                 rate: String(boundQuote.wholesaleRate),
+                feeUsd: boundQuote.feeUsd,
               }
             : null,
         }),
