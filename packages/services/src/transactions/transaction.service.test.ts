@@ -85,8 +85,6 @@ function sampleTx(overrides: Record<string, unknown> = {}) {
     createdAt: now,
     updatedAt: now,
     type: 'REMITTANCE' as const,
-    rail: 'EVM' as const,
-    stellarPaymentHash: null,
     anchorTransactionId: null,
     corridor: null,
     ...overrides,
@@ -1792,7 +1790,6 @@ describe('TransactionService.getHistory — happy paths', () => {
       assert.equal(args.skip, 5);
       assert.deepEqual(args.orderBy, { createdAt: 'desc' });
       assert.ok(args.select);
-      assert.equal(args.select.rail, undefined);
       assert.equal(args.select.refundTxHash, undefined);
       return [sampleTx()];
     }) as any;
@@ -1805,7 +1802,7 @@ describe('TransactionService.getHistory — happy paths', () => {
 
   it('falls back to raw SQL when Prisma select throws', async () => {
     prisma.transaction.findMany = mock.fn(async () => {
-      throw new Error('column rail does not exist');
+      throw new Error('column refund_tx_hash does not exist');
     }) as any;
     prisma.$queryRaw = mock.fn(async () => [sampleTx()]) as any;
 

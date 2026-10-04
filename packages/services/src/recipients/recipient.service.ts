@@ -68,13 +68,8 @@ export class RecipientService {
       return null;
     }
 
-    // Never address-book crypto / stellar pseudo-banks
-    if (
-      institutionCode.startsWith('crypto:') ||
-      institutionName.startsWith('crypto:') ||
-      institutionCode.startsWith('stellar:') ||
-      institutionName.startsWith('stellar:')
-    ) {
+    // Never address-book crypto pseudo-banks
+    if (institutionCode.startsWith('crypto:') || institutionName.startsWith('crypto:')) {
       return null;
     }
 
@@ -150,7 +145,7 @@ export class RecipientService {
       const bankCode = (tx.recipientBankCode || '').trim();
 
       if (!accountIdentifier || !accountName) continue;
-      if (bankDisplay.startsWith('crypto:') || bankDisplay.startsWith('stellar:')) continue;
+      if (bankDisplay.startsWith('crypto:')) continue;
 
       const institutionCode =
         bankCode ||
