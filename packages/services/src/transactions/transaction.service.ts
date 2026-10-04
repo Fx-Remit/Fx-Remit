@@ -1873,7 +1873,8 @@ export class TransactionService {
       if (existing.type !== "REMITTANCE") {
         throw new Error(`externalId ${data.externalId} is not a remittance`);
       }
-      const isCrypto = (bank: string | null | undefined) => (bank ?? "").startsWith("crypto:");
+      const isCrypto = (bank: string | null | undefined) =>
+        (bank ?? "").trim().toLowerCase().startsWith("crypto:");
       if (isCrypto(existing.recipientBank) !== isCrypto(data.recipientBank)) {
         throw new ExternalIdConflictError(data.externalId);
       }

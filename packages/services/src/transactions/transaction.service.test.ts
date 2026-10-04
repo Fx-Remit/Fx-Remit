@@ -758,13 +758,16 @@ describe('TransactionService.createPending — unhappy paths', () => {
       },
     );
   });
-  for (const [existingBank, requestedBank] of [
-    ['OPay', 'crypto:base'],
-    ['crypto:base', 'OPay'],
+  for (const [status, txHash, existingBank, requestedBank] of [
+    ['PENDING', 'pending-ext-1', 'OPay', 'crypto:base'],
+    ['PENDING', 'pending-ext-1', 'crypto:base', 'OPay'],
+    // FAILED re-reserve rewrites recipientBank and debits again: must be blocked first.
+    ['FAILED', 'abandoned-ext-1', 'OPay', 'crypto:base'],
+    ['FAILED', 'pending-ext-1', 'crypto:base', 'OPay'],
   ]) {
-    it(`refuses to resume a ${existingBank} reservation as ${requestedBank}`, async () => {
+    it(`refuses to resume a ${status} ${existingBank} reservation as ${requestedBank}`, async () => {
       prisma.transaction.findUnique = mock.fn(async () =>
-        sampleTx({ status: 'PENDING', userId: 'user-1', externalId: 'ext-1', recipientBank: existingBank } as any),
+        sampleTx({ status, txHash, userId: 'user-1', externalId: 'ext-1', recipientBank: existingBank } as any),
       ) as any;
       prisma.$transaction = mock.fn(async () => {
         throw new Error('should not reserve');

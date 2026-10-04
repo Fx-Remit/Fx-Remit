@@ -6,7 +6,7 @@ import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma, Prisma } from '@fx-remit/database';
-import { InsufficientBalanceError, PayoutService, QuoteBindService, TransactionService } from '@fx-remit/services';
+import { ExternalIdConflictError, InsufficientBalanceError, PayoutService, QuoteBindService, TransactionService } from '@fx-remit/services';
 import { POST } from './route';
 
 afterEach(() => {
@@ -186,6 +186,42 @@ describe('POST /api/transaction/create-pending order pricing', () => {
           recipientBank: 'OPay',
           recipientAcc: '0000000000',
           token: 'USDC',
+        }),
+      }),
+    );
+    assert.equal(res.status, 422);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+});
+
+describe('POST /api/transaction/create-pending cash-out kind', () => {
+  it('returns 409 when the externalId belongs to a crypto cash-out', async () => {
+    stubBeforeCreate();
+    mock.method(TransactionService, 'createPending', async () => {
+      throw new ExternalIdConflictError('crypto_123');
+    });
+    const res = await POST(request());
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).code, 'EXTERNAL_ID_CONFLICT');
+  });
+
+  it('rejects a crypto: recipientBank before reserving anything', async () => {
+    stubBeforeCreate();
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new Error('should not reserve');
+    });
+    const res = await POST(
+      new Request('http://localhost/api/transaction/create-pending', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer test-token' },
+        body: JSON.stringify({
+          amountUsd: 50,
+          quoteValidUntil: Date.now() + 60_000,
+          recipientName: 'Test User',
+          recipientBank: 'Crypto:base',
+          recipientAcc: '0x000000000000000000000000000000000000bEEF',
+          token: 'USDC',
+          externalId: 'crypto_123',
         }),
       }),
     );
