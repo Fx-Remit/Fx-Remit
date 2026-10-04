@@ -31,6 +31,20 @@ export function shortAddress(address: string): string {
   return a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
 }
 
+export function recipientLabel(tx: HistoryTransaction): { who: string; where: string } | null {
+  if (tx.type === 'DEPOSIT') return null;
+  const bank = (tx.recipientBank ?? '').trim();
+  const acc = (tx.recipientAcc ?? '').trim();
+  if (bank.startsWith('crypto:')) {
+    if (!acc) return null;
+    const network = bank.slice('crypto:'.length);
+    return { who: shortAddress(acc), where: `${network.charAt(0).toUpperCase()}${network.slice(1)} wallet` };
+  }
+  const name = (tx.recipientName ?? '').trim();
+  if (!name) return null;
+  return { who: name, where: [bank, acc ? maskAccount(acc) : ''].filter(Boolean).join(' · ') };
+}
+
 function recipientOf(tx: HistoryTransaction): { name: string; bank: string; account: string } | null {
   if (tx.type === 'DEPOSIT') return null;
   const bank = (tx.recipientBank ?? '').trim();
