@@ -59,7 +59,7 @@ export function shortWallet(address: string): string {
 function legacyEntry(r: LegacyRemittance): StatsEntry {
   return {
     source: r.version,
-    at: r.at,
+    at: new Date(r.at).toISOString(), // same format as app rows, so string order is time order
     amountUsd: r.amountUsd,
     chain: 'celo',
     sender: r.sender.toLowerCase(),
