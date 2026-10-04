@@ -5,6 +5,7 @@ import {
   TransactionService,
   mintAbandonToken,
   InsufficientBalanceError,
+  ExternalIdConflictError,
   DEPOSIT_TOKENS,
   withUniqueOrderId,
 } from '@fx-remit/services';
@@ -37,18 +38,32 @@ const createCryptoPendingSchema = z.object({
   externalId: z.string().optional(),
 });
 
+/** Explicit pick: never spread the row, which carries server-only pricing columns. */
 function serializeTransaction(tx: {
+  id: string;
   orderId: bigint;
-  blockNumber: bigint;
+  externalId: string | null;
+  status: string;
+  txHash: string;
+  sourceToken: string;
   amountUsd: { toString(): string };
   payoutFiat: { toString(): string };
+  recipientBank: string | null;
+  recipientAcc: string | null;
+  createdAt: Date;
 }) {
   return {
-    ...tx,
+    id: tx.id,
     orderId: tx.orderId.toString(),
-    blockNumber: tx.blockNumber.toString(),
+    externalId: tx.externalId,
+    status: tx.status,
+    txHash: tx.txHash,
+    sourceToken: tx.sourceToken,
     amountUsd: tx.amountUsd.toString(),
     payoutFiat: tx.payoutFiat.toString(),
+    recipientBank: tx.recipientBank,
+    recipientAcc: tx.recipientAcc,
+    createdAt: tx.createdAt.toISOString(),
   };
 }
 
@@ -160,6 +175,15 @@ export async function POST(req: Request) {
         }),
       );
     } catch (err) {
+      if (
+        err instanceof ExternalIdConflictError ||
+        (err as { code?: unknown } | null)?.code === 'EXTERNAL_ID_CONFLICT'
+      ) {
+        return NextResponse.json(
+          { error: 'This payout ID is already used by a different cash-out', code: err.code },
+          { status: 409 },
+        );
+      }
       if (err instanceof InsufficientBalanceError) {
         return NextResponse.json(
           {

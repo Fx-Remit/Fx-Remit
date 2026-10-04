@@ -7,6 +7,7 @@ import { prisma } from '@fx-remit/database';
 import {
   TransactionService,
   InsufficientBalanceError,
+  ExternalIdConflictError,
   ProviderOrderStillLiveError,
 } from './transaction.service.js';
 import { PayoutService } from '../paycrest/payout.service.js';
@@ -784,6 +785,42 @@ describe('TransactionService.createPending — unhappy paths', () => {
       },
     );
   });
+  for (const [status, txHash, existingBank, requestedBank] of [
+    ['PENDING', 'pending-ext-1', 'OPay', 'crypto:base'],
+    ['PENDING', 'pending-ext-1', 'crypto:base', 'OPay'],
+    // FAILED re-reserve rewrites recipientBank and debits again: must be blocked first.
+    ['FAILED', 'abandoned-ext-1', 'OPay', 'crypto:base'],
+    ['FAILED', 'pending-ext-1', 'crypto:base', 'OPay'],
+  ]) {
+    it(`refuses to resume a ${status} ${existingBank} reservation as ${requestedBank}`, async () => {
+      prisma.transaction.findUnique = mock.fn(async () =>
+        sampleTx({ status, txHash, userId: 'user-1', externalId: 'ext-1', recipientBank: existingBank } as any),
+      ) as any;
+      prisma.$transaction = mock.fn(async () => {
+        throw new Error('should not reserve');
+      }) as any;
+
+      await assert.rejects(
+        () =>
+          TransactionService.createPending({
+            userId: 'user-1',
+            orderId: 9n,
+            externalId: 'ext-1',
+            sourceToken: 'USDC',
+            amountUsd: 25,
+            payoutFiat: 25,
+            recipientName: 'Crypto withdraw',
+            recipientBank: requestedBank,
+            recipientAcc: '0x000000000000000000000000000000000000bEEF',
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof ExternalIdConflictError);
+          assert.equal(err.code, 'EXTERNAL_ID_CONFLICT');
+          return true;
+        },
+      );
+    });
+  }
 });
 
 describe('TransactionService.cancelAbandonedPending', () => {
