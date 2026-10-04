@@ -124,7 +124,6 @@ exports.Prisma.UserScalarFieldEnum = {
   id: 'id',
   privyDid: 'privyDid',
   walletAddress: 'walletAddress',
-  stellarPublicKey: 'stellarPublicKey',
   fullName: 'fullName',
   email: 'email',
   avatarUrl: 'avatarUrl',
@@ -190,8 +189,6 @@ exports.Prisma.TransactionScalarFieldEnum = {
   userId: 'userId',
   orderId: 'orderId',
   txHash: 'txHash',
-  rail: 'rail',
-  stellarPaymentHash: 'stellarPaymentHash',
   anchorTransactionId: 'anchorTransactionId',
   corridor: 'corridor',
   sourceToken: 'sourceToken',
@@ -242,11 +239,6 @@ exports.NotificationType = exports.$Enums.NotificationType = {
 exports.RecipientType = exports.$Enums.RecipientType = {
   BANK: 'BANK',
   MOBILE: 'MOBILE'
-};
-
-exports.RemittanceRail = exports.$Enums.RemittanceRail = {
-  EVM: 'EVM',
-  STELLAR: 'STELLAR'
 };
 
 exports.Status = exports.$Enums.Status = {

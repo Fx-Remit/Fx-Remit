@@ -5,7 +5,7 @@ Fintech remittance monorepo (crypto → NGN/fiat). Treat ledger and payout code 
 ## Layout
 
 - `apps/pwa` — Next.js App Router PWA (Privy auth, cash-out / deposit UI, API routes)
-- `packages/services` — Paycrest, pricing, transaction/ledger, reconciliation, Stellar
+- `packages/services` — Paycrest, pricing, transaction/ledger, reconciliation, EVM payouts
 - `packages/database` — Prisma schema + generated client (`walletBalance` / amounts are `Decimal`)
 - `packages/contracts` — EVM contracts
 - `packages/shared-sdk`, `packages/ui-components` — shared helpers / UI

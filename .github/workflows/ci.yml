@@ -80,7 +80,7 @@ jobs:
           node-version: 20
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
-      - name: Services unit tests (EVM + Stellar)
+      - name: Services unit tests
         run: pnpm --filter @fx-remit/services test
 
   pwa-test:
