@@ -107,6 +107,33 @@ describe('TransactionService.serialize — happy paths', () => {
     assert.equal(typeof JSON.stringify(serialized), 'string');
     assert.equal((serialized as any).orderId === 42n, false);
   });
+
+  // Example values only; real fee/spread live in server env.
+  it('returns the confirmed fee and rate, never the saved split or wholesale rate', () => {
+    const serialized = TransactionService.serialize(
+      sampleTx({
+        amountUsd: 50 as any,
+        payoutFiat: 66408.93 as any,
+        orderFeeUsd: '0.250000',
+        orderBankAmount: '49.376875',
+        orderSenderFee: '0.623125',
+        orderRate: '1344.94',
+      } as any) as any,
+    );
+    assert.equal(serialized.feeUsd, 0.25);
+    // wholesale × bank ÷ (sent − fee): the retail rate the confirm screen showed.
+    assert.equal(serialized.rate, 1334.85295);
+    const json = JSON.stringify(serialized);
+    for (const hidden of ['orderBankAmount', 'orderSenderFee', 'orderRate', 'orderFeeUsd', '1344.94', '0.623125']) {
+      assert.equal(json.includes(hidden), false, hidden);
+    }
+  });
+
+  it('returns no fee or rate for rows reserved before the fee was saved', () => {
+    const serialized = TransactionService.serialize(sampleTx() as any);
+    assert.equal(serialized.feeUsd, null);
+    assert.equal(serialized.rate, null);
+  });
 });
 
 describe('TransactionService.updateFromPaycrest — happy paths', () => {

@@ -8,7 +8,8 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
-import { networkLabelForTransaction, formatTxHashLabel } from '@/lib/network';
+import { toTransactionDetail } from '@/lib/history/transaction-detail';
+import { formatTxHashLabel } from '@/lib/network';
 import { BottomNav } from '@/components/layout/BottomNav';
 
 function HistoryPageContent() {
@@ -43,50 +44,6 @@ function HistoryPageContent() {
 
   const transactions = historyData?.transactions || [];
 
-  const mapToDetail = (tx: any) => {
-    const sentToken = tx.sourceToken || 'USDT';
-    const sentAmount = Number(tx.amountUsd);
-    const receivedAmount = Number(tx.payoutFiat || 0);
-    const effectiveRate =
-      sentAmount > 0 && receivedAmount > 0 ? receivedAmount / sentAmount : null;
-
-    return {
-      id: tx.id,
-      type: tx.type || 'REMITTANCE',
-      pair: `${sentToken}/NGN`,
-      date: new Date(tx.createdAt).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }),
-      status:
-        tx.status?.toLowerCase() === 'verified' || tx.status?.toLowerCase() === 'completed'
-          ? 'completed'
-          : tx.status?.toLowerCase() === 'failed'
-            ? 'failed'
-            : 'pending',
-      sentAmount: sentAmount.toFixed(2),
-      sentToken,
-      receivedAmount: receivedAmount.toFixed(2),
-      receivedToken: 'NGN',
-      rate:
-        effectiveRate != null
-          ? `1 ${sentToken} = ${effectiveRate.toLocaleString(undefined, {
-              maximumFractionDigits: 2,
-              minimumFractionDigits: 2,
-            })} NGN`
-          : undefined,
-      orderId: tx.orderId,
-      chainId: tx.chainId,
-      network: networkLabelForTransaction({
-        chainId: tx.chainId,
-        type: tx.type,
-        txHash: tx.txHash,
-      }),
-      provider: tx.type === 'DEPOSIT' ? 'Wallet deposit' : 'Paycrest',
-      txHash: tx.txHash,
-    };
-  };
 
   // Derived, not synced: the deep-linked transaction is computed straight from
   // the URL + loaded list on every render, no effect needed. Closing the sheet
@@ -95,7 +52,7 @@ function HistoryPageContent() {
     !deepLinkDismissed && deepLinkTxId
       ? transactions.find((tx: { id?: string }) => tx.id === deepLinkTxId)
       : null;
-  const selectedTx = manualSelectedTx || (deepLinkMatch ? mapToDetail(deepLinkMatch) : null);
+  const selectedTx = manualSelectedTx || (deepLinkMatch ? toTransactionDetail(deepLinkMatch) : null);
 
   const closeDetail = () => {
     setManualSelectedTx(null);
@@ -152,7 +109,7 @@ function HistoryPageContent() {
               {transactions.map((tx: any) => (
                 <div 
                   key={tx.id} 
-                  onClick={() => setManualSelectedTx(mapToDetail(tx))}
+                  onClick={() => setManualSelectedTx(toTransactionDetail(tx))}
                   className="flex items-center gap-4 px-5 py-5 hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <div

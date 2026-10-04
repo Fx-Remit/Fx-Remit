@@ -212,7 +212,8 @@ exports.Prisma.TransactionScalarFieldEnum = {
   fundingTxRaw: 'fundingTxRaw',
   orderBankAmount: 'orderBankAmount',
   orderSenderFee: 'orderSenderFee',
-  orderRate: 'orderRate'
+  orderRate: 'orderRate',
+  orderFeeUsd: 'orderFeeUsd'
 };
 
 exports.Prisma.SortOrder = {
