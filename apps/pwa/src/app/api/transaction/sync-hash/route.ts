@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma } from '@fx-remit/database';
-import { TransactionService } from '@fx-remit/services';
+import { TransactionService, verifySettlementHash } from '@fx-remit/services';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
 
     const user = await prisma.user.findUnique({
       where: { privyDid: claims.userId },
-      select: { id: true },
+      select: { id: true, walletAddress: true },
     });
 
     if (!user) {
@@ -72,12 +72,52 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid orderId' }, { status: 400 });
     }
 
+    const txHash = parsed.data.txHash as `0x${string}`;
+    const existing = await TransactionService.findRemittanceForBroadcast({
+      userId: user.id,
+      orderId,
+    });
+    if (!existing) {
+      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+    }
+
+    // A placeholder row only takes a hash the chain proves funds it (#102). The
+    // server's own broadcasts attach before replying, so their sync is a no-op here.
+    const isPlaceholder =
+      existing.txHash.startsWith('pending-') ||
+      TransactionService.isBroadcastClaimHash(existing.txHash);
+    if (isPlaceholder && existing.txHash.toLowerCase() !== txHash.toLowerCase()) {
+      if (!user.walletAddress) {
+        return NextResponse.json({ error: 'No wallet on this account' }, { status: 409 });
+      }
+      const reused = await prisma.transaction.findFirst({
+        where: { txHash: { equals: txHash, mode: 'insensitive' }, NOT: { id: existing.id } },
+        select: { id: true },
+      });
+      if (reused) {
+        return NextResponse.json({ error: 'This hash belongs to another transaction' }, { status: 409 });
+      }
+      let proof;
+      try {
+        proof = await verifySettlementHash({ row: existing, walletAddress: user.walletAddress, txHash });
+      } catch (err) {
+        console.error('[SYNC_HASH] Receipt lookup failed:', err instanceof Error ? err.message : String(err));
+        return NextResponse.json({ error: 'Could not check this transaction yet. Try again shortly.' }, { status: 503 });
+      }
+      if (proof === 'PENDING') {
+        return NextResponse.json({ error: 'Transaction not confirmed yet. Try again shortly.' }, { status: 409 });
+      }
+      if (proof === 'MISMATCH') {
+        return NextResponse.json({ error: 'This transaction does not fund this payout' }, { status: 422 });
+      }
+    }
+
     let updated;
     try {
       updated = await TransactionService.attachOnChainHash({
         userId: user.id,
         orderId,
-        txHash: parsed.data.txHash,
+        txHash,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
