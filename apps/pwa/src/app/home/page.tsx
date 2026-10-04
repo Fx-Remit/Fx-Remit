@@ -9,8 +9,8 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from '../history/TransactionDetailSheet';
-import { toTransactionDetail } from '@/lib/history/transaction-detail';
-import { formatTxHashLabel } from '@/lib/network';
+import { recipientLabel, toTransactionDetail } from '@/lib/history/transaction-detail';
+import { formatTxHashLabel, isPlaceholderTxHash } from '@/lib/network';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { registerPushServiceWorker } from '@/lib/push/register';
 import { defaultAvatarUrl } from '@/lib/avatar';
@@ -252,7 +252,9 @@ export default function HomePage() {
               <div className="py-8 text-center text-gray-400 text-sm">No transactions yet</div>
             )}
 
-            {transactions.map((tx: any) => (
+            {transactions.map((tx: any) => {
+              const recipient = recipientLabel(tx);
+              return (
               <div 
                 key={tx.id} 
                 onClick={() => setSelectedTx(toTransactionDetail(tx))}
@@ -272,14 +274,15 @@ export default function HomePage() {
                   <p className="font-semibold text-gray-900 text-[15px] truncate">
                     {tx.type === 'DEPOSIT'
                       ? 'Deposit'
-                      : tx.recipientName
+                      : recipient
                         ? String(tx.txHash || '').toLowerCase().startsWith('pending-')
-                          ? `Not sent to ${tx.recipientName}`
-                          : `Sent to ${tx.recipientName}`
+                          ? `Not sent to ${recipient.who}`
+                          : `Sent to ${recipient.who}`
                         : 'Remittance Sent'}
                   </p>
                   <p className="text-gray-400 text-sm truncate">
-                    {formatTxHashLabel(tx.txHash)}
+                    {/* Home has no status badge: keep "Not sent" / "Sending…" until it's on-chain. */}
+                    {(!isPlaceholderTxHash(tx.txHash) && recipient?.where) || formatTxHashLabel(tx.txHash)}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -291,7 +294,8 @@ export default function HomePage() {
                   </p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
