@@ -3,15 +3,9 @@
 import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import React, { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import {
-  usePrivy,
-  useSendTransaction,
-  useSigners,
-  useWallets,
-} from '@privy-io/react-auth';
+import { usePrivy, useSigners, useWallets } from '@privy-io/react-auth';
 import { useQueryClient } from '@tanstack/react-query';
-import { parseUnits, encodeFunctionData, isAddress, type Hex } from 'viem';
-import { base } from 'viem/chains';
+import { isAddress } from 'viem';
 import {
   SettlementPrefetchSession,
   StaleSettlementError,
@@ -25,15 +19,6 @@ import { formatCashOutFee } from '@/lib/cash-out/fee';
 import { fetchFreshQuoteValidUntil } from '@/lib/cash-out/fetch-retail-quote';
 
 export type PrefetchPhase = 'preparing' | 'ready' | 'error';
-
-function settlementAmountHuman(
-  paycrest: PreparedSettlement['paycrest'],
-  fallbackSendAmount: string,
-): string {
-  const fromProvider = paycrest.amountToTransfer;
-  if (fromProvider == null || fromProvider === '') return fallbackSendAmount;
-  return String(fromProvider);
-}
 
 function isUserRejection(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
@@ -66,23 +51,16 @@ interface ConfirmTransactionSheetProps {
   onPayoutFiatBound?: (payoutFiat: number) => void;
 }
 
-const ERC20_ABI = [
-  {
-    name: 'transfer',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'recipient', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-] as const;
+/** Bank Send is server-signed only; an external wallet can't be signed silently. */
+const EXTERNAL_WALLET_BLOCKED =
+  'Bank payouts need the in-app wallet. Sign in with email or social to send to a bank.';
 
-const BASE_TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
-  USDT: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
-  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-};
+/** Server could not sign or send; nothing moved, so the reserve stays for a retry. */
+const SEND_FAILED_RETRY = "Couldn't send this payout. Tap Send to try again.";
+
+/** Server signing is not set up; the reserve is released. */
+const SEND_UNAVAILABLE =
+  'Bank payouts are unavailable right now. Your balance has not been charged.';
 
 /**
  * Presentational confirm sheet. Prefetch lifecycle is owned by the parent
@@ -109,7 +87,6 @@ export function ConfirmTransactionSheet({
   >('idle');
   const { getAccessToken, user: privyUser } = usePrivy();
   const { wallets } = useWallets();
-  const { sendTransaction } = useSendTransaction();
   const { addSigners } = useSigners();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +105,8 @@ export function ConfirmTransactionSheet({
   }, [wallets]);
 
   const isEmbeddedPrivy = embeddedWallet?.walletClientType === 'privy';
+  /** Wallets still loading is not "external"; only block once we know it is one. */
+  const isExternalWallet = !!embeddedWallet && !isEmbeddedPrivy;
 
   const [localDelegated, setLocalDelegated] = useState(false);
   /** Once we have a reserved order this sheet must not open a second create-pending. */
@@ -280,6 +259,10 @@ export function ConfirmTransactionSheet({
       setStatus('success');
       return;
     }
+    if (isExternalWallet) {
+      setError(EXTERNAL_WALLET_BLOCKED);
+      return;
+    }
 
     // Mark in-flight before Privy consent so pagehide cannot cancel-pending mid-grant.
     onSendingChange?.(true);
@@ -287,15 +270,12 @@ export function ConfirmTransactionSheet({
 
     logDelegationSnapshot('Send tapped');
 
-    // Use a local flag — React state won't update mid-handler after grant.
-    let canServerBroadcast = isEmbeddedPrivy && isDelegated;
-    if (isEmbeddedPrivy && !canServerBroadcast) {
+    if (!isDelegated) {
       const granted = await enableFasterPayouts();
       if (!granted) {
         onSendingChange?.(false);
         return;
       }
-      canServerBroadcast = true;
     }
 
     // Parent must not free-exit under us during grant; if session was abandoned anyway, stop.
@@ -305,9 +285,7 @@ export function ConfirmTransactionSheet({
       return;
     }
 
-    logDelegationSnapshot('before create-pending / broadcast', {
-      canServerBroadcast,
-    });
+    logDelegationSnapshot('before create-pending / broadcast');
 
     setStatus('creating');
     let broadcastTxHash: string | null = null;
@@ -360,157 +338,28 @@ export function ConfirmTransactionSheet({
         throw new Error('Paycrest did not provide a valid receive address');
       }
 
-      const settlementToken: string = orderData.paycrest?.token || 'USDC';
-      const settlementTokenAddress: `0x${string}` | undefined =
-        (orderData.paycrest?.tokenAddress as `0x${string}` | undefined) ||
-        BASE_TOKEN_ADDRESSES[settlementToken];
-      const decimals: number =
-        typeof orderData.paycrest?.decimals === 'number'
-          ? orderData.paycrest.decimals
-          : 6;
-
-      if (!settlementTokenAddress || !isAddress(settlementTokenAddress)) {
-        throw new Error(
-          `Token ${settlementToken} not supported for direct transfer yet.`,
-        );
-      }
-
       setStatus('sending');
 
-      const amountHuman = settlementAmountHuman(orderData.paycrest, sendAmount);
-      const amountRaw = parseUnits(amountHuman, decimals);
       const orderId = orderData.transaction.orderId;
 
-      // Server-authorized broadcast when payout permission is granted (no second Approve).
-      if (canServerBroadcast) {
-        const broadcastRes = await fetch('/api/transaction/broadcast-settlement', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ orderId }),
-        });
-        const broadcastData = (await broadcastRes.json().catch(() => ({}))) as {
-          error?: string;
-          code?: string;
-          txHash?: string;
-        };
+      // Server signs and sends; the user never sees a wallet transaction.
+      const broadcastRes = await fetch('/api/transaction/broadcast-settlement', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ orderId }),
+      });
+      const broadcastData = (await broadcastRes.json().catch(() => ({}))) as {
+        error?: string;
+        code?: string;
+        txHash?: string;
+      };
 
-        if (broadcastRes.ok && typeof broadcastData.txHash === 'string') {
-          broadcastTxHash = broadcastData.txHash;
-          session.markConsumed();
-          const syncRes = await fetch('/api/transaction/sync-hash', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ orderId, txHash: broadcastTxHash }),
-          });
-          if (!syncRes.ok) {
-            console.error('[CONFIRM] sync-hash after broadcast failed:', syncRes.status);
-          }
-        } else if (
-          broadcastRes.status === 503 ||
-          broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED'
-        ) {
-          // Server signing unavailable — require wallet confirmation.
-          const { hash } = await sendTransaction(
-            {
-              to: settlementTokenAddress,
-              data: encodeFunctionData({
-                abi: ERC20_ABI,
-                functionName: 'transfer',
-                args: [receiveAddress as `0x${string}`, amountRaw],
-              }) as Hex,
-              chainId: base.id,
-            },
-            {
-              uiOptions: { showWalletUIs: true },
-              address: embeddedWallet.address,
-            },
-          );
-          broadcastTxHash = hash;
-          session.markConsumed();
-
-          const syncRes = await fetch('/api/transaction/sync-hash', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ orderId, txHash: broadcastTxHash }),
-          });
-          if (!syncRes.ok) {
-            console.error('[CONFIRM] sync-hash failed:', syncRes.status);
-          }
-        } else if (broadcastData.code === 'NOT_DELEGATED') {
-          // Pre-claim / no on-chain send — consent race. Keep session + reserve; allow Send retry.
-          logDelegationSnapshot('server returned NOT_DELEGATED', {
-            broadcastStatus: broadcastRes.status,
-            broadcastCode: broadcastData.code,
-            broadcastError: broadcastData.error ?? null,
-            note: 'Server Privy user.delegated is false — localDelegated alone is not enough',
-          });
-          setLocalDelegated(false);
-          setError('Almost ready — tap Send again to finish.');
-          setStatus('idle');
-          onSendingChange?.(false);
-          return;
-        } else if (
-          broadcastData.code === 'PAYOUT_NOT_AUTHORIZED' ||
-          broadcastData.code === 'PAYOUT_REVERTED' ||
-          broadcastData.code === 'PAYOUT_DROPPED' ||
-          broadcastData.code === 'FORWARDER_UNAVAILABLE'
-        ) {
-          // Forwarder path: the server confirmed nothing moved and released the claim.
-          // Keep session + reserve so Send can really be tapped again.
-          setError("Couldn't send this payout. Tap Send to try again.");
-          setStatus('idle');
-          onSendingChange?.(false);
-          return;
-        } else if (
-          broadcastData.code === 'BROADCAST_IN_PROGRESS' ||
-          broadcastData.code === 'BROADCAST_UNCERTAIN'
-        ) {
-          // May already be on-chain — do not cancel-pending.
-          session.markConsumed();
-          invalidateLedgerQueries();
-          setStatus('success');
-          setError(
-            broadcastData.code === 'BROADCAST_UNCERTAIN'
-              ? 'Payment may have been submitted — check history before trying again.'
-              : 'Payment is already sending — check history before trying again.',
-          );
-          return;
-        } else {
-          throw new Error(
-            typeof broadcastData.error === 'string'
-              ? broadcastData.error
-              : 'Could not complete payout. Please try again.',
-          );
-        }
-      } else {
-        // External wallet: must use wallet UI (cannot silent-sign).
-        const { hash } = await sendTransaction(
-          {
-            to: settlementTokenAddress,
-            data: encodeFunctionData({
-              abi: ERC20_ABI,
-              functionName: 'transfer',
-              args: [receiveAddress as `0x${string}`, amountRaw],
-            }) as Hex,
-            chainId: base.id,
-          },
-          {
-            uiOptions: { showWalletUIs: true },
-            address: embeddedWallet.address,
-          },
-        );
-        broadcastTxHash = hash;
+      if (broadcastRes.ok && typeof broadcastData.txHash === 'string') {
+        broadcastTxHash = broadcastData.txHash;
         session.markConsumed();
-
         const syncRes = await fetch('/api/transaction/sync-hash', {
           method: 'POST',
           headers: {
@@ -520,8 +369,57 @@ export function ConfirmTransactionSheet({
           body: JSON.stringify({ orderId, txHash: broadcastTxHash }),
         });
         if (!syncRes.ok) {
-          console.error('[CONFIRM] sync-hash failed:', syncRes.status);
+          console.error('[CONFIRM] sync-hash after broadcast failed:', syncRes.status);
         }
+      } else if (broadcastData.code === 'NOT_DELEGATED') {
+        // Pre-claim / no on-chain send — consent race. Keep session + reserve; allow Send retry.
+        logDelegationSnapshot('server returned NOT_DELEGATED', {
+          broadcastStatus: broadcastRes.status,
+          broadcastCode: broadcastData.code,
+          broadcastError: broadcastData.error ?? null,
+          note: 'Server Privy user.delegated is false — localDelegated alone is not enough',
+        });
+        setLocalDelegated(false);
+        setError('Almost ready — tap Send again to finish.');
+        setStatus('idle');
+        onSendingChange?.(false);
+        return;
+      } else if (broadcastData.code === 'INSTANT_SEND_NOT_CONFIGURED') {
+        // Deployment setting, not a passing failure: retrying can't help. Fails before
+        // the claim, so the catch below releases the reserve.
+        throw new Error(SEND_UNAVAILABLE);
+      } else if (
+        broadcastData.code === 'PAYOUT_NOT_AUTHORIZED' ||
+        broadcastData.code === 'PAYOUT_REVERTED' ||
+        broadcastData.code === 'PAYOUT_DROPPED' ||
+        broadcastData.code === 'FORWARDER_UNAVAILABLE'
+      ) {
+        // Forwarder confirmed nothing moved and released the claim.
+        // Keep session + reserve so Send can be tapped again.
+        setError(SEND_FAILED_RETRY);
+        setStatus('idle');
+        onSendingChange?.(false);
+        return;
+      } else if (
+        broadcastData.code === 'BROADCAST_IN_PROGRESS' ||
+        broadcastData.code === 'BROADCAST_UNCERTAIN'
+      ) {
+        // May already be on-chain — do not cancel-pending.
+        session.markConsumed();
+        invalidateLedgerQueries();
+        setStatus('success');
+        setError(
+          broadcastData.code === 'BROADCAST_UNCERTAIN'
+            ? 'Payment may have been submitted — check history before trying again.'
+            : 'Payment is already sending — check history before trying again.',
+        );
+        return;
+      } else {
+        throw new Error(
+          typeof broadcastData.error === 'string'
+            ? broadcastData.error
+            : 'Could not complete payout. Please try again.',
+        );
       }
 
       invalidateLedgerQueries();
@@ -555,7 +453,8 @@ export function ConfirmTransactionSheet({
 
   const busy =
     status === 'creating' || status === 'sending' || status === 'granting';
-  const sendDisabled = busy || status === 'success';
+  const sendDisabled = busy || status === 'success' || isExternalWallet;
+  const bannerText = displayError ?? (isExternalWallet ? EXTERNAL_WALLET_BLOCKED : null);
 
   const sendLabel =
     status === 'granting'
@@ -595,7 +494,7 @@ export function ConfirmTransactionSheet({
                   Preparing secure payout…
                 </p>
               )}
-              {prefetchPhase === 'ready' && status === 'idle' && !displayError && (
+              {prefetchPhase === 'ready' && status === 'idle' && !bannerText && (
                 <p className="mt-2 text-[12px] font-medium text-[#2261FE]">
                   Ready to send
                 </p>
@@ -643,17 +542,17 @@ export function ConfirmTransactionSheet({
             </div>
           </div>
 
-          {displayError && (
+          {bannerText && (
             <div
               className={`mb-4 flex w-full max-w-[390px] items-center gap-3 rounded-[12px] border p-4 ${
-                displayError.includes('already prepared')
+                bannerText.includes('already prepared')
                   ? 'border-amber-100 bg-amber-50'
                   : 'border-red-100 bg-red-50'
               }`}
             >
               <div
                 className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
-                  displayError.includes('already prepared')
+                  bannerText.includes('already prepared')
                     ? 'bg-amber-100'
                     : 'bg-red-100'
                 }`}
@@ -661,7 +560,7 @@ export function ConfirmTransactionSheet({
                 <AlertCircle
                   size={16}
                   className={
-                    displayError.includes('already prepared')
+                    bannerText.includes('already prepared')
                       ? 'text-amber-600'
                       : 'text-red-500'
                   }
@@ -669,12 +568,12 @@ export function ConfirmTransactionSheet({
               </div>
               <p
                 className={`text-[13px] font-medium leading-tight ${
-                  displayError.includes('already prepared')
+                  bannerText.includes('already prepared')
                     ? 'text-amber-900'
                     : 'text-red-600'
                 }`}
               >
-                {displayError}
+                {bannerText}
               </p>
             </div>
           )}
@@ -708,14 +607,10 @@ export function ConfirmTransactionSheet({
           <div className="w-full max-w-[430px] flex flex-col items-center text-center">
             <div className="mb-12">
               <h2 className="text-[24px] font-bold text-[#1C1C1C]">
-                {status === 'creating'
-                  ? 'Preparing order...'
-                  : `Paying out to ${firstName}…`}
+                Sending to your bank
               </h2>
               <p className="text-[#888888] mt-2 font-medium">
-                {status === 'creating'
-                  ? 'Connecting to Paycrest secure gateway'
-                  : 'Sending USDC on Base — do not close this screen'}
+                Please keep this screen open
               </p>
             </div>
             <div className="mt-10 mb-20">
@@ -746,12 +641,12 @@ export function ConfirmTransactionSheet({
               </div>
 
               <h3 className="font-[700] leading-[120%] text-center px-4 mb-4 text-[#464446] text-[24px]">
-                Money sent to {firstName}
+                On the way to {bankName}
               </h3>
 
               <p className="text-[#888888] text-[15px] font-medium max-w-[280px]">
-                The transaction has been broadcast. It will reflect in the account once
-                verified by the network.
+                {firstName} will receive the {currencyName} shortly. You can follow it in
+                your history.
               </p>
             </div>
 
