@@ -4,7 +4,7 @@ import { PAYCREST_SETTLEMENT } from "../paycrest/payout.service.js";
 import { NotificationService } from "../notifications/notification.service.js";
 
 /** Chain a manual-wallet crypto cash-out actually settles on (recipientBank: "crypto:<network>"). */
-const CRYPTO_CASH_OUT_CHAIN_ID: Record<string, number> = {
+export const CRYPTO_CASH_OUT_CHAIN_ID: Record<string, number> = {
   base: 8453,
   celo: 42220,
   arbitrum: 42161,
