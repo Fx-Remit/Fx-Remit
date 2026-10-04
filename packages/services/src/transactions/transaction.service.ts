@@ -54,8 +54,8 @@ const TERMINAL_STATUSES: Status[] = [
 
 /**
  * Base columns for API responses / create-pending returns.
- * Omits rail / stellar / refund columns so reads still work if those migrations lag.
- * Money-path writers that *need* those columns (refund linking, Stellar) still require
+ * Omits refund columns so reads still work if those migrations lag.
+ * Money-path writers that *need* those columns (refund linking) still require
  * `prisma migrate deploy` on prod — do not paper over that with selects alone.
  */
 const TRANSACTION_API_SELECT = {
@@ -157,7 +157,7 @@ export class TransactionService {
 
   /**
    * Fetch transaction history for a specific user with pagination.
-   * Prefer Prisma select (skips rail/stellar/refund). On schema-drift errors
+   * Prefer Prisma select (skips refund columns). On schema-drift errors
    * only, fall back to raw SQL over the legacy column set so the home feed
    * cannot stay dark — other DB errors still fail closed.
    */
