@@ -1,4 +1,5 @@
 import { prisma, Status, Transaction, TransactionType, Prisma } from "@fx-remit/database";
+import { Decimal } from "decimal.js";
 import { RpcClient } from "../evm/rpc.client";
 import { PAYCREST_SETTLEMENT } from "../paycrest/payout.service.js";
 import { NotificationService } from "../notifications/notification.service.js";
@@ -137,19 +138,42 @@ export class TransactionService {
    * Explicit field pick — never spread Prisma rows (BigInt/`Decimal` break JSON.stringify).
    */
   /**
-   * Fee and rate exactly as the user confirmed them. The rate is fiat per USD left after
-   * the fee, so the saved split and wholesale rate never reach the client.
+   * Fee and rate exactly as the user confirmed them; the saved split and wholesale
+   * rate never reach the client. The confirmed rate is wholesale × bank ÷ (sent − fee),
+   * which avoids the cent rounding in payoutFiat.
    */
   static displayPricing(tx: {
     amountUsd: { toString(): string };
     payoutFiat: { toString(): string };
     orderFeeUsd?: string | null;
+    orderBankAmount?: string | null;
+    orderRate?: string | null;
   }): { feeUsd: number | null; rate: number | null } {
-    const fee = tx.orderFeeUsd != null ? Number(tx.orderFeeUsd) : NaN;
-    if (!Number.isFinite(fee) || fee < 0) return { feeUsd: null, rate: null };
-    const net = Number(tx.amountUsd.toString()) - fee;
-    const fiat = Number(tx.payoutFiat.toString());
-    return { feeUsd: fee, rate: net > 0 && fiat > 0 ? fiat / net : null };
+    let fee: Decimal;
+    try {
+      if (tx.orderFeeUsd == null) return { feeUsd: null, rate: null };
+      fee = new Decimal(tx.orderFeeUsd);
+    } catch {
+      return { feeUsd: null, rate: null };
+    }
+    if (fee.isNegative()) return { feeUsd: null, rate: null };
+    const net = new Decimal(tx.amountUsd.toString()).minus(fee);
+    if (net.lte(0)) return { feeUsd: fee.toNumber(), rate: null };
+    let rate: Decimal | null = null;
+    try {
+      if (tx.orderRate && tx.orderBankAmount) {
+        rate = new Decimal(tx.orderRate).mul(tx.orderBankAmount).div(net);
+      } else {
+        const fiat = new Decimal(tx.payoutFiat.toString());
+        if (fiat.gt(0)) rate = fiat.div(net);
+      }
+    } catch {
+      rate = null;
+    }
+    return {
+      feeUsd: fee.toNumber(),
+      rate: rate && rate.gt(0) ? rate.toDecimalPlaces(8, Decimal.ROUND_DOWN).toNumber() : null,
+    };
   }
 
   static serialize(tx: TransactionApiRow): TransactionResponse {

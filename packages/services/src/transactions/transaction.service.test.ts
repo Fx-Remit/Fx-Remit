@@ -121,7 +121,8 @@ describe('TransactionService.serialize — happy paths', () => {
       } as any) as any,
     );
     assert.equal(serialized.feeUsd, 0.25);
-    assert.equal(serialized.rate!.toFixed(2), '1334.85');
+    // wholesale × bank ÷ (sent − fee): the retail rate the confirm screen showed.
+    assert.equal(serialized.rate, 1334.85295);
     const json = JSON.stringify(serialized);
     for (const hidden of ['orderBankAmount', 'orderSenderFee', 'orderRate', 'orderFeeUsd', '1344.94', '0.623125']) {
       assert.equal(json.includes(hidden), false, hidden);

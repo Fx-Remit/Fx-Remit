@@ -21,10 +21,6 @@ export type HistoryTransaction = {
 
 export type TransactionDetail = ReturnType<typeof toTransactionDetail>;
 
-function money(n: number): string {
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 export function maskAccount(acc: string): string {
   const digits = acc.trim();
   return digits.length > 4 ? `•••• ${digits.slice(-4)}` : digits;
@@ -82,7 +78,8 @@ export function toTransactionDetail(tx: HistoryTransaction) {
     sentToken,
     receivedAmount: receivedAmount.toFixed(2),
     receivedToken: 'NGN',
-    rate: rate != null ? `1 ${sentToken} = ${money(rate)} NGN` : undefined,
+    // Same format as the confirm screen, so both show the same rate.
+    rate: rate != null ? `1 ${sentToken} = ${rate.toLocaleString()} NGN` : undefined,
     fee: hasFee
       ? formatCashOutFee(sentAmount, Math.round((tx.feeUsd! / sentAmount) * 10000))
       : undefined,

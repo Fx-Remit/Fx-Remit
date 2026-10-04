@@ -19,15 +19,16 @@ const base = {
 describe('toTransactionDetail', () => {
   // Example values only; real fee/spread live in server env.
   it('shows the confirmed fee and rate when the row has a saved fee', () => {
-    const d = toTransactionDetail({ ...base, feeUsd: 0.25, rate: 66408.93 / 49.75 });
+    const d = toTransactionDetail({ ...base, feeUsd: 0.25, rate: 1334.85295 });
     assert.equal(d.fee, '$0.25 (0.50%)');
-    assert.equal(d.rate, '1 USDC = 1,334.85 NGN');
+    // Same toLocaleString() format the confirm screen uses.
+    assert.equal(d.rate, `1 USDC = ${(1334.85295).toLocaleString()} NGN`);
   });
 
   it('falls back to received ÷ sent and no fee on older rows', () => {
     const d = toTransactionDetail({ ...base, feeUsd: null, rate: null });
     assert.equal(d.fee, undefined);
-    assert.equal(d.rate, '1 USDC = 1,328.18 NGN');
+    assert.equal(d.rate, `1 USDC = ${(66408.93 / 50).toLocaleString()} NGN`);
   });
 
   it('shows the bank recipient with a masked account', () => {
