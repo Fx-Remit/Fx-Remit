@@ -79,6 +79,7 @@ const TRANSACTION_API_SELECT = {
   orderBankAmount: true,
   orderSenderFee: true,
   orderRate: true,
+  orderFeeUsd: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -122,6 +123,10 @@ export interface TransactionResponse {
   recipientBank: string | null;
   recipientAcc: string | null;
   recipientBankCode: string | null;
+  /** Visible fee in USD; null on rows reserved before it was saved. */
+  feeUsd: number | null;
+  /** Rate the user confirmed (fiat per USD after the fee); null when feeUsd is null. */
+  rate: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -131,6 +136,22 @@ export class TransactionService {
    * Serialize a Prisma Transaction model to a JSON-safe response object.
    * Explicit field pick — never spread Prisma rows (BigInt/`Decimal` break JSON.stringify).
    */
+  /**
+   * Fee and rate exactly as the user confirmed them. The rate is fiat per USD left after
+   * the fee, so the saved split and wholesale rate never reach the client.
+   */
+  static displayPricing(tx: {
+    amountUsd: { toString(): string };
+    payoutFiat: { toString(): string };
+    orderFeeUsd?: string | null;
+  }): { feeUsd: number | null; rate: number | null } {
+    const fee = tx.orderFeeUsd != null ? Number(tx.orderFeeUsd) : NaN;
+    if (!Number.isFinite(fee) || fee < 0) return { feeUsd: null, rate: null };
+    const net = Number(tx.amountUsd.toString()) - fee;
+    const fiat = Number(tx.payoutFiat.toString());
+    return { feeUsd: fee, rate: net > 0 && fiat > 0 ? fiat / net : null };
+  }
+
   static serialize(tx: TransactionApiRow): TransactionResponse {
     return {
       id: tx.id,
@@ -150,6 +171,7 @@ export class TransactionService {
       recipientBank: tx.recipientBank,
       recipientAcc: tx.recipientAcc,
       recipientBankCode: tx.recipientBankCode,
+      ...this.displayPricing(tx),
       createdAt: tx.createdAt.toISOString(),
       updatedAt: tx.updatedAt.toISOString(),
     };
@@ -1844,7 +1866,7 @@ export class TransactionService {
     recipientAcc: string;
     recipientBankCode?: string | null;
     /** Paycrest order split bound with the quote; saved so every later order create reuses it. */
-    orderPricing?: { bankAmount: string; senderFee: string; rate: string } | null;
+    orderPricing?: { bankAmount: string; senderFee: string; rate: string; feeUsd?: string } | null;
   }): Promise<TransactionApiRow> {
     const amount = new Prisma.Decimal(data.amountUsd);
     const payoutFiat = new Prisma.Decimal(data.payoutFiat);
@@ -1905,6 +1927,7 @@ export class TransactionService {
               orderBankAmount: data.orderPricing?.bankAmount ?? null,
               orderSenderFee: data.orderPricing?.senderFee ?? null,
               orderRate: data.orderPricing?.rate ?? null,
+              orderFeeUsd: data.orderPricing?.feeUsd ?? null,
               txHash: `pending-${data.externalId}`,
               chainId: 0,
               // Avoid @@unique([chainId, blockNumber, logIndex]) collisions on (0,0,0)
@@ -1956,6 +1979,7 @@ export class TransactionService {
               orderBankAmount: data.orderPricing?.bankAmount ?? null,
               orderSenderFee: data.orderPricing?.senderFee ?? null,
               orderRate: data.orderPricing?.rate ?? null,
+              orderFeeUsd: data.orderPricing?.feeUsd ?? null,
           status: "PENDING",
           type: "REMITTANCE",
           txHash: `pending-${data.externalId}`,
