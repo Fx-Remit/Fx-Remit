@@ -10,7 +10,7 @@ import { useUserStore } from '@/store/user-store';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionDetailSheet } from '../history/TransactionDetailSheet';
 import { recipientLabel, toTransactionDetail } from '@/lib/history/transaction-detail';
-import { formatTxHashLabel } from '@/lib/network';
+import { formatTxHashLabel, isPlaceholderTxHash } from '@/lib/network';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { registerPushServiceWorker } from '@/lib/push/register';
 import { defaultAvatarUrl } from '@/lib/avatar';
@@ -281,7 +281,8 @@ export default function HomePage() {
                         : 'Remittance Sent'}
                   </p>
                   <p className="text-gray-400 text-sm truncate">
-                    {recipient?.where || formatTxHashLabel(tx.txHash)}
+                    {/* Home has no status badge: keep "Not sent" / "Sending…" until it's on-chain. */}
+                    {(!isPlaceholderTxHash(tx.txHash) && recipient?.where) || formatTxHashLabel(tx.txHash)}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
