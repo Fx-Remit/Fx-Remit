@@ -1,13 +1,16 @@
 import { prisma } from '@fx-remit/database';
 import { LEGACY_CELO_CONTRACTS, LEGACY_CELO_REMITTANCES, type LegacyRemittance } from './legacy-celo.js';
 
-/** Public, on-chain-verifiable activity only: USD sent, short sender wallet, time, tx link. */
+/**
+ * Public, on-chain-verifiable activity only: USD sent, time, tx link. `sender` is the v1/v2
+ * contract caller; app rows carry none, so the page never ties a user's wallet to a bank payout.
+ */
 export type StatsEntry = {
   source: 'v1' | 'v2' | 'app';
   at: string;
   amountUsd: number;
   chain: 'base' | 'celo' | 'arbitrum';
-  sender: string;
+  sender: string | null;
   txHash: string;
   corridor: string;
 };
@@ -36,6 +39,7 @@ export type PublicStats = {
   daily: Array<{ day: string } & Bucket>;
   monthly: Array<{ month: string } & Bucket>;
   recent: Array<StatsEntry & { explorerUrl: string }>;
+  /** v1/v2 contract callers only (app users stay anonymous). */
   topSenders: Array<{ sender: string; transactions: number; volumeUsd: number }>;
   corridors: Array<{ corridor: string; transactions: number; volumeUsd: number }>;
 };
@@ -56,19 +60,23 @@ export function shortWallet(address: string): string {
   return a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
 }
 
-function legacyEntry(r: LegacyRemittance): StatsEntry {
+function legacyEntry(r: LegacyRemittance): Internal {
   return {
     source: r.version,
     at: new Date(r.at).toISOString(), // same format as app rows, so string order is time order
     amountUsd: r.amountUsd,
     chain: 'celo',
     sender: r.sender.toLowerCase(),
+    userKey: r.sender.toLowerCase(),
     txHash: r.txHash,
     corridor: `${r.fromCurrency}-${r.toCurrency}`,
   };
 }
 
-function appEntry(r: AppCashOut): StatsEntry {
+/** Internal: entries keep the wallet for unique-user counts; it is stripped before output. */
+type Internal = StatsEntry & { userKey: string };
+
+function appEntry(r: AppCashOut): Internal {
   const bank = r.recipientBank ?? '';
   const isCrypto = bank.startsWith('crypto:');
   const network = isCrypto ? bank.slice('crypto:'.length) : '';
@@ -80,28 +88,40 @@ function appEntry(r: AppCashOut): StatsEntry {
     at: r.createdAt.toISOString(),
     amountUsd: r.amountUsd,
     chain,
-    sender: r.senderWallet.toLowerCase(),
+    sender: null,
+    userKey: r.senderWallet.toLowerCase(),
     txHash: r.txHash,
-    corridor: isCrypto ? `${r.sourceToken}-wallet` : `${r.sourceToken}-${r.corridor || 'NGN'}`,
+    // Bank rows don't store the payout currency yet, so don't guess it.
+    corridor: isCrypto ? `${r.sourceToken}-wallet` : `${r.sourceToken}-${r.corridor || 'bank'}`,
   };
 }
 
-function bucket(entries: StatsEntry[]): Bucket {
+function bucket(entries: Internal[]): Bucket {
   return {
     volumeUsd: round2(entries.reduce((s, e) => s + e.amountUsd, 0)),
     transactions: entries.length,
-    uniqueUsers: new Set(entries.map((e) => e.sender)).size,
+    uniqueUsers: new Set(entries.map((e) => e.userKey)).size,
   };
 }
 
-function groupBy(entries: StatsEntry[], key: (e: StatsEntry) => string): Map<string, StatsEntry[]> {
-  const m = new Map<string, StatsEntry[]>();
+function groupBy(entries: Internal[], key: (e: Internal) => string): Map<string, Internal[]> {
+  const m = new Map<string, Internal[]>();
   for (const e of entries) {
     const k = key(e);
-    m.set(k, [...(m.get(k) ?? []), e]);
+    const group = m.get(k);
+    if (group) group.push(e);
+    else m.set(k, [e]);
   }
   return m;
 }
+
+/** Public shape of an entry: no internal user key, wallet shortened. */
+function publicEntry({ userKey: _userKey, ...e }: Internal): StatsEntry & { explorerUrl: string } {
+  return { ...e, sender: e.sender ? shortWallet(e.sender) : null, explorerUrl: `${EXPLORER[e.chain]}${e.txHash}` };
+}
+
+const CACHE_TTL_MS = 10 * 60_000;
+let cached: { at: number; value: Promise<PublicStats> } | null = null;
 
 export class PublicStatsService {
   static build(
@@ -117,7 +137,7 @@ export class PublicStatsService {
     const daily = [...groupBy(all, (e) => e.at.slice(0, 10))].map(([day, es]) => ({ day, ...bucket(es) }));
     const monthly = [...groupBy(all, (e) => e.at.slice(0, 7))].map(([month, es]) => ({ month, ...bucket(es) }));
 
-    const topSenders = [...groupBy(all, (e) => e.sender)]
+    const topSenders = [...groupBy(legacyEntries, (e) => e.userKey)]
       .map(([sender, es]) => ({ sender: shortWallet(sender), transactions: es.length, volumeUsd: bucket(es).volumeUsd }))
       .sort((a, b) => b.volumeUsd - a.volumeUsd || b.transactions - a.transactions)
       .slice(0, 10);
@@ -126,12 +146,9 @@ export class PublicStatsService {
       .map(([corridor, es]) => ({ corridor, transactions: es.length, volumeUsd: bucket(es).volumeUsd }))
       .sort((a, b) => b.transactions - a.transactions || b.volumeUsd - a.volumeUsd);
 
-    const recent = all
-      .slice(-20)
-      .reverse()
-      .map((e) => ({ ...e, sender: shortWallet(e.sender), explorerUrl: `${EXPLORER[e.chain]}${e.txHash}` }));
+    const recent = all.slice(-20).reverse().map(publicEntry);
 
-    const isCrypto = (e: StatsEntry) => e.corridor.endsWith('-wallet');
+    const isCrypto = (e: Internal) => e.corridor.endsWith('-wallet');
     return {
       updatedAt: now.toISOString(),
       totals: {
@@ -187,5 +204,24 @@ export class PublicStatsService {
 
   static async get(): Promise<PublicStats> {
     return this.build(await this.loadAppCashOuts());
+  }
+
+  /**
+   * get() behind a 10-minute in-process cache: the endpoint is public, so query strings that
+   * bypass the CDN still hit the database at most once per TTL per instance. Failures aren't cached.
+   */
+  static getCached(nowMs: number = Date.now()): Promise<PublicStats> {
+    if (cached && nowMs - cached.at < CACHE_TTL_MS) return cached.value;
+    const value = this.get();
+    cached = { at: nowMs, value };
+    value.catch(() => {
+      if (cached?.value === value) cached = null;
+    });
+    return value;
+  }
+
+  /** Tests only. */
+  static resetCache(): void {
+    cached = null;
   }
 }

@@ -12,7 +12,7 @@ const CORS = {
 
 export async function GET() {
   try {
-    const stats = await PublicStatsService.get();
+    const stats = await PublicStatsService.getCached();
     return NextResponse.json(stats, {
       headers: { ...CORS, 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' },
     });

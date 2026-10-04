@@ -5,6 +5,7 @@ import { GET, OPTIONS } from './route';
 
 afterEach(() => {
   mock.restoreAll();
+  PublicStatsService.resetCache();
 });
 
 describe('GET /api/public/stats', () => {
