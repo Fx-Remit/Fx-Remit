@@ -1,3 +1,6 @@
+process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID = 'test-quorum';
+process.env.NEXT_PUBLIC_PRIVY_POLICY_ID = 'test-policy';
+process.env.NEXT_PUBLIC_PRIVY_POLICY_ID_CRYPTO = 'test-crypto-policy';
 process.env.NEXT_PUBLIC_PRIVY_APP_ID ??= 'test-app';
 process.env.PRIVY_APP_SECRET ??= 'test-secret';
 process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY ??= 'test-auth-key';
@@ -135,6 +138,22 @@ describe('broadcastCryptoTransfer', () => {
     );
   });
 
+  it('sends the client to the wallet-confirmed send, before claiming, when the crypto policy is missing (#192)', async () => {
+    mock.method(TransactionService, 'findRemittanceForBroadcast', async () => pendingRow());
+    mock.method(CryptoAddressService, 'listForUser', async () => [trustedAddressRow()]);
+    mock.method(PrivyClient.prototype, 'users', delegatedWalletUsers(true));
+    mock.method(PrivyClient.prototype, 'wallets', () => ({
+      get: async () => ({ additional_signers: [{ signer_id: 'test-quorum', override_policy_ids: ['test-policy'] }] }),
+    }) as any);
+    const claim = mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+
+    await assert.rejects(
+      () => broadcastCryptoTransfer({ privyDid: 'did:privy:x', userId: 'u1', walletAddress: WALLET, orderId: 9n }),
+      (err: unknown) => err instanceof InstantSendWalletError && err.code === 'PERMISSION_UPDATE_REQUIRED',
+    );
+    assert.equal(claim.mock.callCount(), 0);
+  });
+
   it('rejects amount over the crypto Instant Send policy cap', async () => {
     mock.method(TransactionService, 'findRemittanceForBroadcast', async () =>
       pendingRow({ amountUsd: { toString: () => '1001' } }),
@@ -158,6 +177,7 @@ describe('broadcastCryptoTransfer', () => {
 
     let sentTo: string | undefined;
     mock.method(PrivyClient.prototype, 'wallets', () => ({
+      get: async () => ({ additional_signers: [{ signer_id: 'test-quorum', override_policy_ids: ['test-policy', 'test-crypto-policy'] }] }),
       ethereum: () => ({
         sendTransaction: async (_walletId: string, args: any) => {
           sentTo = args.params.transaction.to;
@@ -196,6 +216,7 @@ describe('broadcastCryptoTransfer', () => {
 
     let sendCalls = 0;
     mock.method(PrivyClient.prototype, 'wallets', () => ({
+      get: async () => ({ additional_signers: [{ signer_id: 'test-quorum', override_policy_ids: ['test-policy', 'test-crypto-policy'] }] }),
       ethereum: () => ({
         sendTransaction: async () => {
           sendCalls += 1;
@@ -232,6 +253,7 @@ describe('broadcastCryptoTransfer', () => {
       return true;
     });
     mock.method(PrivyClient.prototype, 'wallets', () => ({
+      get: async () => ({ additional_signers: [{ signer_id: 'test-quorum', override_policy_ids: ['test-policy', 'test-crypto-policy'] }] }),
       ethereum: () => ({
         sendTransaction: async () => {
           throw new Error('timeout / 502');

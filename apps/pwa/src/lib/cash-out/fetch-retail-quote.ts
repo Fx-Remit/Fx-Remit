@@ -5,9 +5,11 @@
 export async function fetchFreshQuoteValidUntil(input: {
   sourceToken: string;
   destinationCurrency: string;
+  network?: string;
 }): Promise<number> {
+  const network = input.network ? `&network=${encodeURIComponent(input.network)}` : '';
   const res = await fetch(
-    `/api/quote?source=${encodeURIComponent(input.sourceToken)}&destination=${encodeURIComponent(input.destinationCurrency)}&amount=1`,
+    `/api/quote?source=${encodeURIComponent(input.sourceToken)}&destination=${encodeURIComponent(input.destinationCurrency)}&amount=1${network}`,
   );
   const json = (await res.json().catch(() => null)) as {
     success?: boolean;

@@ -12,7 +12,10 @@ import {
   ExternalIdConflictError,
   RecipientService,
   withUniqueOrderId,
+  bankSourceEnabledFor,
+  sourceNetworkAvailability,
 } from '@fx-remit/services';
+import { isAddress } from 'viem';
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +47,8 @@ const createPendingSchema = z.object({
   /** bank | mobile — stored on SavedRecipient after successful Paycrest create */
   recipientType: z.enum(['bank', 'mobile', 'BANK', 'MOBILE']).optional(),
   externalId: z.string().optional(),
+  /** Network the USDC is paid from (#196). Celo needs the forwarder; Base is the default. */
+  sourceNetwork: z.enum(['base', 'celo']).optional().default('base'),
 });
 
 function serializeTransaction(tx: {
@@ -179,6 +184,7 @@ export async function POST(req: Request) {
       bankCode,
       recipientType,
       externalId: frontendId,
+      sourceNetwork,
     } = validationResult.data;
 
     const user = await prisma.user.findUnique({
@@ -213,6 +219,43 @@ export async function POST(req: Request) {
       user.id,
     );
 
+    if (!resumeReserved) {
+      // Celo-funded payouts only go through the forwarder; there is no direct Celo send.
+      if (!bankSourceEnabledFor({ id: user.id, privyDid: claims.userId }, sourceNetwork)) {
+        return NextResponse.json(
+          { error: 'Paying out from Celo is unavailable right now', code: 'NETWORK_UNAVAILABLE' },
+          { status: 503 },
+        );
+      }
+      // One payout pays from one network: its on-chain USDC, minus what's already reserved there,
+      // must cover the amount. Checked before reserving or creating any Paycrest order.
+      if (user.walletAddress && isAddress(user.walletAddress)) {
+        const availability = await sourceNetworkAvailability({
+          userId: user.id,
+          walletAddress: user.walletAddress,
+          network: sourceNetwork,
+        });
+        if (!availability) {
+          // Can't read the chain: the payout couldn't be sent either, so don't reserve.
+          return NextResponse.json(
+            { error: "Couldn't check your balance right now. Try again in a moment.", code: 'BALANCE_UNAVAILABLE' },
+            { status: 503 },
+          );
+        }
+        if (Number(availability.availableUsd) < amountUsd) {
+          const max = Math.floor(Number(availability.availableUsd) * 100) / 100;
+          return NextResponse.json(
+            {
+              error: `Not enough USDC on ${sourceNetwork === 'celo' ? 'Celo' : 'Base'}. You can send up to $${max.toFixed(2)} from it.`,
+              code: 'INSUFFICIENT_NETWORK_BALANCE',
+              availableUsd: availability.availableUsd,
+            },
+            { status: 422 },
+          );
+        }
+      }
+    }
+
     let boundQuote: Awaited<
       ReturnType<typeof QuoteBindService.resolveForCreatePending>
     > | null = null;
@@ -227,6 +270,7 @@ export async function POST(req: Request) {
           sourceToken,
           destinationCurrency,
           quoteValidUntil,
+          network: sourceNetwork,
         });
       } catch (err) {
         const code = errorCode(err);
@@ -278,6 +322,7 @@ export async function POST(req: Request) {
                 feeUsd: boundQuote.feeUsd,
               }
             : null,
+          sourceNetwork,
         }),
       );
     } catch (err) {
@@ -322,7 +367,7 @@ export async function POST(req: Request) {
         !TransactionService.isAppLocalPendingKey(hashKey, tx.externalId);
 
       if (linkedOrder) {
-        const resumed = await PayoutService.getSettlementOrder(hashKey!);
+        const resumed = await PayoutService.getSettlementOrder(hashKey!, tx.sourceNetwork);
         if (!resumed.success || !resumed.order || !resumed.settlement) {
           return NextResponse.json(
             { error: resumed.error || "Failed to resume Paycrest order" },
@@ -369,6 +414,8 @@ export async function POST(req: Request) {
       },
       refundAddress: user.walletAddress || "",
       externalId: externalKey,
+      // The row's source, not this request's: a resumed reserve keeps the network it started on.
+      network: tx.sourceNetwork || 'base',
     });
 
     if (!paycrestResp.success || !paycrestResp.order || !paycrestResp.settlement) {
@@ -389,7 +436,7 @@ export async function POST(req: Request) {
               linkedRow.externalId,
             );
           if (canResume) {
-            const resumed = await PayoutService.getSettlementOrder(hashKey!);
+            const resumed = await PayoutService.getSettlementOrder(hashKey!, tx.sourceNetwork);
             if (resumed.success && resumed.order && resumed.settlement) {
               saveRecipientBestEffort({
                 userId: user.id,

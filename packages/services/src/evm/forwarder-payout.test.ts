@@ -748,3 +748,24 @@ describe('recoverStuckForwarderClaims (nightly / ops)', () => {
     assert.equal(discard.mock.callCount(), 0);
   });
 });
+
+describe('broadcastForwarderPayout payout permission (#192)', () => {
+  it('asks for a permission update before claiming when our signer lacks the payout policy', async () => {
+    fakeChain();
+    stubOrder();
+    mock.method(forwarderDeps, 'policyStatus', async () => 'missing');
+    const claim = mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    await assert.rejects(run(), code('PERMISSION_UPDATE_REQUIRED'));
+    assert.equal(claim.mock.callCount(), 0);
+  });
+
+  it('carries on when the policy status cannot be read (signing decides)', async () => {
+    fakeChain();
+    stubOrder();
+    mock.method(forwarderDeps, 'policyStatus', async () => 'unknown');
+    const claim = mock.method(TransactionService, 'claimBroadcastSlot', async () => false);
+    mock.method(TransactionService, 'findPendingRemittanceForBroadcast', async () => remittance());
+    await assert.rejects(run(), code('BROADCAST_IN_PROGRESS'));
+    assert.equal(claim.mock.callCount(), 1);
+  });
+});

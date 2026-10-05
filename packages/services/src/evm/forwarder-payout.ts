@@ -23,10 +23,10 @@ import { base, celo } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { PrivyClient } from '@privy-io/node';
 import { prisma } from '@fx-remit/database';
-import { PAYCREST_SETTLEMENT, PayoutService } from '../paycrest/payout.service.js';
+import { PAYCREST_SETTLEMENT, PayoutService, bankSettlementFor } from '../paycrest/payout.service.js';
 import { CRYPTO_CASH_OUT_CHAIN_ID, TransactionService } from '../transactions/transaction.service.js';
 import { INSTANT_SEND_MAX_USDC_RAW } from './instant-send.policy.js';
-import { InstantSendWalletError, resolveDelegatedWalletId } from './instant-send.broadcast.js';
+import { InstantSendWalletError, payoutPolicyStatus, resolveDelegatedWalletId } from './instant-send.broadcast.js';
 import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens.js';
 import { CryptoAddressService } from '../crypto-addresses/crypto-address.service.js';
 import { CRYPTO_INSTANT_SEND_MAX_USD } from './crypto-instant-send.policy.js';
@@ -155,6 +155,22 @@ export function cryptoFundingPathFor(
   return isPayoutForwarderConfigured(chainId) ? 'forwarder' : 'unavailable';
 }
 
+/**
+ * Networks a bank payout can be paid from right now: Base always; Celo once the forwarder is on
+ * for everyone and switched on for Celo (Celo payouts have no direct path).
+ */
+export function bankSourceNetworksAvailable(): Array<'base' | 'celo'> {
+  const celo = process.env.PAYOUT_FORWARDER_ENABLED?.trim() === 'true' && isPayoutForwarderConfigured(42220);
+  return celo ? ['base', 'celo'] : ['base'];
+}
+
+/** Whether this user's bank payout may be paid from `network` (Celo only through the forwarder). */
+export function bankSourceEnabledFor(user: { id: string; privyDid: string }, network: string): boolean {
+  if (network === 'base') return true;
+  const chainId = forwarderChainForNetwork(network);
+  return chainId !== null && isPayoutForwarderEnabledFor(user) && isPayoutForwarderConfigured(chainId);
+}
+
 /** Same value as PayoutForwarder.authorizationNonce(orderId, sink). */
 export function forwarderAuthorizationNonce(orderId: bigint, sink: Address): Hex {
   return keccak256(encodeAbiParameters([{ type: 'uint256' }, { type: 'address' }], [orderId, sink]));
@@ -178,7 +194,9 @@ const publicClients = new Map<string, ForwarderPublicClient>();
 /** Network, signing and locking seams; tests replace these. */
 export const forwarderDeps = {
   resolveWallet: resolveDelegatedWalletId,
-  getSettlement: (paycrestOrderId: string) => PayoutService.getSettlementOrder(paycrestOrderId),
+  policyStatus: payoutPolicyStatus,
+  getSettlement: (paycrestOrderId: string, network?: string | null) =>
+    PayoutService.getSettlementOrder(paycrestOrderId, network),
 
   publicClient(chainId: ForwarderChainId = 8453): ForwarderPublicClient {
     const url = rpcUrl(chainId);
@@ -348,7 +366,14 @@ export async function broadcastForwarderPayout(opts: {
     );
   }
 
-  const settlement = await forwarderDeps.getSettlement(paycrestOrderId);
+  // The network the payout is funded from (Base unless the user chose Celo).
+  const source = bankSettlementFor(remittance.sourceNetwork);
+  const chainId = source?.chainId;
+  if (!source || chainId === undefined || !isForwarderChainId(chainId) || !isPayoutForwarderConfigured(chainId)) {
+    throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't send this payout. Tap Send to try again.");
+  }
+
+  const settlement = await forwarderDeps.getSettlement(paycrestOrderId, remittance.sourceNetwork);
   if (!settlement.success) {
     throw new InstantSendWalletError('PAYCREST_LOOKUP_FAILED', settlement.error || 'Failed to load Paycrest settlement');
   }
@@ -357,8 +382,8 @@ export async function broadcastForwarderPayout(opts: {
   if (!receiveAddress || !isAddress(receiveAddress)) {
     throw new InstantSendWalletError('INVALID_RECEIVE_ADDRESS', 'Paycrest did not provide a valid receive address');
   }
-  const tokenAddress = (settlement.settlement.tokenAddress as string) || PAYCREST_SETTLEMENT.tokenAddress;
-  if (tokenAddress.toLowerCase() !== PAYCREST_SETTLEMENT.tokenAddress.toLowerCase()) {
+  const tokenAddress = (settlement.settlement.tokenAddress as string) || source.tokenAddress;
+  if (tokenAddress.toLowerCase() !== usdcOn(chainId).toLowerCase()) {
     throw new InstantSendWalletError('UNSUPPORTED_TOKEN', `Payouts only support ${PAYCREST_SETTLEMENT.token}`);
   }
   const amountToTransfer = order.providerAccount?.amountToTransfer;
@@ -366,8 +391,8 @@ export async function broadcastForwarderPayout(opts: {
     // Never substitute the ledger amount for Paycrest's figure.
     throw new InstantSendWalletError('PAYCREST_AMOUNT_MISSING', 'Paycrest did not provide the amount to send');
   }
-  const amount = parseUnits(String(amountToTransfer), PAYCREST_SETTLEMENT.decimals);
-  const reserved = parseUnits(remittance.amountUsd.toString(), PAYCREST_SETTLEMENT.decimals);
+  const amount = parseUnits(String(amountToTransfer), source.decimals);
+  const reserved = parseUnits(remittance.amountUsd.toString(), source.decimals);
   if (amount !== reserved) {
     // The ledger must take exactly what leaves the wallet.
     throw new InstantSendWalletError(
@@ -391,10 +416,13 @@ export async function broadcastForwarderPayout(opts: {
   if (!delegated) {
     throw new InstantSendWalletError('NOT_DELEGATED', 'Enable Instant Send to allow FX-Remit to complete payouts');
   }
+  if ((await forwarderDeps.policyStatus(walletId)) === 'missing') {
+    // Our signer is there without the payout policy (#192): ask the user to grant it again. Nothing claimed.
+    throw new InstantSendWalletError('PERMISSION_UPDATE_REQUIRED', 'Update your payout permission to finish this payout.');
+  }
 
   const payer = getAddress(opts.walletAddress);
   const sink = getAddress(receiveAddress);
-  const chainId: ForwarderChainId = 8453;
   const usdc = usdcOn(chainId);
   const client = forwarderDeps.publicClient(chainId);
   const balance = (await client.readContract({
@@ -563,12 +591,11 @@ async function relayClaimedPayout(
 
 /** A claim with a saved relayer tx: find out what happened to it, resend it, or retire it. */
 type SavedFundingRow = Pick<Remittance, 'userId' | 'orderId' | 'txHash' | 'fundingTxHash' | 'fundingTxRaw'> &
-  Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc'>>;
+  Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc' | 'sourceNetwork'>>;
 
-/** Chain of a row with no saved tx yet: crypto rows name it, bank payouts settle on Base. Null if unknown. */
-function chainOfRow(row: { recipientBank?: string | null }): ForwarderChainId | null {
-  const bank = row.recipientBank ?? '';
-  return bank.startsWith('crypto:') ? forwarderChainForNetwork(bank.slice('crypto:'.length)) : 8453;
+/** Chain a row pays from (crypto network, or a bank payout's source network). Null if unknown. */
+function chainOfRow(row: { recipientBank?: string | null; sourceNetwork?: string | null }): ForwarderChainId | null {
+  return forwarderChainForNetwork(TransactionService.payoutNetworkOf(row));
 }
 
 /** Decode and sanity-check the relayer tx saved on a claimed row. */
@@ -673,6 +700,7 @@ export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; 
       fundingTxRaw: true,
       recipientBank: true,
       recipientAcc: true,
+      sourceNetwork: true,
     },
     orderBy: { updatedAt: 'asc' },
     take: opts.limit ?? 50,
@@ -1061,6 +1089,10 @@ export async function broadcastForwarderCryptoTransfer(opts: {
     const resolved = await forwarderDeps.resolveWallet({ privyDid: opts.privyDid, walletAddress: opts.walletAddress });
     if (!resolved.delegated) {
       throw new InstantSendWalletError('NOT_DELEGATED', 'Enable Instant Send to allow FX-Remit to complete this send');
+    }
+    if ((await forwarderDeps.policyStatus(resolved.walletId)) === 'missing') {
+      // The client falls back to the user signing in their wallet.
+      throw new InstantSendWalletError('PERMISSION_UPDATE_REQUIRED', 'Confirm this send in your wallet');
     }
     walletId = resolved.walletId;
   }

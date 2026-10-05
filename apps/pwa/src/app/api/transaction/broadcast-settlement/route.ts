@@ -90,6 +90,8 @@ export async function POST(req: Request) {
       });
       const useForwarder =
         remittance?.fundingPath === 'forwarder' ||
+        // Payouts funded from another network than Base only exist through the forwarder.
+        (!!remittance?.sourceNetwork && remittance.sourceNetwork !== 'base') ||
         (!remittance?.fundingPath &&
           isPayoutForwarderEnabledFor({ id: user.id, privyDid: claims.userId }));
 

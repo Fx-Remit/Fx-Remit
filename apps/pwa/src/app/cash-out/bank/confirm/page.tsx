@@ -74,6 +74,7 @@ function CashOutConfirmContent() {
 
   const rate = searchParams.get('rate') || '0';
   const feeBps = Number(searchParams.get('fee') || '0');
+  const sourceNetwork: 'base' | 'celo' = searchParams.get('source') === 'celo' ? 'celo' : 'base';
 
   const { profile: dbUser } = useUserStore();
 
@@ -337,6 +338,7 @@ function CashOutConfirmContent() {
       quoteValidUntil = await fetchFreshQuoteValidUntil({
         sourceToken: token,
         destinationCurrency: currency,
+        network: sourceNetwork,
       });
     } catch (err) {
       setOpenError(err instanceof Error ? err.message : 'Failed to refresh quote');
@@ -355,6 +357,7 @@ function CashOutConfirmContent() {
       recipientType: type === 'mobile' ? 'mobile' : 'bank',
       token,
       externalId: idempotencyKey || undefined,
+      sourceNetwork,
     });
 
     bridgeAccessTokenRef.current = null;

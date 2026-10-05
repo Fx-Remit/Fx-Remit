@@ -1,6 +1,6 @@
 import { decodeEventLog, getAddress, parseAbi, parseUnits, type Hex, type TransactionReceipt } from 'viem';
 import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens.js';
-import { PAYCREST_SETTLEMENT } from '../paycrest/payout.service.js';
+import { PAYCREST_SETTLEMENT, bankSettlementFor } from '../paycrest/payout.service.js';
 import { CRYPTO_CASH_OUT_CHAIN_ID } from '../transactions/transaction.service.js';
 import { RpcClient } from './rpc.client.js';
 import { payoutForwarderAddress } from './forwarder-payout.js';
@@ -13,6 +13,7 @@ export type SettlementProofRow = {
   recipientAcc: string | null;
   sourceToken: string;
   amountUsd: { toString(): string };
+  sourceNetwork?: string | null;
 };
 
 /**
@@ -34,7 +35,9 @@ type Expected = { chainId: number; token: string; amount: bigint; to: string | n
 function expectedTransfer(row: SettlementProofRow): Expected | null {
   const bank = row.recipientBank ?? '';
   const isCrypto = bank.startsWith('crypto:');
-  const chainId = isCrypto ? CRYPTO_CASH_OUT_CHAIN_ID[bank.slice('crypto:'.length)] : PAYCREST_SETTLEMENT.chainId;
+  const chainId = isCrypto
+    ? CRYPTO_CASH_OUT_CHAIN_ID[bank.slice('crypto:'.length)]
+    : bankSettlementFor(row.sourceNetwork)?.chainId;
   if (!chainId) return null;
   const symbol = (row.sourceToken || PAYCREST_SETTLEMENT.token).toUpperCase();
   const token = DEPOSIT_TOKENS[chainId]?.find((t) => t.symbol.toUpperCase() === symbol);

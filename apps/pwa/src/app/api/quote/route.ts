@@ -3,6 +3,7 @@ import {
   PayoutService,
   PricingService,
   PAYCREST_SETTLEMENT,
+  bankSourceNetworksAvailable,
 } from '@fx-remit/services';
 
 export const dynamic = 'force-dynamic';
@@ -76,6 +77,8 @@ export async function GET(req: NextRequest) {
         valid_until: retailQuote.valid_until,
         formatted_rate: `1 ${source.toUpperCase()} = ${retailQuote.retail_rate} ${destination.toUpperCase()}`,
       },
+      // Networks a bank payout can be paid from right now (#196).
+      source_networks: bankSourceNetworksAvailable(),
     });
   } catch (error: unknown) {
     const message =
