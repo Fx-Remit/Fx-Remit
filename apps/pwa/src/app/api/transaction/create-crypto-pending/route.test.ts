@@ -157,3 +157,54 @@ describe('POST /api/transaction/create-crypto-pending amount precision', () => {
     assert.equal(createPending.mock.callCount(), 3);
   });
 });
+
+describe('POST /api/transaction/create-crypto-pending scope (#190)', () => {
+  function requestWith(body: Record<string, unknown>) {
+    return new Request('http://localhost/api/transaction/create-crypto-pending', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer test-token' },
+      body: JSON.stringify({
+        amountUsd: 5,
+        destinationAddress: '0x000000000000000000000000000000000000bEEF',
+        network: 'base',
+        token: 'USDC',
+        ...body,
+      }),
+    });
+  }
+
+  it('offers only Base and Celo', async () => {
+    stubBeforeCreate();
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new Error('should not reserve');
+    });
+    const res = await POST(requestWith({ network: 'arbitrum' }));
+    assert.equal(res.status, 422);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+
+  it('cashes out USDC only, for now', async () => {
+    stubBeforeCreate();
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new Error('should not reserve');
+    });
+    const res = await POST(requestWith({ token: 'USDT' }));
+    assert.equal(res.status, 422);
+    assert.match((await res.json()).error, /Only USDC/);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+
+  it("refuses the user's own FX Remit wallet as the destination", async () => {
+    mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({ userId: 'did:privy:user-1' }));
+    prisma.user.findUnique = mock.fn(async () => ({
+      id: 'user-1',
+      walletAddress: '0x000000000000000000000000000000000000BEEF',
+    })) as any;
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new Error('should not reserve');
+    });
+    const res = await POST(requestWith({}));
+    assert.equal(res.status, 422);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+});

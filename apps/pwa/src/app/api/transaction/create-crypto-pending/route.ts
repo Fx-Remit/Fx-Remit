@@ -8,6 +8,7 @@ import {
   ExternalIdConflictError,
   DEPOSIT_TOKENS,
   withUniqueOrderId,
+  cryptoFundingPathFor,
 } from '@fx-remit/services';
 import { z } from 'zod';
 import { isAddress } from 'viem';
@@ -31,7 +32,8 @@ const createCryptoPendingSchema = z.object({
     .string()
     .trim()
     .refine((a) => isAddress(a), 'destinationAddress must be a valid address'),
-  network: z.enum(['base', 'celo', 'arbitrum']),
+  // Crypto cash-out goes through PayoutForwarder, which runs on Base and Celo (#190).
+  network: z.enum(['base', 'celo']),
   token: z.string().trim().min(1, 'token is required'),
   externalId: z.string().optional(),
 });
@@ -145,13 +147,30 @@ export async function POST(req: Request) {
       );
     }
 
+    // PayoutForwarder moves USDC only; USDT follows with Forwarder V2 (#191).
+    if (tokenMeta.symbol.toUpperCase() !== 'USDC') {
+      return NextResponse.json({ error: 'Only USDC can be cashed out right now' }, { status: 422 });
+    }
+
     const user = await prisma.user.findUnique({
       where: { privyDid: claims.userId },
-      select: { id: true },
+      select: { id: true, walletAddress: true },
     });
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    if (user.walletAddress && user.walletAddress.toLowerCase() === destinationAddress.toLowerCase()) {
+      return NextResponse.json({ error: "You can't cash out to your own FX Remit wallet" }, { status: 422 });
+    }
+
+    const funding = cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, network);
+    if (funding === 'unavailable') {
+      return NextResponse.json(
+        { error: `Cash-out on ${network} is unavailable right now`, code: 'NETWORK_UNAVAILABLE' },
+        { status: 503 },
+      );
     }
 
     const appExternalId =
@@ -217,6 +236,9 @@ export async function POST(req: Request) {
       success: true,
       abandonToken,
       transaction: serializeTransaction(tx),
+      // How the client must send it: through PayoutForwarder, or the legacy wallet send.
+      funding:
+        resolvedNetwork === network ? funding : cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, resolvedNetwork),
       transfer: {
         network: resolvedNetwork,
         chainId: NETWORK_CHAIN_ID[resolvedNetwork],

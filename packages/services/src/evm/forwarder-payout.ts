@@ -19,7 +19,7 @@ import {
   type Hex,
   type TransactionReceipt,
 } from 'viem';
-import { base } from 'viem/chains';
+import { base, celo } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { PrivyClient } from '@privy-io/node';
 import { prisma } from '@fx-remit/database';
@@ -27,6 +27,9 @@ import { PAYCREST_SETTLEMENT, PayoutService } from '../paycrest/payout.service.j
 import { TransactionService } from '../transactions/transaction.service.js';
 import { INSTANT_SEND_MAX_USDC_RAW } from './instant-send.policy.js';
 import { InstantSendWalletError, resolveDelegatedWalletId } from './instant-send.broadcast.js';
+import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens.js';
+import { CryptoAddressService } from '../crypto-addresses/crypto-address.service.js';
+import { CRYPTO_INSTANT_SEND_MAX_USD } from './crypto-instant-send.policy.js';
 
 /** pg advisory lock id serializing relayer nonces across server instances. */
 const RELAYER_LOCK_ID = 4_665_873_266n;
@@ -66,17 +69,39 @@ const RECEIVE_WITH_AUTHORIZATION_TYPES = {
   ],
 } as const;
 
+/** Chains PayoutForwarder runs on (same CREATE2 address on each). */
+export type ForwarderChainId = 8453 | 42220;
+
+function usdcOn(chainId: ForwarderChainId): Address {
+  const usdc = DEPOSIT_TOKENS[chainId]?.find((t) => t.symbol === 'USDC');
+  if (!usdc) throw new Error(`No USDC configured for chain ${chainId}`);
+  return getAddress(usdc.address);
+}
+
+const FORWARDER_CHAINS: Record<ForwarderChainId, { chain: typeof base | typeof celo; rpcEnv: string }> = {
+  8453: { chain: base, rpcEnv: 'BASE_RPC_URL' },
+  42220: { chain: celo, rpcEnv: 'CELO_RPC_URL' },
+};
+
+export function isForwarderChainId(chainId: number): chainId is ForwarderChainId {
+  return chainId === 8453 || chainId === 42220;
+}
+
+function rpcUrl(chainId: ForwarderChainId): string | undefined {
+  return process.env[FORWARDER_CHAINS[chainId].rpcEnv]?.trim() || undefined;
+}
+
 export function payoutForwarderAddress(): Address | null {
   const raw = process.env.PAYOUT_FORWARDER_ADDRESS?.trim();
   return raw && isAddress(raw) ? getAddress(raw) : null;
 }
 
-export function isPayoutForwarderConfigured(): boolean {
+export function isPayoutForwarderConfigured(chainId: ForwarderChainId = 8453): boolean {
   return Boolean(
     payoutForwarderAddress() &&
       process.env.RELAYER_PRIVATE_KEY?.trim() &&
-      // A dedicated RPC: load-balanced public endpoints give stale nonces and receipts.
-      process.env.BASE_RPC_URL?.trim() &&
+      // A dedicated RPC per chain: load-balanced public endpoints give stale nonces and receipts.
+      rpcUrl(chainId) &&
       process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY?.trim() &&
       (process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim() || process.env.PRIVY_APP_ID?.trim()) &&
       process.env.PRIVY_APP_SECRET?.trim(),
@@ -95,6 +120,22 @@ export function isPayoutForwarderEnabledFor(user: { id: string; privyDid: string
     .map((s) => s.trim())
     .filter(Boolean);
   return allow.includes(user.id) || allow.includes(user.privyDid);
+}
+
+/**
+ * How a crypto cash-out on `network` is funded for this user:
+ * - 'forwarder' when the forwarder is on for them and configured on that chain;
+ * - 'direct' (legacy wallet send) only while the forwarder is off for them;
+ * - 'unavailable' when it's on but that chain isn't configured, or the network isn't supported.
+ */
+export function cryptoFundingPathFor(
+  user: { id: string; privyDid: string },
+  network: string,
+): 'forwarder' | 'direct' | 'unavailable' {
+  const chainId: ForwarderChainId | null = network === 'base' ? 8453 : network === 'celo' ? 42220 : null;
+  if (chainId === null) return 'unavailable';
+  if (!isPayoutForwarderEnabledFor(user)) return 'direct';
+  return isPayoutForwarderConfigured(chainId) ? 'forwarder' : 'unavailable';
 }
 
 /** Same value as PayoutForwarder.authorizationNonce(orderId, sink). */
@@ -120,10 +161,10 @@ export const forwarderDeps = {
   resolveWallet: resolveDelegatedWalletId,
   getSettlement: (paycrestOrderId: string) => PayoutService.getSettlementOrder(paycrestOrderId),
 
-  publicClient(): ForwarderPublicClient {
+  publicClient(chainId: ForwarderChainId = 8453): ForwarderPublicClient {
     return createPublicClient({
-      chain: base,
-      transport: http(process.env.BASE_RPC_URL?.trim() || undefined),
+      chain: FORWARDER_CHAINS[chainId].chain,
+      transport: http(rpcUrl(chainId)),
     }) as unknown as ForwarderPublicClient;
   },
 
@@ -150,12 +191,14 @@ export const forwarderDeps = {
    * Waiters poll with pg_try_advisory_xact_lock instead of blocking, so they don't hold
    * pooled connections while the lock holder needs one to save its tx.
    */
-  async withRelayerLock<T>(fn: () => Promise<T>): Promise<T> {
+  async withRelayerLock<T>(fn: () => Promise<T>, chainId: ForwarderChainId = 8453): Promise<T> {
+    // Nonces are per chain, so each chain gets its own lock (Base keeps the original id).
+    const lockId = chainId === 8453 ? RELAYER_LOCK_ID : RELAYER_LOCK_ID + BigInt(chainId);
     const deadline = Date.now() + RELAYER_LOCK_WAIT_MS;
     for (;;) {
       const result = await prisma.$transaction(
         async (tx) => {
-          const rows = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(${RELAYER_LOCK_ID}) AS locked`;
+          const rows = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(${lockId}) AS locked`;
           if (!rows[0]?.locked) return { acquired: false as const };
           return { acquired: true as const, value: await fn() };
         },
@@ -167,28 +210,25 @@ export const forwarderDeps = {
     }
   },
 
-  async signRelayerTx(to: Address, data: Hex): Promise<Hex> {
+  async signRelayerTx(to: Address, data: Hex, chainId: ForwarderChainId = 8453): Promise<Hex> {
     const account = privateKeyToAccount(process.env.RELAYER_PRIVATE_KEY!.trim() as Hex);
-    const wallet = createWalletClient({
-      account,
-      chain: base,
-      transport: http(process.env.BASE_RPC_URL?.trim() || undefined),
-    });
+    const chain = FORWARDER_CHAINS[chainId].chain;
+    const wallet = createWalletClient({ account, chain, transport: http(rpcUrl(chainId)) });
     // Casts: viem's generic request types don't resolve under the app's tsconfig.
-    const request = await wallet.prepareTransactionRequest({ account, chain: base, to, data } as unknown as Parameters<
+    const request = await wallet.prepareTransactionRequest({ account, chain, to, data } as unknown as Parameters<
       typeof wallet.prepareTransactionRequest
     >[0]);
     return wallet.signTransaction(request as unknown as Parameters<typeof wallet.signTransaction>[0]);
   },
 
-  async sendRaw(raw: Hex): Promise<void> {
-    await this.publicClient().sendRawTransaction({ serializedTransaction: raw });
+  async sendRaw(raw: Hex, chainId: ForwarderChainId = 8453): Promise<void> {
+    await this.publicClient(chainId).sendRawTransaction({ serializedTransaction: raw });
   },
 
   /** null only when the node says the tx is unknown; any other RPC failure throws. */
-  async getReceipt(hash: Hex): Promise<TransactionReceipt | null> {
+  async getReceipt(hash: Hex, chainId: ForwarderChainId = 8453): Promise<TransactionReceipt | null> {
     try {
-      return await this.publicClient().getTransactionReceipt({ hash });
+      return await this.publicClient(chainId).getTransactionReceipt({ hash });
     } catch (err) {
       if (err instanceof TransactionReceiptNotFoundError) return null;
       throw err;
@@ -196,8 +236,8 @@ export const forwarderDeps = {
   },
 
   /** On-chain truth: has PayoutForwarder already funded this order? */
-  async isFunded(forwarder: Address, orderId: bigint): Promise<boolean> {
-    return (await this.publicClient().readContract({
+  async isFunded(forwarder: Address, orderId: bigint, chainId: ForwarderChainId = 8453): Promise<boolean> {
+    return (await this.publicClient(chainId).readContract({
       address: forwarder,
       abi: PAYOUT_FORWARDER_ABI,
       functionName: 'funded',
@@ -214,7 +254,10 @@ type Remittance = NonNullable<Awaited<ReturnType<typeof TransactionService.findP
 type FundingContext = {
   userId: string;
   orderId: bigint;
+  /** Claim key: the Paycrest order id for bank payouts, the app key for crypto cash-outs. */
   paycrestOrderId: string;
+  chainId: ForwarderChainId;
+  usdc: Address;
   forwarder: Address;
   payer: Address;
   sink: Address;
@@ -328,8 +371,9 @@ export async function broadcastForwarderPayout(opts: {
 
   const payer = getAddress(opts.walletAddress);
   const sink = getAddress(receiveAddress);
-  const usdc = getAddress(PAYCREST_SETTLEMENT.tokenAddress);
-  const client = forwarderDeps.publicClient();
+  const chainId: ForwarderChainId = 8453;
+  const usdc = usdcOn(chainId);
+  const client = forwarderDeps.publicClient(chainId);
   const balance = (await client.readContract({
     address: usdc,
     abi: USDC_ABI,
@@ -353,14 +397,76 @@ export async function broadcastForwarderPayout(opts: {
     }
     throw new InstantSendWalletError('BROADCAST_IN_PROGRESS', 'Broadcast already in progress for this order');
   }
-  const claimTxHash = `broadcasting-${paycrestOrderId}`;
-  const fundingCtx: FundingContext = { userId: opts.userId, orderId: opts.orderId, paycrestOrderId, forwarder, payer, sink, amount };
+  const fundingCtx: FundingContext = {
+    userId: opts.userId,
+    orderId: opts.orderId,
+    paycrestOrderId,
+    chainId,
+    usdc,
+    forwarder,
+    payer,
+    sink,
+    amount,
+  };
+
+  return relayClaimedPayout(fundingCtx, async () => {
+    // The user's wallet authorizes exactly this order, destination and amount.
+    const expiresAt = Math.min(now + AUTHORIZATION_TTL_MS, Number.isFinite(validUntilMs) ? validUntilMs - 60_000 : Infinity);
+    const validBefore = BigInt(Math.floor(expiresAt / 1000));
+    const signature = await forwarderDeps.signAuthorization(walletId, await authorizationTypedData(fundingCtx, validBefore));
+    return encodePayoutCall(fundingCtx, validBefore, signature);
+  });
+}
+
+/** EIP-712 ReceiveWithAuthorization for one order: from payer, to the forwarder, nonce bound to (orderId, sink). */
+async function authorizationTypedData(ctx: FundingContext, validBefore: bigint) {
+  const client = forwarderDeps.publicClient(ctx.chainId);
+  const [name, version] = (await Promise.all([
+    client.readContract({ address: ctx.usdc, abi: USDC_ABI, functionName: 'name' }),
+    client.readContract({ address: ctx.usdc, abi: USDC_ABI, functionName: 'version' }),
+  ])) as [string, string];
+  return {
+    domain: { name, version, chainId: ctx.chainId, verifyingContract: ctx.usdc },
+    types: RECEIVE_WITH_AUTHORIZATION_TYPES,
+    primary_type: 'ReceiveWithAuthorization',
+    message: {
+      from: ctx.payer,
+      to: ctx.forwarder,
+      value: ctx.amount.toString(),
+      validAfter: '0',
+      validBefore: validBefore.toString(),
+      nonce: forwarderAuthorizationNonce(ctx.orderId, ctx.sink),
+    },
+  };
+}
+
+function encodePayoutCall(ctx: FundingContext, validBefore: bigint, signature: Hex): Hex {
+  const { v, yParity, r, s } = parseSignature(signature);
+  // Signers may return v (27/28) or yParity (0/1).
+  const recovery = v !== undefined ? Number(v) : Number(yParity) + 27;
+  return encodeFunctionData({
+    abi: PAYOUT_FORWARDER_ABI,
+    functionName: 'payout',
+    args: [ctx.orderId, ctx.payer, ctx.sink, ctx.amount, validBefore, recovery, r, s],
+  });
+}
+
+/**
+ * Shared send pipeline once an order is claimed (broadcasting-*): check the contract hasn't
+ * funded it, get the user's authorization and dry-run it, then sign, save and broadcast the
+ * relayer tx under the chain's lock, and settle on the receipt. Bank and crypto both use it.
+ */
+async function relayClaimedPayout(
+  ctx: FundingContext,
+  buildPayoutCall: () => Promise<Hex>,
+): Promise<{ txHash: string; alreadyBroadcast: boolean }> {
+  const claimTxHash = `broadcasting-${ctx.paycrestOrderId}`;
   /** Release a claim when nothing was sent. If it didn't release, never report "nothing moved". */
   const releaseClaim = async () => {
     const released = await TransactionService.releaseBroadcastClaim({
-      userId: opts.userId,
-      orderId: opts.orderId,
-      paycrestOrderId,
+      userId: ctx.userId,
+      orderId: ctx.orderId,
+      paycrestOrderId: ctx.paycrestOrderId,
       resetFundingPath: true,
     });
     if (!released) {
@@ -369,48 +475,21 @@ export async function broadcastForwarderPayout(opts: {
   };
 
   // Anyone holding a previously exposed authorization can call payout(); the contract
-  // is the truth on whether USDC already left for this order.
-  await assertNotFundedOnChain(fundingCtx);
+  // is the truth on whether funds already left for this order.
+  await assertNotFundedOnChain(ctx);
 
-  // 1. The user's wallet authorizes exactly this order, destination and amount.
+  // 1. The user's authorization for exactly this order, destination and amount.
   let data: Hex;
   try {
-    const [name, version] = (await Promise.all([
-      client.readContract({ address: usdc, abi: USDC_ABI, functionName: 'name' }),
-      client.readContract({ address: usdc, abi: USDC_ABI, functionName: 'version' }),
-    ])) as [string, string];
-    const expiresAt = Math.min(now + AUTHORIZATION_TTL_MS, Number.isFinite(validUntilMs) ? validUntilMs - 60_000 : Infinity);
-    const validBefore = BigInt(Math.floor(expiresAt / 1000));
-    const nonce = forwarderAuthorizationNonce(opts.orderId, sink);
-    const signature = await forwarderDeps.signAuthorization(walletId, {
-      domain: { name, version, chainId: PAYCREST_SETTLEMENT.chainId, verifyingContract: usdc },
-      types: RECEIVE_WITH_AUTHORIZATION_TYPES,
-      primary_type: 'ReceiveWithAuthorization',
-      message: {
-        from: payer,
-        to: forwarder,
-        value: amount.toString(),
-        validAfter: '0',
-        validBefore: validBefore.toString(),
-        nonce,
-      },
-    });
-    const { v, yParity, r, s } = parseSignature(signature);
-    // Signers may return v (27/28) or yParity (0/1).
-    const recovery = v !== undefined ? Number(v) : Number(yParity) + 27;
-    data = encodeFunctionData({
-      abi: PAYOUT_FORWARDER_ABI,
-      functionName: 'payout',
-      args: [opts.orderId, payer, sink, amount, validBefore, recovery, r, s],
-    });
+    data = await buildPayoutCall();
     // Dry run before any gas is spent; a revert here means nothing was sent.
-    await client.call({ account: forwarderDeps.relayerAddress(), to: forwarder, data });
+    await forwarderDeps.publicClient(ctx.chainId).call({ account: forwarderDeps.relayerAddress(), to: ctx.forwarder, data });
   } catch (err) {
     // A dry run also reverts when the order was funded by someone else: check before releasing.
-    await assertNotFundedOnChain(fundingCtx);
+    await assertNotFundedOnChain(ctx);
     await releaseClaim();
     console.error('[ForwarderPayout] authorization or dry run failed; claim released', {
-      orderId: opts.orderId.toString(),
+      orderId: ctx.orderId.toString(),
       message: err instanceof Error ? err.message : String(err),
     });
     throw new InstantSendWalletError('PAYOUT_NOT_AUTHORIZED', "Couldn't send this payout. Tap Send to try again.");
@@ -420,33 +499,33 @@ export async function broadcastForwarderPayout(opts: {
   let saved: { hash: Hex } | null = null;
   try {
     await forwarderDeps.withRelayerLock(async () => {
-      const raw = await forwarderDeps.signRelayerTx(forwarder, data);
+      const raw = await forwarderDeps.signRelayerTx(ctx.forwarder, data, ctx.chainId);
       const hash = keccak256(raw);
       const ok = await TransactionService.saveFundingTx({
-        userId: opts.userId,
-        orderId: opts.orderId,
+        userId: ctx.userId,
+        orderId: ctx.orderId,
         claimTxHash,
         fundingTxHash: hash,
         fundingTxRaw: raw,
       });
       if (!ok) throw new Error('could not save the funding tx');
       saved = { hash };
-      await forwarderDeps.sendRaw(raw);
-    });
+      await forwarderDeps.sendRaw(raw, ctx.chainId);
+    }, ctx.chainId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (!saved) {
       // Nothing was broadcast.
       await releaseClaim();
       console.error('[ForwarderPayout] relayer signing failed before broadcast; claim released', {
-        orderId: opts.orderId.toString(),
+        orderId: ctx.orderId.toString(),
         message,
       });
       throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't send this payout. Tap Send to try again.");
     }
     // The tx may be out. Keep the claim; the next call resumes the saved tx.
     console.error('[ForwarderPayout] broadcast result unknown; claim and saved tx kept', {
-      orderId: opts.orderId.toString(),
+      orderId: ctx.orderId.toString(),
       message,
     });
     throw new InstantSendWalletError(
@@ -456,11 +535,17 @@ export async function broadcastForwarderPayout(opts: {
   }
 
   const fundingHash = (saved as { hash: Hex } | null)!.hash;
-  return settleStoredFunding(fundingCtx, fundingHash);
+  return settleStoredFunding(ctx, fundingHash);
 }
 
 /** A claim with a saved relayer tx: find out what happened to it, resend it, or retire it. */
-type SavedFundingRow = Pick<Remittance, 'userId' | 'orderId' | 'txHash' | 'fundingTxHash' | 'fundingTxRaw'>;
+type SavedFundingRow = Pick<Remittance, 'userId' | 'orderId' | 'txHash' | 'fundingTxHash' | 'fundingTxRaw'> &
+  Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc'>>;
+
+/** Chain of a row with no saved tx yet: crypto rows name it, bank payouts settle on Base. */
+function chainOfRow(row: { recipientBank?: string | null }): ForwarderChainId {
+  return (row.recipientBank ?? '') === 'crypto:celo' ? 42220 : 8453;
+}
 
 /** Decode and sanity-check the relayer tx saved on a claimed row. */
 function decodeSavedFunding(row: SavedFundingRow, forwarder: Address) {
@@ -476,6 +561,8 @@ function decodeSavedFunding(row: SavedFundingRow, forwarder: Address) {
   if (!paycrestOrderId || keccak256(raw) !== hash) throw inconsistent();
   const tx = parseTransaction(raw);
   if (!tx.data) throw inconsistent();
+  const chainId = tx.chainId ?? 8453;
+  if (!isForwarderChainId(chainId)) throw inconsistent();
   const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_ABI, data: tx.data });
   const [orderId, payer, sink, amount, validBefore] = call.args as readonly [bigint, Address, Address, bigint, bigint, ...unknown[]];
   if (!tx.to || getAddress(tx.to) !== forwarder || orderId !== row.orderId) throw inconsistent();
@@ -483,6 +570,8 @@ function decodeSavedFunding(row: SavedFundingRow, forwarder: Address) {
     userId: row.userId,
     orderId,
     paycrestOrderId,
+    chainId,
+    usdc: usdcOn(chainId),
     forwarder,
     payer: getAddress(payer),
     sink: getAddress(sink),
@@ -499,7 +588,7 @@ function authorizationExpired(validBefore: bigint): boolean {
 async function resumeStoredFunding(remittance: Remittance, forwarder: Address) {
   const { ctx, hash, raw, validBefore } = decodeSavedFunding(remittance, forwarder);
   try {
-    if (!(await forwarderDeps.getReceipt(hash))) {
+    if (!(await forwarderDeps.getReceipt(hash, ctx.chainId))) {
       // No receipt. Once the user's authorization has expired (plus a grace period),
       // this tx can never fund the order, so a "not funded" read can be trusted even
       // from a lagging node. Before that, never retire it: resend the same payload.
@@ -507,7 +596,7 @@ async function resumeStoredFunding(remittance: Remittance, forwarder: Address) {
         await discardIfUnfunded(ctx, hash, 'PAYOUT_DROPPED');
       }
       try {
-        await forwarderDeps.sendRaw(raw);
+        await forwarderDeps.sendRaw(raw, ctx.chainId);
       } catch {
         // Already known to the node, or still pending: the receipt wait decides.
       }
@@ -552,7 +641,15 @@ export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; 
       updatedAt: { lte: cutoff },
       ...(opts.orderId !== undefined ? { orderId: opts.orderId } : {}),
     },
-    select: { userId: true, orderId: true, txHash: true, fundingTxHash: true, fundingTxRaw: true },
+    select: {
+      userId: true,
+      orderId: true,
+      txHash: true,
+      fundingTxHash: true,
+      fundingTxRaw: true,
+      recipientBank: true,
+      recipientAcc: true,
+    },
     orderBy: { updatedAt: 'asc' },
     take: opts.limit ?? 50,
   });
@@ -589,10 +686,13 @@ async function recoverOneClaim(row: SavedFundingRow, forwarder: Address): Promis
     // Claimed, but the request died before a tx was saved, so nothing was broadcast.
     const paycrestOrderId = TransactionService.paycrestOrderIdFromTxHash(row.txHash);
     if (!paycrestOrderId) return 'error';
+    const chainId = chainOfRow(row);
     await assertNotFundedOnChain({
       userId: row.userId,
       orderId: row.orderId,
       paycrestOrderId,
+      chainId,
+      usdc: usdcOn(chainId),
       forwarder,
       payer: zeroAddress,
       sink: zeroAddress,
@@ -610,7 +710,7 @@ async function recoverOneClaim(row: SavedFundingRow, forwarder: Address): Promis
   const { ctx, hash, raw, validBefore } = decodeSavedFunding(row, forwarder);
   let receipt: TransactionReceipt | null;
   try {
-    receipt = await forwarderDeps.getReceipt(hash);
+    receipt = await forwarderDeps.getReceipt(hash, ctx.chainId);
   } catch (err) {
     throw uncertain(ctx, hash, err);
   }
@@ -629,6 +729,7 @@ async function recoverOneClaim(row: SavedFundingRow, forwarder: Address): Promis
       return 'kept-for-ops';
     }
     await TransactionService.attachOnChainHash({ userId: ctx.userId, orderId: ctx.orderId, txHash: hash });
+    await markCryptoDestinationConfirmed(ctx.userId, row);
     return 'attached';
   }
   if (authorizationExpired(validBefore)) await discardIfUnfunded(ctx, hash, 'PAYOUT_DROPPED');
@@ -637,7 +738,7 @@ async function recoverOneClaim(row: SavedFundingRow, forwarder: Address): Promis
     return 'waiting';
   }
   try {
-    await forwarderDeps.sendRaw(raw);
+    await forwarderDeps.sendRaw(raw, ctx.chainId);
   } catch {
     // Already known, or replaced: the next pass decides.
   }
@@ -663,7 +764,7 @@ function uncertain(ctx: FundingContext, hash: Hex, err?: unknown) {
 async function assertNotFundedOnChain(ctx: FundingContext): Promise<void> {
   let funded: boolean;
   try {
-    funded = await forwarderDeps.isFunded(ctx.forwarder, ctx.orderId);
+    funded = await forwarderDeps.isFunded(ctx.forwarder, ctx.orderId, ctx.chainId);
   } catch (err) {
     throw uncertain(ctx, '0x' as Hex, err);
   }
@@ -686,7 +787,7 @@ async function assertNotFundedOnChain(ctx: FundingContext): Promise<void> {
  * stays held: releasing it would let the reserve be restored after USDC already left.
  */
 async function discardIfUnfunded(ctx: FundingContext, hash: Hex, codeIfDiscarded: 'PAYOUT_DROPPED' | 'PAYOUT_REVERTED'): Promise<never> {
-  if (await forwarderDeps.isFunded(ctx.forwarder, ctx.orderId)) {
+  if (await forwarderDeps.isFunded(ctx.forwarder, ctx.orderId, ctx.chainId)) {
     console.error(
       JSON.stringify({
         alert: 'FORWARDER_ORDER_FUNDED_BY_OTHER_TX',
@@ -716,7 +817,7 @@ async function settleStoredFunding(ctx: FundingContext, hash: Hex) {
   let receipt: TransactionReceipt | null = null;
   try {
     const deadline = forwarderDeps.now() + RECEIPT_WAIT_MS;
-    while (!(receipt = await forwarderDeps.getReceipt(hash)) && forwarderDeps.now() < deadline) {
+    while (!(receipt = await forwarderDeps.getReceipt(hash, ctx.chainId)) && forwarderDeps.now() < deadline) {
       await forwarderDeps.sleep(RECEIPT_POLL_MS);
     }
   } catch (err) {
@@ -761,9 +862,216 @@ async function settleStoredFunding(ctx: FundingContext, hash: Hex) {
   return { txHash: hash as string, alreadyBroadcast: false };
 }
 
+/** Crypto cash-outs start the destination's trust cooldown once a send confirms. Best effort. */
+async function markCryptoDestinationConfirmed(
+  userId: string,
+  row: { recipientBank?: string | null; recipientAcc?: string | null },
+): Promise<void> {
+  const bank = row.recipientBank ?? '';
+  if (!bank.startsWith('crypto:') || !row.recipientAcc) return;
+  try {
+    await CryptoAddressService.markFirstConfirmed(userId, bank.slice('crypto:'.length), row.recipientAcc.trim().toLowerCase());
+  } catch (err) {
+    console.error('[ForwarderPayout] could not mark crypto destination confirmed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/** Allowed slack between the authorization the client signed and the TTL we hand out. */
+const USER_AUTHORIZATION_SLACK_MS = 2 * 60_000;
+const USDC_DECIMALS = 6;
+
+type CryptoTerms = { network: 'base' | 'celo'; chainId: ForwarderChainId; usdc: Address; payer: Address; sink: Address; amount: bigint };
+
+/** Everything about a crypto cash-out comes from the reserved row; the client sends only the orderId. */
+function cryptoPayoutTerms(remittance: Remittance, walletAddress: string): CryptoTerms {
+  const bank = remittance.recipientBank ?? '';
+  const network = bank.startsWith('crypto:') ? bank.slice('crypto:'.length) : '';
+  if (network !== 'base' && network !== 'celo') {
+    throw new InstantSendWalletError('NOT_CRYPTO_CASH_OUT', 'This cash-out network is not supported');
+  }
+  if ((remittance.sourceToken || '').toUpperCase() !== 'USDC') {
+    throw new InstantSendWalletError('UNSUPPORTED_TOKEN', 'Only USDC cash-outs are supported right now');
+  }
+  const destination = (remittance.recipientAcc || '').trim();
+  if (!isAddress(destination)) {
+    throw new InstantSendWalletError('INVALID_DESTINATION', 'The destination address is not valid');
+  }
+  const payer = getAddress(walletAddress);
+  const sink = getAddress(destination);
+  if (sink === payer) {
+    // The contract rejects sink == payer; nothing would move.
+    throw new InstantSendWalletError('SINK_IS_PAYER', "You can't cash out to your own FX Remit wallet");
+  }
+  const amount = parseUnits(remittance.amountUsd.toString(), USDC_DECIMALS);
+  if (amount <= 0n) {
+    throw new InstantSendWalletError('INVALID_AMOUNT', 'Transfer amount must be positive');
+  }
+  // The Privy rule allows up to $10k to the forwarder for any sink; the crypto cap is ours to hold.
+  if (amount > BigInt(CRYPTO_INSTANT_SEND_MAX_USD) * 10n ** BigInt(USDC_DECIMALS)) {
+    throw new InstantSendWalletError('AMOUNT_CAP', `Crypto cash-outs are limited to $${CRYPTO_INSTANT_SEND_MAX_USD}`);
+  }
+  const chainId: ForwarderChainId = network === 'celo' ? 42220 : 8453;
+  return { network, chainId, usdc: usdcOn(chainId), payer, sink, amount };
+}
+
+/** Load a crypto remittance that can still be funded through the forwarder on its chain. */
+async function loadCryptoRemittance(opts: { userId: string; orderId: bigint }) {
+  const remittance = await TransactionService.findRemittanceForBroadcast({ userId: opts.userId, orderId: opts.orderId });
+  if (!remittance || remittance.type !== 'REMITTANCE') {
+    throw new InstantSendWalletError('ORDER_NOT_FOUND', 'Transaction not found');
+  }
+  return remittance;
+}
+
+/**
+ * The typed data a user signs in their wallet to send a crypto cash-out to a new
+ * (not yet trusted) address. Built entirely from the reserved row.
+ */
+export async function prepareCryptoAuthorization(opts: { userId: string; walletAddress: string; orderId: bigint }) {
+  const remittance = await loadCryptoRemittance(opts);
+  if (!remittance.txHash.startsWith('pending-')) {
+    throw new InstantSendWalletError('NOT_PENDING', 'This cash-out is not awaiting a send');
+  }
+  const terms = cryptoPayoutTerms(remittance, opts.walletAddress);
+  const forwarder = payoutForwarderAddress();
+  if (!forwarder || !isPayoutForwarderConfigured(terms.chainId)) {
+    throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't send this payout. Tap Send to try again.");
+  }
+  const validBefore = BigInt(Math.floor((forwarderDeps.now() + AUTHORIZATION_TTL_MS) / 1000));
+  const typed = await authorizationTypedData(
+    { userId: opts.userId, orderId: opts.orderId, paycrestOrderId: '', forwarder, ...terms },
+    validBefore,
+  );
+  return {
+    validBefore: validBefore.toString(),
+    typedData: { domain: typed.domain, types: typed.types, primaryType: typed.primary_type, message: typed.message },
+  };
+}
+
+/**
+ * Crypto cash-out through PayoutForwarder: USDC on Base or Celo, from the user's wallet to their
+ * chosen address, gas paid by the relayer. Same money-path rules as bank payouts (saved relayer tx,
+ * resume on timeout, receipt-checked attach, recovery). Two ways to authorize:
+ * - no `userAuthorization`: the server signs, only for a trusted address on a delegated wallet;
+ * - `userAuthorization`: the user signed `prepareCryptoAuthorization`'s typed data in their wallet.
+ */
+export async function broadcastForwarderCryptoTransfer(opts: {
+  privyDid: string;
+  userId: string;
+  walletAddress: string;
+  orderId: bigint;
+  userAuthorization?: { signature: Hex; validBefore: string };
+}): Promise<{ txHash: string; alreadyBroadcast: boolean }> {
+  const remittance = await loadCryptoRemittance(opts);
+  if (TransactionService.isOnChainTxHash(remittance.txHash)) {
+    return { txHash: remittance.txHash, alreadyBroadcast: true };
+  }
+  const terms = cryptoPayoutTerms(remittance, opts.walletAddress);
+  const forwarder = payoutForwarderAddress();
+  if (!forwarder || !isPayoutForwarderConfigured(terms.chainId)) {
+    if (TransactionService.isBroadcastClaimHash(remittance.txHash)) {
+      throw new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
+    }
+    throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't send this payout. Tap Send to try again.");
+  }
+  if (remittance.fundingPath === 'direct') {
+    throw new InstantSendWalletError('FUNDING_PATH_MISMATCH', 'This cash-out already started on the direct path');
+  }
+  if (TransactionService.isBroadcastClaimHash(remittance.txHash)) {
+    if (remittance.fundingTxHash && remittance.fundingTxRaw) {
+      const result = await resumeStoredFunding(remittance, forwarder);
+      await markCryptoDestinationConfirmed(opts.userId, remittance);
+      return result;
+    }
+    throw new InstantSendWalletError('BROADCAST_IN_PROGRESS', 'Broadcast already in progress for this order');
+  }
+  if (!remittance.txHash.startsWith('pending-')) {
+    throw new InstantSendWalletError('NOT_PENDING', 'This cash-out is not awaiting a send');
+  }
+  const claimKey = TransactionService.paycrestOrderIdFromTxHash(remittance.txHash);
+  if (!claimKey) {
+    throw new InstantSendWalletError('NOT_PENDING', 'This cash-out is not awaiting a send');
+  }
+
+  // Who authorizes: the user (any address, explicit wallet prompt) or the server (trusted address only).
+  const now = forwarderDeps.now();
+  let userValidBefore: bigint | null = null;
+  let walletId: string | null = null;
+  if (opts.userAuthorization) {
+    const raw = opts.userAuthorization.validBefore;
+    const ms = /^\d{1,12}$/.test(raw) ? Number(raw) * 1000 : NaN;
+    if (!(ms > now + 30_000 && ms <= now + AUTHORIZATION_TTL_MS + USER_AUTHORIZATION_SLACK_MS)) {
+      throw new InstantSendWalletError('AUTHORIZATION_EXPIRED', 'This authorization expired. Tap Send to try again.');
+    }
+    userValidBefore = BigInt(raw);
+  } else {
+    const destination = terms.sink.toLowerCase();
+    const trusted = await CryptoAddressService.listForUser(opts.userId, { backfill: false }).then((rows) =>
+      rows.find((r) => r.network === terms.network && r.address.toLowerCase() === destination),
+    );
+    if (!trusted || !trusted.fastPathEligible) {
+      throw new InstantSendWalletError('ADDRESS_NOT_TRUSTED', 'Confirm this send in your wallet');
+    }
+    const resolved = await forwarderDeps.resolveWallet({ privyDid: opts.privyDid, walletAddress: opts.walletAddress });
+    if (!resolved.delegated) {
+      throw new InstantSendWalletError('NOT_DELEGATED', 'Enable Instant Send to allow FX-Remit to complete this send');
+    }
+    walletId = resolved.walletId;
+  }
+
+  const balance = (await forwarderDeps.publicClient(terms.chainId).readContract({
+    address: terms.usdc,
+    abi: USDC_ABI,
+    functionName: 'balanceOf',
+    args: [terms.payer],
+  })) as bigint;
+  if (balance < terms.amount) {
+    throw new InstantSendWalletError('INSUFFICIENT_USDC', 'Not enough USDC in the wallet for this cash-out');
+  }
+
+  const claimed = await TransactionService.claimBroadcastSlot({
+    userId: opts.userId,
+    orderId: opts.orderId,
+    pendingTxHash: remittance.txHash,
+    fundingPath: 'forwarder',
+  });
+  if (!claimed) {
+    const again = await TransactionService.findRemittanceForBroadcast({ userId: opts.userId, orderId: opts.orderId });
+    if (again && TransactionService.isOnChainTxHash(again.txHash)) {
+      return { txHash: again.txHash, alreadyBroadcast: true };
+    }
+    throw new InstantSendWalletError('BROADCAST_IN_PROGRESS', 'Broadcast already in progress for this order');
+  }
+  const ctx: FundingContext = {
+    userId: opts.userId,
+    orderId: opts.orderId,
+    paycrestOrderId: claimKey,
+    chainId: terms.chainId,
+    usdc: terms.usdc,
+    forwarder,
+    payer: terms.payer,
+    sink: terms.sink,
+    amount: terms.amount,
+  };
+
+  const result = await relayClaimedPayout(ctx, async () => {
+    if (userValidBefore !== null) {
+      // The dry run proves the signature covers exactly this order, destination and amount.
+      return encodePayoutCall(ctx, userValidBefore, opts.userAuthorization!.signature);
+    }
+    const validBefore = BigInt(Math.floor((now + AUTHORIZATION_TTL_MS) / 1000));
+    const signature = await forwarderDeps.signAuthorization(walletId!, await authorizationTypedData(ctx, validBefore));
+    return encodePayoutCall(ctx, validBefore, signature);
+  });
+  await markCryptoDestinationConfirmed(opts.userId, remittance);
+  return result;
+}
+
 /** The receipt shows PayoutFunded for this order plus both USDC legs of `amount`. */
 export function fundingReceiptMatches(receipt: TransactionReceipt, ctx: FundingContext): boolean {
-  const usdc = PAYCREST_SETTLEMENT.tokenAddress.toLowerCase();
+  const usdc = ctx.usdc.toLowerCase();
   let funded = false;
   let pulled = false;
   let forwarded = false;

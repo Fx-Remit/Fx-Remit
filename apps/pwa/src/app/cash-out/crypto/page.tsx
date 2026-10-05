@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronDown, X, AlertCircle, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useState, useMemo, Suspense, useRef } from 'react';
-import { usePrivy, useWallets, useSigners } from '@privy-io/react-auth';
+import { usePrivy, useWallets, useSigners, useSignTypedData, type SignTypedDataParams } from '@privy-io/react-auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserStore } from '@/store/user-store';
 import { parseUnits, encodeFunctionData, isAddress } from 'viem';
@@ -46,6 +46,19 @@ type CryptoReserveSession = {
   txHash?: string;
 };
 
+/** Networks crypto cash-out offers: PayoutForwarder runs on Base and Celo (#190). */
+const CASH_OUT_NETWORKS = ['base', 'celo'] as const;
+
+/** Server codes meaning the send may already be on-chain: never send again. */
+const MAYBE_SENT_CODES = new Set(['BROADCAST_IN_PROGRESS', 'BROADCAST_UNCERTAIN']);
+
+const EIP712_DOMAIN_TYPE = [
+  { name: 'name', type: 'string' },
+  { name: 'version', type: 'string' },
+  { name: 'chainId', type: 'uint256' },
+  { name: 'verifyingContract', type: 'address' },
+];
+
 async function ensureChain(
   wallet: { switchChain: (chainId: number | string) => Promise<void> },
   provider: Eip1193Provider,
@@ -73,10 +86,10 @@ async function ensureChain(
 
 function CryptoCashOutContent() {
   const searchParams = useSearchParams();
-  const token = (searchParams.get('token') || 'USDT').toUpperCase();
+  const token = (searchParams.get('token') || 'USDC').toUpperCase();
 
-  /** Native CELO and cUSD are not supported for cash-out (USD ledger; USDC/USDT only). */
-  const tokenUnsupported = token === 'CELO' || token === 'CUSD';
+  /** Crypto cash-out moves USDC through PayoutForwarder; USDT follows with Forwarder V2 (#191). */
+  const tokenUnsupported = token !== 'USDC';
   const [walletAddress, setWalletAddress] = useState('');
   /** null = not yet manually chosen; falls back to whichever chain actually holds the token. */
   const [manualNetwork, setManualNetwork] = useState<'base' | 'celo' | 'arbitrum' | null>(null);
@@ -93,6 +106,7 @@ function CryptoCashOutContent() {
   const { getAccessToken, authenticated, user: privyUser } = usePrivy();
   const { wallets } = useWallets();
   const { addSigners } = useSigners();
+  const { signTypedData } = useSignTypedData();
   const { profile: dbUser } = useUserStore();
   const queryClient = useQueryClient();
 
@@ -126,10 +140,14 @@ function CryptoCashOutContent() {
    * eligible send" consent tap. Declining or failing this never blocks the
    * send itself; it just falls back to the wallet-signed path below.
    */
-  const enableInstantCryptoSend = async (): Promise<boolean> => {
+  const enableInstantCryptoSend = async (funding: 'forwarder' | 'direct'): Promise<boolean> => {
     if (!embeddedWallet?.address || !isEmbeddedPrivy) return false;
     const keyQuorumId = process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID?.trim();
-    const policyId = process.env.NEXT_PUBLIC_PRIVY_POLICY_ID_CRYPTO?.trim();
+    // Through the forwarder, crypto uses the same payout policy as bank, so neither
+    // flow overwrites the other's permission (#192).
+    const policyId = (
+      funding === 'forwarder' ? process.env.NEXT_PUBLIC_PRIVY_POLICY_ID : process.env.NEXT_PUBLIC_PRIVY_POLICY_ID_CRYPTO
+    )?.trim();
     if (!keyQuorumId || !policyId) {
       console.error(
         '[CRYPTO CASHOUT] Instant Send not configured (missing key quorum or crypto policy id)',
@@ -183,9 +201,10 @@ function CryptoCashOutContent() {
 
   // Derived, not stored: falls back to whichever chain has the highest
   // balance for this token, only once a manual pick overrides it.
-  const autoNetwork: 'base' | 'celo' | 'arbitrum' = (
-    Object.keys(NETWORK_DATA) as Array<'base' | 'celo' | 'arbitrum'>
-  ).reduce((best, key) => ((balanceByNetwork[key] ?? 0) > (balanceByNetwork[best] ?? 0) ? key : best), 'base' as 'base' | 'celo' | 'arbitrum');
+  const autoNetwork: 'base' | 'celo' | 'arbitrum' = CASH_OUT_NETWORKS.reduce<'base' | 'celo'>(
+    (best, key) => ((balanceByNetwork[key] ?? 0) > (balanceByNetwork[best] ?? 0) ? key : best),
+    'base',
+  );
   const network = manualNetwork ?? autoNetwork;
 
   // Real on-chain holding on the network this send would actually execute
@@ -243,7 +262,8 @@ function CryptoCashOutContent() {
 
   const selectSavedAddress = (row: SavedAddressRow) => {
     setWalletAddress(row.address);
-    if (row.network === 'base' || row.network === 'celo' || row.network === 'arbitrum') {
+    // Same address works on any EVM network; only switch to one cash-out supports.
+    if (row.network === 'base' || row.network === 'celo') {
       setManualNetwork(row.network);
     }
   };
@@ -285,7 +305,7 @@ function CryptoCashOutContent() {
     try {
       if (tokenUnsupported) {
         throw new Error(
-          "This token isn't supported for cash-out. Use USDC or USDT.",
+          'Only USDC can be cashed out right now. USDT is coming soon.',
         );
       }
 
@@ -421,10 +441,11 @@ function CryptoCashOutContent() {
 
       const provider = (await wallet.getEthereumProvider()) as Eip1193Provider;
       const amountRaw = parseUnits(reservedUsd, transfer.decimals);
+      const funding: 'forwarder' | 'direct' = pendingData.funding === 'forwarder' ? 'forwarder' : 'direct';
 
       let canServerBroadcast = isEmbeddedPrivy && isDelegated;
       if (isEmbeddedPrivy && !canServerBroadcast) {
-        const granted = await enableInstantCryptoSend();
+        const granted = await enableInstantCryptoSend(funding);
         if (granted) {
           setLocalDelegated(true);
           canServerBroadcast = true;
@@ -438,60 +459,132 @@ function CryptoCashOutContent() {
           row.fastPathEligible,
       );
 
-      let txHash: string | null = null;
-
-      if (isTrustedDestination && canServerBroadcast) {
-        const broadcastRes = await fetch('/api/transaction/broadcast-crypto-settlement', {
+      const postBroadcast = async (body: Record<string, string>) => {
+        const res = await fetch('/api/transaction/broadcast-crypto-settlement', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ orderId }),
+          body: JSON.stringify(body),
         });
-        const broadcastData = await broadcastRes.json().catch(() => ({}));
+        const data = await res.json().catch(() => ({}));
+        return { txHash: res.ok && typeof data.txHash === 'string' ? (data.txHash as string) : null, data };
+      };
 
-        if (broadcastRes.ok && typeof broadcastData.txHash === 'string') {
-          txHash = broadcastData.txHash;
-        } else if (
-          broadcastData.code === 'BROADCAST_IN_PROGRESS' ||
-          broadcastData.code === 'BROADCAST_UNCERTAIN'
-        ) {
-          // May already be on-chain — do not attempt a second send.
-          broadcasted = true;
-          reserveSessionRef.current = null;
-          setSyncRetryAvailable(false);
-          await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
-          await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
-          await queryClient.invalidateQueries({ queryKey: ['crypto-addresses'] });
-          setStatus('success');
-          setError(
-            broadcastData.code === 'BROADCAST_UNCERTAIN'
-              ? 'Send may have been submitted — check history before sending again.'
-              : 'Send is already in progress — check history before sending again.',
-          );
-          return;
+      /** The send may already be on-chain: show history, never send again. */
+      const finishMaybeSent = async (code: string) => {
+        broadcasted = true;
+        reserveSessionRef.current = null;
+        setSyncRetryAvailable(false);
+        await queryClient.invalidateQueries({ queryKey: ['live-wallet-balance'] });
+        await queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+        await queryClient.invalidateQueries({ queryKey: ['crypto-addresses'] });
+        setStatus('success');
+        setError(
+          code === 'BROADCAST_UNCERTAIN'
+            ? 'Send may have been submitted — check history before sending again.'
+            : 'Send is already in progress — check history before sending again.',
+        );
+      };
+
+      let txHash: string | null = null;
+
+      if (funding === 'forwarder') {
+        // Through PayoutForwarder: FX Remit pays the network fee and the send shows on our contract.
+        if (isTrustedDestination && canServerBroadcast) {
+          const silent = await postBroadcast({ orderId });
+          if (silent.txHash) {
+            txHash = silent.txHash;
+          } else if (MAYBE_SENT_CODES.has(silent.data.code)) {
+            await finishMaybeSent(silent.data.code);
+            return;
+          }
+          // Not trusted yet, or the payout permission is missing: the user signs below.
         }
-        // Any other error (ADDRESS_NOT_TRUSTED, NOT_DELEGATED, not configured,
-        // etc.) falls through to the real wallet send below — fail safe.
-      }
 
-      if (txHash == null) {
-        await ensureChain(wallet, provider, transfer.network);
-        txHash = (await provider.request({
-          method: 'eth_sendTransaction',
-          params: [
-            {
-              from: wallet.address,
-              to: transfer.tokenAddress,
-              data: encodeFunctionData({
-                abi: ERC20_ABI,
-                functionName: 'transfer',
-                args: [transfer.destinationAddress as `0x${string}`, amountRaw],
-              }),
+        if (txHash == null) {
+          const prepRes = await fetch('/api/transaction/crypto-authorization', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
             },
-          ],
-        })) as string;
+            body: JSON.stringify({ orderId }),
+          });
+          const prep = await prepRes.json().catch(() => ({}));
+          if (!prepRes.ok || !prep.typedData || typeof prep.validBefore !== 'string') {
+            throw new Error(reserveErrorMessage(prep, "Couldn't prepare this cash-out. Try again."));
+          }
+          const typedData = {
+            ...prep.typedData,
+            types: { EIP712Domain: EIP712_DOMAIN_TYPE, ...prep.typedData.types },
+          };
+          const shortDestination = `${transfer.destinationAddress.slice(0, 6)}…${transfer.destinationAddress.slice(-4)}`;
+          let signature: string;
+          if (isEmbeddedPrivy) {
+            ({ signature } = await signTypedData(typedData as SignTypedDataParams, {
+              address: wallet.address,
+              uiOptions: {
+                title: 'Confirm cash-out',
+                description: `Send ${reservedUsd} USDC to ${shortDestination} on ${NETWORK_DATA[transfer.network]?.name}. FX Remit pays the network fee.`,
+                buttonText: 'Confirm',
+              },
+            }));
+          } else {
+            // External wallets check the typed data's chain against the connected one.
+            await ensureChain(wallet, provider, transfer.network);
+            signature = (await provider.request({
+              method: 'eth_signTypedData_v4',
+              params: [wallet.address, JSON.stringify(typedData)],
+            })) as string;
+          }
+
+          const signed = await postBroadcast({ orderId, signature, validBefore: prep.validBefore });
+          if (signed.txHash) {
+            txHash = signed.txHash;
+          } else if (MAYBE_SENT_CODES.has(signed.data.code)) {
+            await finishMaybeSent(signed.data.code);
+            return;
+          } else {
+            // Nothing moved (the server released its claim); the reserve is cancelled below.
+            throw new Error(
+              typeof signed.data.error === 'string'
+                ? signed.data.error
+                : "Couldn't send this cash-out. Tap Send to try again.",
+            );
+          }
+        }
+      } else {
+        if (isTrustedDestination && canServerBroadcast) {
+          const silent = await postBroadcast({ orderId });
+          if (silent.txHash) {
+            txHash = silent.txHash;
+          } else if (MAYBE_SENT_CODES.has(silent.data.code)) {
+            await finishMaybeSent(silent.data.code);
+            return;
+          }
+          // Any other error (ADDRESS_NOT_TRUSTED, NOT_DELEGATED, not configured,
+          // etc.) falls through to the real wallet send below — fail safe.
+        }
+
+        if (txHash == null) {
+          await ensureChain(wallet, provider, transfer.network);
+          txHash = (await provider.request({
+            method: 'eth_sendTransaction',
+            params: [
+              {
+                from: wallet.address,
+                to: transfer.tokenAddress,
+                data: encodeFunctionData({
+                  abi: ERC20_ABI,
+                  functionName: 'transfer',
+                  args: [transfer.destinationAddress as `0x${string}`, amountRaw],
+                }),
+              },
+            ],
+          })) as string;
+        }
       }
 
       broadcasted = true;
@@ -550,7 +643,6 @@ function CryptoCashOutContent() {
   const networks = [
     { id: 'celo' as const, name: 'Celo network' },
     { id: 'base' as const, name: 'Base network' },
-    { id: 'arbitrum' as const, name: 'Arbitrum network' },
   ];
 
   const selectedNetwork = networks.find((n) => n.id === network)?.name || 'Choose network';
@@ -581,7 +673,7 @@ function CryptoCashOutContent() {
               <AlertCircle size={20} className="text-red-500 flex-shrink-0" />
               <p className="text-red-600 text-[13px] font-medium leading-tight">
                 {tokenUnsupported
-                  ? "This token isn't supported for cash-out. Use USDC or USDT."
+                  ? 'Only USDC can be cashed out right now. USDT is coming soon.'
                   : spendable.syncIncomplete && !error
                     ? 'Balance sync incomplete — cash-out is paused until sync finishes.'
                     : error}

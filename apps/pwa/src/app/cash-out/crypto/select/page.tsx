@@ -5,14 +5,17 @@ import Link from 'next/link';
 
 const TOKENS = [
   {
-    symbol: 'USDT',
-    name: 'Tether USD',
-    icon: '/usdt.svg',
-  },
-  {
     symbol: 'USDC',
     name: 'USD Coin',
     icon: '/usdc.svg',
+    available: true,
+  },
+  {
+    // Needs Forwarder V2 (#191) before it can cash out through the contract.
+    symbol: 'USDT',
+    name: 'Tether USD · coming soon',
+    icon: '/usdt.svg',
+    available: false,
   },
 ];
 
@@ -37,8 +40,14 @@ export default function TokenSelectionPage() {
           {TOKENS.map((token) => (
             <Link
               key={token.symbol}
-              href={`/cash-out/crypto?token=${token.symbol}`}
-              className="flex items-center justify-between p-4 rounded-[16px] bg-white border border-gray-100 hover:border-[#2261FE] transition-all group active:scale-[0.98]"
+              href={token.available ? `/cash-out/crypto?token=${token.symbol}` : '#'}
+              aria-disabled={!token.available}
+              onClick={(e) => {
+                if (!token.available) e.preventDefault();
+              }}
+              className={`flex items-center justify-between p-4 rounded-[16px] bg-white border border-gray-100 transition-all group ${
+                token.available ? 'hover:border-[#2261FE] active:scale-[0.98]' : 'opacity-50 cursor-not-allowed'
+              }`}
             >
               <div className="flex items-center gap-4">
                 <div className="w-[45px] h-[45px] rounded-full overflow-hidden flex-shrink-0">

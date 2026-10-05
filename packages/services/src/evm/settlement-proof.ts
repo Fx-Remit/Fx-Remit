@@ -69,23 +69,25 @@ export async function verifySettlementHash(opts: {
   const wallet = getAddress(opts.walletAddress);
   const token = expected.token.toLowerCase();
   const to = expected.to ? getAddress(expected.to) : null;
+  // Through PayoutForwarder the money moves in two legs of the same amount:
+  // wallet → forwarder, then forwarder → destination.
+  let leftWallet = false;
+  let reachedDestination = false;
   type RawLog = { address: string; data: Hex; topics: [Hex, ...Hex[]] | [] };
   type Decoded = { eventName: string; args: { from: string; to: string; value: bigint } };
   for (const log of receipt.logs as unknown as RawLog[]) {
     if (log.address.toLowerCase() !== token) continue;
     try {
       const ev = decodeEventLog({ abi: TRANSFER_ABI, data: log.data, topics: log.topics }) as unknown as Decoded;
-      if (
-        ev.eventName === 'Transfer' &&
-        getAddress(ev.args.from) === wallet &&
-        ev.args.value === expected.amount &&
-        (!to || getAddress(ev.args.to) === to)
-      ) {
-        return 'VERIFIED';
-      }
+      if (ev.eventName !== 'Transfer' || ev.args.value !== expected.amount) continue;
+      const from = getAddress(ev.args.from);
+      const dest = getAddress(ev.args.to);
+      if (from === wallet && (!to || dest === to)) return 'VERIFIED';
+      if (from === wallet) leftWallet = true;
+      if (to && dest === to) reachedDestination = true;
     } catch {
       // Not a Transfer (e.g. Approval, AuthorizationUsed).
     }
   }
-  return 'MISMATCH';
+  return leftWallet && reachedDestination ? 'VERIFIED' : 'MISMATCH';
 }

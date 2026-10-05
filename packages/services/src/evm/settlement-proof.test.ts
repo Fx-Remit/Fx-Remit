@@ -47,6 +47,22 @@ describe('verifySettlementHash', () => {
     assert.equal(getReceipt.mock.calls[0].arguments[0], 42220);
   });
 
+  it('verifies a crypto cash-out that went through the forwarder (wallet → forwarder → destination)', async () => {
+    const FORWARDER = '0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83';
+    mock.method(settlementProofDeps, 'getReceipt', async () =>
+      receipt([transferLog(CELO_USDC, WALLET, FORWARDER, 12_500_000n), transferLog(CELO_USDC, FORWARDER, DEST, 12_500_000n)]),
+    );
+    assert.equal(await verifySettlementHash({ row: cryptoRow, walletAddress: WALLET, txHash: HASH }), 'VERIFIED');
+  });
+
+  it('rejects two legs that do not both match the reserved amount', async () => {
+    const FORWARDER = '0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83';
+    mock.method(settlementProofDeps, 'getReceipt', async () =>
+      receipt([transferLog(CELO_USDC, WALLET, FORWARDER, 12_500_000n), transferLog(CELO_USDC, FORWARDER, DEST, 1_000_000n)]),
+    );
+    assert.equal(await verifySettlementHash({ row: cryptoRow, walletAddress: WALLET, txHash: HASH }), 'MISMATCH');
+  });
+
   it('rejects a crypto transfer to a different address', async () => {
     mock.method(settlementProofDeps, 'getReceipt', async () => receipt([transferLog(CELO_USDC, WALLET, OTHER, 12_500_000n)]));
     assert.equal(await verifySettlementHash({ row: cryptoRow, walletAddress: WALLET, txHash: HASH }), 'MISMATCH');
