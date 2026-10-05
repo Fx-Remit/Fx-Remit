@@ -87,7 +87,7 @@ export function ConfirmTransactionSheet({
   >('idle');
   const { getAccessToken, user: privyUser } = usePrivy();
   const { wallets } = useWallets();
-  const { addSigners } = useSigners();
+  const { addSigners, removeSigners } = useSigners();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
@@ -109,6 +109,8 @@ export function ConfirmTransactionSheet({
   const isExternalWallet = !!embeddedWallet && !isEmbeddedPrivy;
 
   const [localDelegated, setLocalDelegated] = useState(false);
+  /** Set when a re-grant removed our signer but couldn't add it back: the next Send must grant. */
+  const forceGrantRef = useRef(false);
   /** Once we have a reserved order this sheet must not open a second create-pending. */
   const reservedOrderIdRef = useRef<string | null>(null);
 
@@ -184,14 +186,21 @@ export function ConfirmTransactionSheet({
     }
   };
 
-  const enableFasterPayouts = async (): Promise<boolean> => {
+  /**
+   * Grants our server signer the payout policy. With `replace`, used when the server says the
+   * signer is there without that policy (#192): if Privy refuses to add a signer that already
+   * exists, remove ours and add it again with the payout policy.
+   */
+  const enableFasterPayouts = async (opts: { replace?: boolean } = {}): Promise<boolean> => {
     if (!embeddedWallet?.address || !isEmbeddedPrivy) {
       setError('This payout needs the in-app wallet on this account');
+      setStatus('idle');
       return false;
     }
     const keyQuorumId = process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID?.trim();
     if (!keyQuorumId) {
       setError('Instant Send is not configured (missing key quorum)');
+      setStatus('idle');
       console.error(
         '[CONFIRM] NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID is missing — cannot addSigners',
       );
@@ -200,6 +209,7 @@ export function ConfirmTransactionSheet({
     const policyId = process.env.NEXT_PUBLIC_PRIVY_POLICY_ID?.trim();
     if (!policyId) {
       setError('Instant Send is not configured (missing policy)');
+      setStatus('idle');
       console.error(
         '[CONFIRM] NEXT_PUBLIC_PRIVY_POLICY_ID is missing — refusing unrestricted addSigners',
       );
@@ -216,15 +226,26 @@ export function ConfirmTransactionSheet({
       // delegateWallet alone does NOT attach our key quorum — Privy stays
       // delegated:false / wallet id null. addSigners is required.
       // Empty policyIds would grant unrestricted server signing — never do that.
-      const { user: updatedUser } = await addSigners({
-        address: embeddedWallet.address,
-        signers: [
-          {
-            signerId: keyQuorumId,
-            policyIds: [policyId],
-          },
-        ],
-      });
+      const grant = () =>
+        addSigners({
+          address: embeddedWallet.address,
+          signers: [
+            {
+              signerId: keyQuorumId,
+              policyIds: [policyId],
+            },
+          ],
+        });
+      let updatedUser;
+      if (opts.replace) {
+        // Privy has no in-place update, and adding an existing signer may be accepted without
+        // changing its policy: remove ours, then add it back with the payout policy.
+        await removeSigners({ address: embeddedWallet.address });
+        forceGrantRef.current = true;
+        setLocalDelegated(false);
+      }
+      ({ user: updatedUser } = await grant());
+      forceGrantRef.current = false;
       setLocalDelegated(true);
       const addr = embeddedWallet.address.toLowerCase();
       const linked = updatedUser?.linkedAccounts?.find(
@@ -270,7 +291,7 @@ export function ConfirmTransactionSheet({
 
     logDelegationSnapshot('Send tapped');
 
-    if (!isDelegated) {
+    if (!isDelegated || forceGrantRef.current) {
       const granted = await enableFasterPayouts();
       if (!granted) {
         onSendingChange?.(false);
@@ -343,19 +364,42 @@ export function ConfirmTransactionSheet({
       const orderId = orderData.transaction.orderId;
 
       // Server signs and sends; the user never sees a wallet transaction.
-      const broadcastRes = await fetch('/api/transaction/broadcast-settlement', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ orderId }),
-      });
-      const broadcastData = (await broadcastRes.json().catch(() => ({}))) as {
-        error?: string;
-        code?: string;
-        txHash?: string;
+      const postBroadcast = async () => {
+        const res = await fetch('/api/transaction/broadcast-settlement', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ orderId }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+          txHash?: string;
+        };
+        return { res, data };
       };
+      let { res: broadcastRes, data: broadcastData } = await postBroadcast();
+      if (broadcastData.code === 'PERMISSION_UPDATE_REQUIRED') {
+        // Our signer lacks the payout policy (an older grant). Nothing was claimed: grant it
+        // again once, then retry once. Never loop on prompts (#192).
+        const granted = await enableFasterPayouts({ replace: true });
+        if (!granted) {
+          // Nothing was claimed; the reserve stays until Send succeeds or the sheet is closed.
+          setError('Payout permission not updated. Your payout is on hold: tap Send to try again, or close to cancel.');
+          setStatus('idle');
+          onSendingChange?.(false);
+          return;
+        }
+        if (session.wasAbandoned() || session.wasConsumed()) {
+          setStatus('idle');
+          onSendingChange?.(false);
+          return;
+        }
+        setStatus('sending');
+        ({ res: broadcastRes, data: broadcastData } = await postBroadcast());
+      }
 
       if (broadcastRes.ok && typeof broadcastData.txHash === 'string') {
         broadcastTxHash = broadcastData.txHash;
@@ -381,6 +425,12 @@ export function ConfirmTransactionSheet({
         });
         setLocalDelegated(false);
         setError('Almost ready — tap Send again to finish.');
+        setStatus('idle');
+        onSendingChange?.(false);
+        return;
+      } else if (broadcastData.code === 'PERMISSION_UPDATE_REQUIRED') {
+        // Still missing right after a grant (Privy may lag). Nothing moved; keep the reserve.
+        setError("Your payout permission is still updating. Wait a moment, then tap Send again.");
         setStatus('idle');
         onSendingChange?.(false);
         return;

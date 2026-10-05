@@ -104,6 +104,36 @@ export async function resolveDelegatedWalletId(opts: {
   };
 }
 
+/**
+ * Whether our server signer on this wallet carries the payout policy (NEXT_PUBLIC_PRIVY_POLICY_ID).
+ * - 'missing': our signer is there but with other policies only (e.g. an older crypto-only grant),
+ *   so signing would be refused; the client must grant the payout policy again (#192).
+ * - 'unknown': ids not configured or Privy unreadable; callers let signing decide (it fails safe).
+ */
+export async function payoutPolicyStatus(
+  walletId: string,
+  policyId: string | undefined = process.env.NEXT_PUBLIC_PRIVY_POLICY_ID?.trim(),
+): Promise<'ok' | 'missing' | 'unknown'> {
+  const quorumId = process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID?.trim();
+  if (!policyId || !quorumId) return 'unknown';
+  try {
+    const wallet = (await privyNodeClient().wallets().get(walletId)) as {
+      policy_ids?: string[];
+      additional_signers?: { signer_id?: string; override_policy_ids?: string[] }[];
+    };
+    const ours = (wallet.additional_signers ?? []).find((s) => s.signer_id === quorumId);
+    if (!ours) return 'missing';
+    // A signer without its own override signs under the wallet's policies.
+    const policies = ours.override_policy_ids?.length ? ours.override_policy_ids : wallet.policy_ids ?? [];
+    return policies.includes(policyId) ? 'ok' : 'missing';
+  } catch (err) {
+    console.warn('[InstantSend] could not read wallet signers; letting signing decide', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return 'unknown';
+  }
+}
+
 function settlementAmountHuman(
   amountToTransfer: string | number | undefined,
   fallbackUsd: string | number,
@@ -235,6 +265,15 @@ export async function broadcastSettlementTransfer(opts: {
       'NOT_DELEGATED',
       'Enable Instant Send to allow FX-Remit to complete payouts',
     );
+  }
+  // This path can't release its claim once Privy is called, so a refused signature would
+  // leave the reserve stuck: require the policy to be confirmed before claiming.
+  const policy = await payoutPolicyStatus(walletId);
+  if (policy === 'missing') {
+    throw new InstantSendWalletError('PERMISSION_UPDATE_REQUIRED', 'Update your payout permission to finish this payout.');
+  }
+  if (policy === 'unknown') {
+    throw new InstantSendWalletError('PERMISSION_CHECK_FAILED', "Couldn't confirm your payout permission. Tap Send to try again.");
   }
 
   const data = encodeFunctionData({

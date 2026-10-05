@@ -26,7 +26,7 @@ import { prisma } from '@fx-remit/database';
 import { PAYCREST_SETTLEMENT, PayoutService, bankSettlementFor } from '../paycrest/payout.service.js';
 import { CRYPTO_CASH_OUT_CHAIN_ID, TransactionService } from '../transactions/transaction.service.js';
 import { INSTANT_SEND_MAX_USDC_RAW } from './instant-send.policy.js';
-import { InstantSendWalletError, resolveDelegatedWalletId } from './instant-send.broadcast.js';
+import { InstantSendWalletError, payoutPolicyStatus, resolveDelegatedWalletId } from './instant-send.broadcast.js';
 import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens.js';
 import { CryptoAddressService } from '../crypto-addresses/crypto-address.service.js';
 import { CRYPTO_INSTANT_SEND_MAX_USD } from './crypto-instant-send.policy.js';
@@ -194,6 +194,7 @@ const publicClients = new Map<string, ForwarderPublicClient>();
 /** Network, signing and locking seams; tests replace these. */
 export const forwarderDeps = {
   resolveWallet: resolveDelegatedWalletId,
+  policyStatus: payoutPolicyStatus,
   getSettlement: (paycrestOrderId: string, network?: string | null) =>
     PayoutService.getSettlementOrder(paycrestOrderId, network),
 
@@ -414,6 +415,10 @@ export async function broadcastForwarderPayout(opts: {
   });
   if (!delegated) {
     throw new InstantSendWalletError('NOT_DELEGATED', 'Enable Instant Send to allow FX-Remit to complete payouts');
+  }
+  if ((await forwarderDeps.policyStatus(walletId)) === 'missing') {
+    // Our signer is there without the payout policy (#192): ask the user to grant it again. Nothing claimed.
+    throw new InstantSendWalletError('PERMISSION_UPDATE_REQUIRED', 'Update your payout permission to finish this payout.');
   }
 
   const payer = getAddress(opts.walletAddress);
@@ -1084,6 +1089,10 @@ export async function broadcastForwarderCryptoTransfer(opts: {
     const resolved = await forwarderDeps.resolveWallet({ privyDid: opts.privyDid, walletAddress: opts.walletAddress });
     if (!resolved.delegated) {
       throw new InstantSendWalletError('NOT_DELEGATED', 'Enable Instant Send to allow FX-Remit to complete this send');
+    }
+    if ((await forwarderDeps.policyStatus(resolved.walletId)) === 'missing') {
+      // The client falls back to the user signing in their wallet.
+      throw new InstantSendWalletError('PERMISSION_UPDATE_REQUIRED', 'Confirm this send in your wallet');
     }
     walletId = resolved.walletId;
   }
