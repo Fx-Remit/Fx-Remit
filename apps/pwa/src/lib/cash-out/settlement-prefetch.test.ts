@@ -34,6 +34,19 @@ describe('buildCreatePendingBody', () => {
       externalId: 'idem-1',
     });
   });
+
+  it('passes the chosen source network through (#196)', () => {
+    const body = buildCreatePendingBody({
+      amountUsd: '5',
+      quoteValidUntil: 1,
+      recipientName: 'A',
+      recipientBank: 'B',
+      recipientAcc: '1',
+      token: 'USDC',
+      sourceNetwork: 'celo',
+    });
+    assert.equal(body.sourceNetwork, 'celo');
+  });
 });
 
 describe('parseCreatePendingSuccess', () => {

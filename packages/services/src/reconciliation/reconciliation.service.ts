@@ -116,6 +116,8 @@ export class ReconciliationService {
               institution: tx.recipientBank,
             },
             refundAddress,
+            // Same network the payout was reserved on (#196).
+            network: tx.sourceNetwork || 'base',
           });
 
           if (recoveryResult.success && recoveryResult.order?.id) {

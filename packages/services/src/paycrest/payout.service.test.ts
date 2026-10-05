@@ -326,3 +326,29 @@ describe('PayoutService — unhappy paths', () => {
     assert.equal(result.status, 500);
   });
 });
+
+describe('PayoutService source network (#196)', () => {
+  it('refuses to create an order on a network it cannot settle', async () => {
+    const create = mock.method(PaycrestClient.prototype, 'createOrder', async () => {
+      throw new Error('should not be called');
+    });
+    const result = await PayoutService.createPaycrestOrder({
+      amount: '5',
+      sourceToken: 'USDC',
+      destinationCurrency: 'NGN',
+      recipient: { institution: 'OPAYNGPC', accountIdentifier: '0000000000', accountName: 'A' },
+      refundAddress: '0x1111111111111111111111111111111111111111',
+      network: 'arbitrum-one',
+    });
+    assert.equal(result.success, false);
+    assert.equal(create.mock.callCount(), 0);
+  });
+
+  it('returns Celo settlement details for a Celo order lookup', async () => {
+    mock.method(PaycrestClient.prototype, 'getOrder', async () => ({ id: 'pc-1' }) as any);
+    const res = await PayoutService.getSettlementOrder('pc-1', 'celo');
+    assert.equal(res.success, true);
+    assert.equal((res as any).settlement.chainId, 42220);
+    assert.equal((res as any).settlement.tokenAddress, '0xcebA9300f2b948710d2653dD7B07f33A8B32118C');
+  });
+});

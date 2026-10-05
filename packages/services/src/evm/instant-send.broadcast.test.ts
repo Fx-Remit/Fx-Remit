@@ -463,3 +463,21 @@ describe('broadcastSettlementTransfer', () => {
     assert.equal(released, false);
   });
 });
+
+describe('broadcastSettlementTransfer source network (#196)', () => {
+  it('refuses a payout funded from Celo: the direct send only pays Base USDC', async () => {
+    mock.method(TransactionService, 'findPendingRemittanceForBroadcast', async () => ({
+      id: 'tx-celo',
+      userId: 'u1',
+      orderId: 7n,
+      txHash: 'pending-pc-7',
+      amountUsd: { toString: () => '5' },
+      type: 'REMITTANCE',
+      sourceNetwork: 'celo',
+    }) as never);
+    await assert.rejects(
+      broadcastSettlementTransfer({ privyDid: 'did:privy:u1', userId: 'u1', walletAddress: '0x1111111111111111111111111111111111111111', orderId: 7n }),
+      (err: unknown) => err instanceof InstantSendWalletError && err.code === 'FUNDING_PATH_MISMATCH',
+    );
+  });
+});

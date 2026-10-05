@@ -163,6 +163,10 @@ model Transaction {
    * Visible fee (6dp USDC) the user confirmed; history shows it. Null on older rows.
    */
   orderFeeUsd         String?         @map("order_fee_usd")
+  /**
+   * Bank payouts: network the USDC is paid from ("base" | "celo"). Null on older rows (Base).
+   */
+  sourceNetwork       String?         @map("source_network")
   user                User            @relation(fields: [userId], references: [id])
 
   @@unique([txHash, logIndex])
