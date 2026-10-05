@@ -1,5 +1,6 @@
 import { PaycrestRate } from './paycrest.client';
 import { Decimal } from 'decimal.js';
+import { reportAlert } from '../alerts/alert.service';
 
 export interface RetailQuote extends PaycrestRate {
   retail_rate: number;
@@ -26,14 +27,12 @@ function envBps(name: string): number {
   if (!raw) {
     if (process.env.NODE_ENV === 'production' && !warnedUnset.has(name)) {
       warnedUnset.add(name);
-      console.error(
-        JSON.stringify({
-          alert: 'PRICING_ENV_MISSING',
-          severity: 'high',
-          variable: name,
-          message: `${name} is not set; pricing uses 0 for it`,
-        }),
-      );
+      void reportAlert({
+        alert: 'PRICING_ENV_MISSING',
+        severity: 'high',
+        variable: name,
+        message: `${name} is not set; pricing uses 0 for it`,
+      });
     }
     return 0;
   }

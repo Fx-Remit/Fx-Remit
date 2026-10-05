@@ -27,6 +27,7 @@ import { TransactionService } from '../transactions/transaction.service.js';
 import { CryptoAddressService } from '../crypto-addresses/crypto-address.service.js';
 import { InstantSendWalletError } from './instant-send.broadcast.js';
 import {
+  checkRelayerGas,
   broadcastForwarderPayout,
   broadcastForwarderCryptoTransfer,
   cryptoFundingPathFor,
@@ -509,5 +510,23 @@ describe('broadcastForwarderCryptoTransfer payout permission (#192)', () => {
     const status = mock.method(forwarderDeps, 'policyStatus', async () => 'missing');
     await send({ signature: SIGNATURE, validBefore: String(Math.floor(NOW / 1000) + 600) });
     assert.equal(status.mock.callCount(), 0);
+  });
+});
+
+describe('checkRelayerGas (#194)', () => {
+  it('reports payouts left per switched-on chain and alerts when low', async () => {
+    const balances: Record<number, bigint> = { 8453: 10n ** 15n, 42220: 10n ** 13n };
+    mock.method(forwarderDeps, 'publicClient', (chainId: number = 8453) => ({
+      getBalance: async () => balances[chainId],
+      getGasPrice: async () => 10_000_000n, // 0.01 gwei: 1.5e12 wei per payout
+    }) as never);
+    const errors = mock.method(console, 'error', () => {});
+    const results = await checkRelayerGas();
+    const byChain = Object.fromEntries(results.map((r) => [r.chainId, r]));
+    assert.deepEqual(byChain[8453], { chainId: 8453, balanceWei: String(10n ** 15n), payoutsLeft: 666, low: false });
+    assert.deepEqual(byChain[42220], { chainId: 42220, balanceWei: String(10n ** 13n), payoutsLeft: 6, low: true });
+    const logged = errors.mock.calls.map((c) => String(c.arguments[0])).filter((l) => l.includes('RELAYER_GAS_LOW'));
+    assert.equal(logged.length, 1);
+    assert.equal(JSON.parse(logged[0]).chainId, 42220);
   });
 });

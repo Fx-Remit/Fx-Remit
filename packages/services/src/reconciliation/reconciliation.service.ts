@@ -2,7 +2,8 @@ import { prisma } from '@fx-remit/database';
 import { PayoutService } from '../paycrest/payout.service';
 import { DepositService } from '../deposits/deposit.service';
 import { TransactionService } from '../transactions/transaction.service';
-import { recoverStuckForwarderClaims } from '../evm/forwarder-payout';
+import { checkRelayerGas, recoverStuckForwarderClaims } from '../evm/forwarder-payout';
+import { reportAlert } from '../alerts/alert.service';
 
 export class ReconciliationService {
   static async reconcileFundedProcessingRemittances() {
@@ -205,17 +206,18 @@ export class ReconciliationService {
     const deposits = await this.reconcileDeposits();
     const refundRequiredOpen =
       await TransactionService.countOpenRefundRequired();
+    const relayerGas = await checkRelayerGas().catch((err) => ({
+      error: err instanceof Error ? err.message : String(err),
+    }));
 
     if (refundRequiredOpen > 0) {
-      console.error(
-        JSON.stringify({
-          alert: 'REFUND_REQUIRED_BACKLOG',
-          severity: 'high',
-          refundRequiredOpen,
-          message:
-            'Open REFUND_REQUIRED remittances — ops: restoreRefundRequired (write-off) or completeRefundRequiredAfterOnChainCredit (refund deposited)',
-        }),
-      );
+      void reportAlert({
+        alert: 'REFUND_REQUIRED_BACKLOG',
+        severity: 'high',
+        refundRequiredOpen,
+        message:
+          'Open REFUND_REQUIRED remittances — ops: restoreRefundRequired (write-off) or completeRefundRequiredAfterOnChainCredit (refund deposited)',
+      });
     }
 
     let notifyRegistered = 0;
@@ -246,6 +248,7 @@ export class ReconciliationService {
       remittances,
       deposits,
       refundRequiredOpen,
+      relayerGas,
       notifyRegistered,
     };
   }

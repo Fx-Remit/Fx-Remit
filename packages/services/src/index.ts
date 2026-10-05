@@ -14,6 +14,7 @@ export * from './transactions/order-id';
 export * from './recipients/recipient.service';
 export * from './crypto-addresses/crypto-address.service';
 export * from './notifications/notification.service';
+export * from './alerts/alert.service';
 export * from './reconciliation/reconciliation.service';
 export * from './evm/instant-send.policy';
 export * from './evm/instant-send.broadcast';

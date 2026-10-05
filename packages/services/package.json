@@ -9,7 +9,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "type-check": "tsc --noEmit",
-    "test": "node --import tsx --test src/paycrest/*.test.ts src/deposits/*.test.ts src/transactions/*.test.ts src/identity/*.test.ts src/reconciliation/*.test.ts src/recipients/*.test.ts src/crypto-addresses/*.test.ts src/notifications/*.test.ts src/evm/*.test.ts",
+    "test": "node --import tsx --test src/paycrest/*.test.ts src/deposits/*.test.ts src/transactions/*.test.ts src/identity/*.test.ts src/reconciliation/*.test.ts src/recipients/*.test.ts src/crypto-addresses/*.test.ts src/notifications/*.test.ts src/evm/*.test.ts src/alerts/*.test.ts",
     "evm:paycrest-smoke": "node --import tsx --env-file=../../apps/pwa/.env.local src/evm/scripts/evm-paycrest-smoke.ts",
     "evm:webhook-smoke": "node --import tsx --env-file=../../apps/pwa/.env.local src/evm/scripts/evm-webhook-smoke.ts",
     "evm:sandbox-smoke": "node --import tsx --env-file=../../apps/pwa/.env.local src/evm/scripts/evm-sandbox-smoke.ts"
