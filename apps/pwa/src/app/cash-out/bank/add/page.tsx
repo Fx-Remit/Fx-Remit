@@ -17,6 +17,7 @@ function AddAccountForm() {
   const currency = searchParams.get('currency') || 'NGN';
   const rate = searchParams.get('rate') || '0';
   const fee = searchParams.get('fee') || '0';
+  const source = searchParams.get('source') === 'celo' ? 'celo' : 'base';
   const { getAccessToken } = usePrivy();
   const fiatCurrency = normalizeFiatCurrency(currency);
 
@@ -114,6 +115,7 @@ function AddAccountForm() {
       idempotencyKey,
       rate,
       fee,
+      source,
     });
     router.push(`/cash-out/bank/confirm?${params.toString()}`);
   };

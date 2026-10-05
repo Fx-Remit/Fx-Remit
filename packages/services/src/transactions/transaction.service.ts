@@ -1,7 +1,7 @@
 import { prisma, Status, Transaction, TransactionType, Prisma } from "@fx-remit/database";
 import { Decimal } from "decimal.js";
 import { RpcClient } from "../evm/rpc.client";
-import { PAYCREST_SETTLEMENT } from "../paycrest/payout.service.js";
+import { PAYCREST_SETTLEMENT, bankSettlementFor } from "../paycrest/payout.service.js";
 import { NotificationService } from "../notifications/notification.service.js";
 
 /** Chain a manual-wallet crypto cash-out actually settles on (recipientBank: "crypto:<network>"). */
@@ -94,6 +94,7 @@ const TRANSACTION_API_SELECT = {
   orderRate: true,
   orderFeeUsd: true,
   fundingPath: true,
+  sourceNetwork: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -1201,25 +1202,47 @@ export class TransactionService {
     });
 
     if (!tx) {
-      // Already stamped with Base chainId after a prior broadcast attempt.
-      const onBase = await prisma.transaction.findUnique({
+      // Already stamped with its settlement chain (Base, or Celo for Celo-funded payouts).
+      const stamped = await prisma.transaction.findFirst({
         where: {
-          orderId_chainId: {
-            orderId: opts.orderId,
-            chainId: PAYCREST_SETTLEMENT.chainId,
-          },
+          orderId: opts.orderId,
+          chainId: { in: [PAYCREST_SETTLEMENT.chainId, bankSettlementFor('celo')!.chainId] },
         },
       });
-      if (!onBase || onBase.userId !== opts.userId || onBase.type !== 'REMITTANCE') {
+      if (!stamped || stamped.userId !== opts.userId || stamped.type !== 'REMITTANCE') {
         return null;
       }
-      return onBase;
+      return stamped;
     }
 
     if (tx.userId !== opts.userId || tx.type !== 'REMITTANCE') {
       return null;
     }
     return tx;
+  }
+
+  /**
+   * USD still reserved for this user's unsent cash-outs that will pay from `network`:
+   * bank payouts with that source (null source = Base) and crypto cash-outs on it.
+   * The wallet's on-chain balance on that network must also cover these.
+   */
+  static async reservedOnNetwork(userId: string, network: string): Promise<Prisma.Decimal> {
+    const rows = await prisma.transaction.findMany({
+      where: {
+        userId,
+        type: "REMITTANCE",
+        status: { in: ["PENDING", "PROCESSING"] },
+        OR: [{ txHash: { startsWith: "pending-" } }, { txHash: { startsWith: "broadcasting-" } }],
+      },
+      select: { amountUsd: true, recipientBank: true, sourceNetwork: true },
+    });
+    return rows
+      .filter((r) => {
+        const bank = r.recipientBank ?? "";
+        if (bank.startsWith("crypto:")) return bank === `crypto:${network}`;
+        return (r.sourceNetwork ?? "base") === network;
+      })
+      .reduce((sum, r) => sum.plus(r.amountUsd.toString()), new Prisma.Decimal(0));
   }
 
   /**
@@ -1740,7 +1763,10 @@ export class TransactionService {
     const cryptoNetwork = isCrypto
       ? (existing.recipientBank || '').slice('crypto:'.length)
       : null;
-    let settlementChainId = PAYCREST_SETTLEMENT.chainId;
+    // Bank payouts settle on their source network (Base unless funded from Celo).
+    let settlementChainId = isCrypto
+      ? PAYCREST_SETTLEMENT.chainId
+      : (bankSettlementFor(existing.sourceNetwork)?.chainId ?? PAYCREST_SETTLEMENT.chainId);
     if (isCrypto && cryptoNetwork) {
       const mapped = CRYPTO_CASH_OUT_CHAIN_ID[cryptoNetwork];
       if (mapped != null) {
@@ -1904,6 +1930,8 @@ export class TransactionService {
     recipientBankCode?: string | null;
     /** Paycrest order split bound with the quote; saved so every later order create reuses it. */
     orderPricing?: { bankAmount: string; senderFee: string; rate: string; feeUsd?: string } | null;
+    /** Bank payouts: network the USDC is paid from ('base' | 'celo'); null means Base. */
+    sourceNetwork?: string | null;
   }): Promise<TransactionApiRow> {
     const amount = new Prisma.Decimal(data.amountUsd);
     const payoutFiat = new Prisma.Decimal(data.payoutFiat);
@@ -1970,6 +1998,7 @@ export class TransactionService {
               orderSenderFee: data.orderPricing?.senderFee ?? null,
               orderRate: data.orderPricing?.rate ?? null,
               orderFeeUsd: data.orderPricing?.feeUsd ?? null,
+              sourceNetwork: data.sourceNetwork ?? null,
               txHash: `pending-${data.externalId}`,
               chainId: 0,
               // Avoid @@unique([chainId, blockNumber, logIndex]) collisions on (0,0,0)
@@ -2022,6 +2051,7 @@ export class TransactionService {
               orderSenderFee: data.orderPricing?.senderFee ?? null,
               orderRate: data.orderPricing?.rate ?? null,
               orderFeeUsd: data.orderPricing?.feeUsd ?? null,
+              sourceNetwork: data.sourceNetwork ?? null,
           status: "PENDING",
           type: "REMITTANCE",
           txHash: `pending-${data.externalId}`,

@@ -7303,6 +7303,7 @@ export namespace Prisma {
     orderSenderFee: string | null
     orderRate: string | null
     orderFeeUsd: string | null
+    sourceNetwork: string | null
   }
 
   export type TransactionMaxAggregateOutputType = {
@@ -7335,6 +7336,7 @@ export namespace Prisma {
     orderSenderFee: string | null
     orderRate: string | null
     orderFeeUsd: string | null
+    sourceNetwork: string | null
   }
 
   export type TransactionCountAggregateOutputType = {
@@ -7367,6 +7369,7 @@ export namespace Prisma {
     orderSenderFee: number
     orderRate: number
     orderFeeUsd: number
+    sourceNetwork: number
     _all: number
   }
 
@@ -7419,6 +7422,7 @@ export namespace Prisma {
     orderSenderFee?: true
     orderRate?: true
     orderFeeUsd?: true
+    sourceNetwork?: true
   }
 
   export type TransactionMaxAggregateInputType = {
@@ -7451,6 +7455,7 @@ export namespace Prisma {
     orderSenderFee?: true
     orderRate?: true
     orderFeeUsd?: true
+    sourceNetwork?: true
   }
 
   export type TransactionCountAggregateInputType = {
@@ -7483,6 +7488,7 @@ export namespace Prisma {
     orderSenderFee?: true
     orderRate?: true
     orderFeeUsd?: true
+    sourceNetwork?: true
     _all?: true
   }
 
@@ -7602,6 +7608,7 @@ export namespace Prisma {
     orderSenderFee: string | null
     orderRate: string | null
     orderFeeUsd: string | null
+    sourceNetwork: string | null
     _count: TransactionCountAggregateOutputType | null
     _avg: TransactionAvgAggregateOutputType | null
     _sum: TransactionSumAggregateOutputType | null
@@ -7653,6 +7660,7 @@ export namespace Prisma {
     orderSenderFee?: boolean
     orderRate?: boolean
     orderFeeUsd?: boolean
+    sourceNetwork?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -7686,6 +7694,7 @@ export namespace Prisma {
     orderSenderFee?: boolean
     orderRate?: boolean
     orderFeeUsd?: boolean
+    sourceNetwork?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -7719,6 +7728,7 @@ export namespace Prisma {
     orderSenderFee?: boolean
     orderRate?: boolean
     orderFeeUsd?: boolean
+    sourceNetwork?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["transaction"]>
 
@@ -7752,9 +7762,10 @@ export namespace Prisma {
     orderSenderFee?: boolean
     orderRate?: boolean
     orderFeeUsd?: boolean
+    sourceNetwork?: boolean
   }
 
-  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "anchorTransactionId" | "corridor" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "recipientBankCode" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type" | "refundTxHash" | "fundingPath" | "fundingTxHash" | "fundingTxRaw" | "orderBankAmount" | "orderSenderFee" | "orderRate" | "orderFeeUsd", ExtArgs["result"]["transaction"]>
+  export type TransactionOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "orderId" | "txHash" | "anchorTransactionId" | "corridor" | "sourceToken" | "amountUsd" | "payoutFiat" | "status" | "recipientName" | "recipientBank" | "recipientAcc" | "recipientBankCode" | "createdAt" | "blockNumber" | "chainId" | "externalId" | "logIndex" | "updatedAt" | "type" | "refundTxHash" | "fundingPath" | "fundingTxHash" | "fundingTxRaw" | "orderBankAmount" | "orderSenderFee" | "orderRate" | "orderFeeUsd" | "sourceNetwork", ExtArgs["result"]["transaction"]>
   export type TransactionInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     user?: boolean | UserDefaultArgs<ExtArgs>
   }
@@ -7818,6 +7829,10 @@ export namespace Prisma {
        * * Visible fee (6dp USDC) the user confirmed; history shows it. Null on older rows.
        */
       orderFeeUsd: string | null
+      /**
+       * * Bank payouts: network the USDC is paid from ("base" | "celo"). Null on older rows (Base).
+       */
+      sourceNetwork: string | null
     }, ExtArgs["result"]["transaction"]>
     composites: {}
   }
@@ -8271,6 +8286,7 @@ export namespace Prisma {
     readonly orderSenderFee: FieldRef<"Transaction", 'String'>
     readonly orderRate: FieldRef<"Transaction", 'String'>
     readonly orderFeeUsd: FieldRef<"Transaction", 'String'>
+    readonly sourceNetwork: FieldRef<"Transaction", 'String'>
   }
     
 
@@ -8812,7 +8828,8 @@ export namespace Prisma {
     orderBankAmount: 'orderBankAmount',
     orderSenderFee: 'orderSenderFee',
     orderRate: 'orderRate',
-    orderFeeUsd: 'orderFeeUsd'
+    orderFeeUsd: 'orderFeeUsd',
+    sourceNetwork: 'sourceNetwork'
   };
 
   export type TransactionScalarFieldEnum = (typeof TransactionScalarFieldEnum)[keyof typeof TransactionScalarFieldEnum]
@@ -9435,6 +9452,7 @@ export namespace Prisma {
     orderSenderFee?: StringNullableFilter<"Transaction"> | string | null
     orderRate?: StringNullableFilter<"Transaction"> | string | null
     orderFeeUsd?: StringNullableFilter<"Transaction"> | string | null
+    sourceNetwork?: StringNullableFilter<"Transaction"> | string | null
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
   }
 
@@ -9468,6 +9486,7 @@ export namespace Prisma {
     orderSenderFee?: SortOrderInput | SortOrder
     orderRate?: SortOrderInput | SortOrder
     orderFeeUsd?: SortOrderInput | SortOrder
+    sourceNetwork?: SortOrderInput | SortOrder
     user?: UserOrderByWithRelationInput
   }
 
@@ -9508,6 +9527,7 @@ export namespace Prisma {
     orderSenderFee?: StringNullableFilter<"Transaction"> | string | null
     orderRate?: StringNullableFilter<"Transaction"> | string | null
     orderFeeUsd?: StringNullableFilter<"Transaction"> | string | null
+    sourceNetwork?: StringNullableFilter<"Transaction"> | string | null
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
   }, "id" | "externalId" | "txHash_logIndex" | "chainId_blockNumber_logIndex" | "orderId_chainId" | "userId_refundTxHash">
 
@@ -9541,6 +9561,7 @@ export namespace Prisma {
     orderSenderFee?: SortOrderInput | SortOrder
     orderRate?: SortOrderInput | SortOrder
     orderFeeUsd?: SortOrderInput | SortOrder
+    sourceNetwork?: SortOrderInput | SortOrder
     _count?: TransactionCountOrderByAggregateInput
     _avg?: TransactionAvgOrderByAggregateInput
     _max?: TransactionMaxOrderByAggregateInput
@@ -9581,6 +9602,7 @@ export namespace Prisma {
     orderSenderFee?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     orderRate?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
     orderFeeUsd?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
+    sourceNetwork?: StringNullableWithAggregatesFilter<"Transaction"> | string | null
   }
 
   export type UserCreateInput = {
@@ -10076,6 +10098,7 @@ export namespace Prisma {
     orderSenderFee?: string | null
     orderRate?: string | null
     orderFeeUsd?: string | null
+    sourceNetwork?: string | null
     user: UserCreateNestedOneWithoutTransactionsInput
   }
 
@@ -10109,6 +10132,7 @@ export namespace Prisma {
     orderSenderFee?: string | null
     orderRate?: string | null
     orderFeeUsd?: string | null
+    sourceNetwork?: string | null
   }
 
   export type TransactionUpdateInput = {
@@ -10140,6 +10164,7 @@ export namespace Prisma {
     orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
     orderRate?: NullableStringFieldUpdateOperationsInput | string | null
     orderFeeUsd?: NullableStringFieldUpdateOperationsInput | string | null
+    sourceNetwork?: NullableStringFieldUpdateOperationsInput | string | null
     user?: UserUpdateOneRequiredWithoutTransactionsNestedInput
   }
 
@@ -10173,6 +10198,7 @@ export namespace Prisma {
     orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
     orderRate?: NullableStringFieldUpdateOperationsInput | string | null
     orderFeeUsd?: NullableStringFieldUpdateOperationsInput | string | null
+    sourceNetwork?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionCreateManyInput = {
@@ -10205,6 +10231,7 @@ export namespace Prisma {
     orderSenderFee?: string | null
     orderRate?: string | null
     orderFeeUsd?: string | null
+    sourceNetwork?: string | null
   }
 
   export type TransactionUpdateManyMutationInput = {
@@ -10236,6 +10263,7 @@ export namespace Prisma {
     orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
     orderRate?: NullableStringFieldUpdateOperationsInput | string | null
     orderFeeUsd?: NullableStringFieldUpdateOperationsInput | string | null
+    sourceNetwork?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionUncheckedUpdateManyInput = {
@@ -10268,6 +10296,7 @@ export namespace Prisma {
     orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
     orderRate?: NullableStringFieldUpdateOperationsInput | string | null
     orderFeeUsd?: NullableStringFieldUpdateOperationsInput | string | null
+    sourceNetwork?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type StringFilter<$PrismaModel = never> = {
@@ -10833,6 +10862,7 @@ export namespace Prisma {
     orderSenderFee?: SortOrder
     orderRate?: SortOrder
     orderFeeUsd?: SortOrder
+    sourceNetwork?: SortOrder
   }
 
   export type TransactionAvgOrderByAggregateInput = {
@@ -10874,6 +10904,7 @@ export namespace Prisma {
     orderSenderFee?: SortOrder
     orderRate?: SortOrder
     orderFeeUsd?: SortOrder
+    sourceNetwork?: SortOrder
   }
 
   export type TransactionMinOrderByAggregateInput = {
@@ -10906,6 +10937,7 @@ export namespace Prisma {
     orderSenderFee?: SortOrder
     orderRate?: SortOrder
     orderFeeUsd?: SortOrder
+    sourceNetwork?: SortOrder
   }
 
   export type TransactionSumOrderByAggregateInput = {
@@ -11601,6 +11633,7 @@ export namespace Prisma {
     orderSenderFee?: string | null
     orderRate?: string | null
     orderFeeUsd?: string | null
+    sourceNetwork?: string | null
   }
 
   export type TransactionUncheckedCreateWithoutUserInput = {
@@ -11632,6 +11665,7 @@ export namespace Prisma {
     orderSenderFee?: string | null
     orderRate?: string | null
     orderFeeUsd?: string | null
+    sourceNetwork?: string | null
   }
 
   export type TransactionCreateOrConnectWithoutUserInput = {
@@ -11821,6 +11855,7 @@ export namespace Prisma {
     orderSenderFee?: StringNullableFilter<"Transaction"> | string | null
     orderRate?: StringNullableFilter<"Transaction"> | string | null
     orderFeeUsd?: StringNullableFilter<"Transaction"> | string | null
+    sourceNetwork?: StringNullableFilter<"Transaction"> | string | null
   }
 
   export type SavedRecipientUpsertWithWhereUniqueWithoutUserInput = {
@@ -12456,6 +12491,7 @@ export namespace Prisma {
     orderSenderFee?: string | null
     orderRate?: string | null
     orderFeeUsd?: string | null
+    sourceNetwork?: string | null
   }
 
   export type SavedRecipientCreateManyUserInput = {
@@ -12531,6 +12567,7 @@ export namespace Prisma {
     orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
     orderRate?: NullableStringFieldUpdateOperationsInput | string | null
     orderFeeUsd?: NullableStringFieldUpdateOperationsInput | string | null
+    sourceNetwork?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionUncheckedUpdateWithoutUserInput = {
@@ -12562,6 +12599,7 @@ export namespace Prisma {
     orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
     orderRate?: NullableStringFieldUpdateOperationsInput | string | null
     orderFeeUsd?: NullableStringFieldUpdateOperationsInput | string | null
+    sourceNetwork?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type TransactionUncheckedUpdateManyWithoutUserInput = {
@@ -12593,6 +12631,7 @@ export namespace Prisma {
     orderSenderFee?: NullableStringFieldUpdateOperationsInput | string | null
     orderRate?: NullableStringFieldUpdateOperationsInput | string | null
     orderFeeUsd?: NullableStringFieldUpdateOperationsInput | string | null
+    sourceNetwork?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type SavedRecipientUpdateWithoutUserInput = {

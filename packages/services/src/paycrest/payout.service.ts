@@ -14,6 +14,28 @@ export const PAYCREST_SETTLEMENT = {
   decimals: 6,
 };
 
+/**
+ * Networks a bank payout can be funded from. Paycrest accepts USDC on both; the
+ * PayoutForwarder runs on both. Base stays the default for rows without a source.
+ */
+export const BANK_SOURCE_NETWORKS = {
+  base: PAYCREST_SETTLEMENT,
+  celo: {
+    network: 'celo' as const,
+    chainId: 42220,
+    token: 'USDC' as const,
+    tokenAddress: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C' as `0x${string}`,
+    decimals: 6,
+  },
+};
+export type BankSourceNetwork = keyof typeof BANK_SOURCE_NETWORKS;
+
+/** Settlement for a bank payout's source network; null/undefined means Base. Unknown names give null. */
+export function bankSettlementFor(network?: string | null) {
+  if (network == null || network === '') return BANK_SOURCE_NETWORKS.base;
+  return network in BANK_SOURCE_NETWORKS ? BANK_SOURCE_NETWORKS[network as BankSourceNetwork] : null;
+}
+
 export class PayoutService {
   private static API_KEY = process.env.PAYCREST_API_KEY || process.env.NEXT_PUBLIC_PAYCREST_API_KEY!;
 
@@ -219,15 +241,16 @@ export class PayoutService {
         });
       }
 
+      const source = bankSettlementFor(network) ?? PAYCREST_SETTLEMENT;
       return {
         success: true as const,
         order,
         settlement: {
           network,
-          chainId: PAYCREST_SETTLEMENT.chainId,
+          chainId: source.chainId,
           token: settlementToken,
-          tokenAddress: PAYCREST_SETTLEMENT.tokenAddress,
-          decimals: PAYCREST_SETTLEMENT.decimals,
+          tokenAddress: source.tokenAddress,
+          decimals: source.decimals,
         },
         claimedThisCall,
         staleLeaseReclaim,
@@ -258,7 +281,7 @@ export class PayoutService {
   /**
    * Resume an in-flight Paycrest order (e.g. after client failed to receive create-pending JSON).
    */
-  static async getSettlementOrder(paycrestOrderId: string) {
+  static async getSettlementOrder(paycrestOrderId: string, network?: string | null) {
     try {
       const order = await this.client.getOrder(paycrestOrderId);
       if (!order?.id) {
@@ -268,15 +291,19 @@ export class PayoutService {
           status: 404,
         };
       }
+      const source = bankSettlementFor(network);
+      if (!source) {
+        return { success: false as const, error: `Unsupported source network ${network}`, status: 400 };
+      }
       return {
         success: true as const,
         order,
         settlement: {
-          network: PAYCREST_SETTLEMENT.network,
-          chainId: PAYCREST_SETTLEMENT.chainId,
-          token: PAYCREST_SETTLEMENT.token,
-          tokenAddress: PAYCREST_SETTLEMENT.tokenAddress,
-          decimals: PAYCREST_SETTLEMENT.decimals,
+          network: source.network,
+          chainId: source.chainId,
+          token: source.token,
+          tokenAddress: source.tokenAddress,
+          decimals: source.decimals,
         },
       };
     } catch (error: any) {

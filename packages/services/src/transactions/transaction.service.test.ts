@@ -1901,3 +1901,19 @@ describe('TransactionService.getHistory — happy paths', () => {
     assert.equal(rows.length, 0);
   });
 });
+
+describe('TransactionService.reservedOnNetwork (#196)', () => {
+  it('sums unsent bank payouts on that source (null = Base) and crypto cash-outs on it', async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      { amountUsd: { toString: () => '10' }, recipientBank: 'OPay', sourceNetwork: null },
+      { amountUsd: { toString: () => '5' }, recipientBank: 'OPay', sourceNetwork: 'base' },
+      { amountUsd: { toString: () => '7' }, recipientBank: 'OPay', sourceNetwork: 'celo' },
+      { amountUsd: { toString: () => '2' }, recipientBank: 'crypto:base', sourceNetwork: null },
+      { amountUsd: { toString: () => '3' }, recipientBank: 'crypto:celo', sourceNetwork: null },
+    ]) as any;
+    assert.equal((await TransactionService.reservedOnNetwork('user-1', 'base')).toString(), '17');
+    assert.equal((await TransactionService.reservedOnNetwork('user-1', 'celo')).toString(), '10');
+    const where = ((prisma.transaction.findMany as any).mock.calls[0].arguments[0] as any).where;
+    assert.deepEqual(where.status, { in: ['PENDING', 'PROCESSING'] });
+  });
+});

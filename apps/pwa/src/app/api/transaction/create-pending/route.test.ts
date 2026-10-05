@@ -6,7 +6,7 @@ import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { PrivyClient } from '@privy-io/server-auth';
 import { prisma, Prisma } from '@fx-remit/database';
-import { ExternalIdConflictError, InsufficientBalanceError, PayoutService, QuoteBindService, TransactionService } from '@fx-remit/services';
+import { ExternalIdConflictError, InsufficientBalanceError, PayoutService, QuoteBindService, TransactionService, forwarderDeps } from '@fx-remit/services';
 import { POST } from './route';
 
 afterEach(() => {
@@ -228,5 +228,121 @@ describe('POST /api/transaction/create-pending cash-out kind', () => {
     );
     assert.equal(res.status, 422);
     assert.equal(createPending.mock.callCount(), 0);
+  });
+});
+
+describe('POST /api/transaction/create-pending source network (#196)', () => {
+  const WALLET = '0x1111111111111111111111111111111111111111';
+  const BOUND = {
+    payoutFiat: 66408.93, wholesaleRate: 1344.94, retailRate: 1334.85295, markupBps: 75, feeBps: 50,
+    feeUsd: '0.250000', bankAmount: '49.376875', senderFee: '0.623125', validUntil: Date.now() + 60_000,
+  };
+
+  function withEnv(env: Record<string, string | undefined>) {
+    const saved = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    return () => {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    };
+  }
+
+  const CELO_ON = {
+    PAYOUT_FORWARDER_ENABLED: 'true',
+    PAYOUT_FORWARDER_ADDRESS: '0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83',
+    RELAYER_PRIVATE_KEY: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
+    PRIVY_AUTHORIZATION_PRIVATE_KEY: 'test-auth-key',
+    BASE_RPC_URL: 'http://127.0.0.1:8545',
+    CELO_RPC_URL: 'http://127.0.0.1:8546',
+    PAYOUT_FORWARDER_CHAINS: '8453,42220',
+  };
+
+  function stub(opts: { onChainRaw: bigint; reserved?: string; sourceOnRow?: string }) {
+    mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({ userId: 'did:privy:user-1' }));
+    prisma.user.findUnique = mock.fn(async () => ({ id: 'user-1', walletAddress: WALLET })) as any;
+    const chains: number[] = [];
+    mock.method(forwarderDeps, 'publicClient', (chainId: number = 8453) => {
+      chains.push(chainId);
+      return { readContract: async () => opts.onChainRaw } as any;
+    });
+    mock.method(TransactionService, 'reservedOnNetwork', async () => new Prisma.Decimal(opts.reserved ?? '0'));
+    mock.method(QuoteBindService, 'resolveForCreatePending', async () => BOUND);
+    const createPending = mock.method(TransactionService, 'createPending', async (data: any) => ({
+      id: 'tx-1', status: 'PENDING', externalId: 'ext-1', txHash: 'pending-ext-1',
+      orderId: 1_790_000_000_000_001n, blockNumber: 1_790_000_000_000_001n,
+      amountUsd: { toString: () => '50' }, payoutFiat: { toString: () => '66408.93' }, updatedAt: new Date(),
+      orderBankAmount: '49.376875', orderSenderFee: '0.623125', orderRate: '1344.94',
+      sourceNetwork: opts.sourceOnRow ?? data.sourceNetwork,
+    }));
+    const createOrder = mock.method(PayoutService, 'createPaycrestOrder', async () => ({ success: false, error: 'stop', status: 503 }));
+    return { createPending, createOrder, chains };
+  }
+
+  function requestFrom(sourceNetwork?: string) {
+    return new Request('http://localhost/api/transaction/create-pending', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer test-token' },
+      body: JSON.stringify({
+        amountUsd: 50, quoteValidUntil: Date.now() + 60_000, destinationCurrency: 'NGN',
+        recipientName: 'Test User', recipientBank: 'OPay', recipientAcc: '0000000000', token: 'USDC', bankCode: 'OPAYNGPC',
+        ...(sourceNetwork ? { sourceNetwork } : {}),
+      }),
+    });
+  }
+
+  it('refuses Celo while the forwarder is not switched on for it', async () => {
+    const restore = withEnv({ PAYOUT_FORWARDER_ENABLED: 'false' });
+    try {
+      const { createPending } = stub({ onChainRaw: 100_000_000n });
+      const res = await POST(requestFrom('celo'));
+      assert.equal(res.status, 503);
+      assert.equal((await res.json()).code, 'NETWORK_UNAVAILABLE');
+      assert.equal(createPending.mock.callCount(), 0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("refuses an amount above the network's balance minus what's reserved there, before reserving", async () => {
+    const { createPending, chains } = stub({ onChainRaw: 60_000_000n, reserved: '20' });
+    const res = await POST(requestFrom('base'));
+    assert.equal(res.status, 422);
+    const body = await res.json();
+    assert.equal(body.code, 'INSUFFICIENT_NETWORK_BALANCE');
+    assert.equal(body.availableUsd, '40.000000');
+    assert.match(body.error, /up to \$40\.00/);
+    assert.deepEqual(chains, [8453]);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+
+  it('defaults to Base, saves the source on the row and creates the order there', async () => {
+    const { createPending, createOrder } = stub({ onChainRaw: 100_000_000n });
+    await POST(requestFrom());
+    assert.equal((createPending.mock.calls[0].arguments[0] as any).sourceNetwork, 'base');
+    assert.equal((createOrder.mock.calls[0].arguments[0] as any).network, 'base');
+  });
+
+  it('pays from Celo when chosen and switched on: checks Celo, saves it, orders on Celo', async () => {
+    const restore = withEnv(CELO_ON);
+    try {
+      const { createPending, createOrder, chains } = stub({ onChainRaw: 100_000_000n });
+      await POST(requestFrom('celo'));
+      assert.deepEqual(chains, [42220]);
+      assert.equal((createPending.mock.calls[0].arguments[0] as any).sourceNetwork, 'celo');
+      assert.equal((createOrder.mock.calls[0].arguments[0] as any).network, 'celo');
+    } finally {
+      restore();
+    }
+  });
+
+  it("creates the order on the row's network on resume, not this request's", async () => {
+    const { createOrder } = stub({ onChainRaw: 100_000_000n, sourceOnRow: 'celo' });
+    await POST(requestFrom('base'));
+    assert.equal((createOrder.mock.calls[0].arguments[0] as any).network, 'celo');
   });
 });

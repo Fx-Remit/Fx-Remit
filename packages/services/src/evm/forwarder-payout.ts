@@ -23,7 +23,7 @@ import { base, celo } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { PrivyClient } from '@privy-io/node';
 import { prisma } from '@fx-remit/database';
-import { PAYCREST_SETTLEMENT, PayoutService } from '../paycrest/payout.service.js';
+import { PAYCREST_SETTLEMENT, PayoutService, bankSettlementFor } from '../paycrest/payout.service.js';
 import { CRYPTO_CASH_OUT_CHAIN_ID, TransactionService } from '../transactions/transaction.service.js';
 import { INSTANT_SEND_MAX_USDC_RAW } from './instant-send.policy.js';
 import { InstantSendWalletError, resolveDelegatedWalletId } from './instant-send.broadcast.js';
@@ -155,6 +155,15 @@ export function cryptoFundingPathFor(
   return isPayoutForwarderConfigured(chainId) ? 'forwarder' : 'unavailable';
 }
 
+/**
+ * Networks a bank payout can be paid from right now: Base always; Celo once the forwarder is on
+ * for everyone and switched on for Celo (Celo payouts have no direct path).
+ */
+export function bankSourceNetworksAvailable(): Array<'base' | 'celo'> {
+  const celo = process.env.PAYOUT_FORWARDER_ENABLED?.trim() === 'true' && isPayoutForwarderConfigured(42220);
+  return celo ? ['base', 'celo'] : ['base'];
+}
+
 /** Same value as PayoutForwarder.authorizationNonce(orderId, sink). */
 export function forwarderAuthorizationNonce(orderId: bigint, sink: Address): Hex {
   return keccak256(encodeAbiParameters([{ type: 'uint256' }, { type: 'address' }], [orderId, sink]));
@@ -178,7 +187,8 @@ const publicClients = new Map<string, ForwarderPublicClient>();
 /** Network, signing and locking seams; tests replace these. */
 export const forwarderDeps = {
   resolveWallet: resolveDelegatedWalletId,
-  getSettlement: (paycrestOrderId: string) => PayoutService.getSettlementOrder(paycrestOrderId),
+  getSettlement: (paycrestOrderId: string, network?: string | null) =>
+    PayoutService.getSettlementOrder(paycrestOrderId, network),
 
   publicClient(chainId: ForwarderChainId = 8453): ForwarderPublicClient {
     const url = rpcUrl(chainId);
@@ -348,7 +358,14 @@ export async function broadcastForwarderPayout(opts: {
     );
   }
 
-  const settlement = await forwarderDeps.getSettlement(paycrestOrderId);
+  // The network the payout is funded from (Base unless the user chose Celo).
+  const source = bankSettlementFor(remittance.sourceNetwork);
+  const chainId = source?.chainId;
+  if (!source || chainId === undefined || !isForwarderChainId(chainId) || !isPayoutForwarderConfigured(chainId)) {
+    throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't send this payout. Tap Send to try again.");
+  }
+
+  const settlement = await forwarderDeps.getSettlement(paycrestOrderId, remittance.sourceNetwork);
   if (!settlement.success) {
     throw new InstantSendWalletError('PAYCREST_LOOKUP_FAILED', settlement.error || 'Failed to load Paycrest settlement');
   }
@@ -357,8 +374,8 @@ export async function broadcastForwarderPayout(opts: {
   if (!receiveAddress || !isAddress(receiveAddress)) {
     throw new InstantSendWalletError('INVALID_RECEIVE_ADDRESS', 'Paycrest did not provide a valid receive address');
   }
-  const tokenAddress = (settlement.settlement.tokenAddress as string) || PAYCREST_SETTLEMENT.tokenAddress;
-  if (tokenAddress.toLowerCase() !== PAYCREST_SETTLEMENT.tokenAddress.toLowerCase()) {
+  const tokenAddress = (settlement.settlement.tokenAddress as string) || source.tokenAddress;
+  if (tokenAddress.toLowerCase() !== usdcOn(chainId).toLowerCase()) {
     throw new InstantSendWalletError('UNSUPPORTED_TOKEN', `Payouts only support ${PAYCREST_SETTLEMENT.token}`);
   }
   const amountToTransfer = order.providerAccount?.amountToTransfer;
@@ -366,8 +383,8 @@ export async function broadcastForwarderPayout(opts: {
     // Never substitute the ledger amount for Paycrest's figure.
     throw new InstantSendWalletError('PAYCREST_AMOUNT_MISSING', 'Paycrest did not provide the amount to send');
   }
-  const amount = parseUnits(String(amountToTransfer), PAYCREST_SETTLEMENT.decimals);
-  const reserved = parseUnits(remittance.amountUsd.toString(), PAYCREST_SETTLEMENT.decimals);
+  const amount = parseUnits(String(amountToTransfer), source.decimals);
+  const reserved = parseUnits(remittance.amountUsd.toString(), source.decimals);
   if (amount !== reserved) {
     // The ledger must take exactly what leaves the wallet.
     throw new InstantSendWalletError(
@@ -394,7 +411,6 @@ export async function broadcastForwarderPayout(opts: {
 
   const payer = getAddress(opts.walletAddress);
   const sink = getAddress(receiveAddress);
-  const chainId: ForwarderChainId = 8453;
   const usdc = usdcOn(chainId);
   const client = forwarderDeps.publicClient(chainId);
   const balance = (await client.readContract({

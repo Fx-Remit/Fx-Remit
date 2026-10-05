@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronDown, X, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useUserStore } from '@/store/user-store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,16 +11,20 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/use-debounce';
 import { cashOutReceive, cashOutSendFor, formatCashOutFee } from '@/lib/cash-out/fee';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
-import {
-  aggregateTokenBalancesUsd,
-  BANK_SETTLEMENT_TOKENS,
-  pickHighestBalanceToken,
-} from '@/lib/cash-out/token-balances';
+import { aggregateTokenBalancesUsd, tokenBalanceForChain } from '@/lib/cash-out/token-balances';
 
 const TOKENS = [
-  { symbol: 'USDT', icon: '/usdt.svg', bankSupported: true },
   { symbol: 'USDC', icon: '/usdc.svg', bankSupported: true },
+  // Bank payouts move USDC through PayoutForwarder; USDT follows with Forwarder V2 (#191).
+  { symbol: 'USDT', icon: '/usdt.svg', bankSupported: false },
 ];
+
+/** Networks a bank payout can be paid from, with the chain the balance lives on (#196). */
+const SOURCE_NETWORKS = [
+  { id: 'base' as const, name: 'Base', icon: '/base.svg', chainId: 8453 },
+  { id: 'celo' as const, name: 'Celo', icon: '/cel2.svg', chainId: 42220 },
+];
+type SourceNetwork = (typeof SOURCE_NETWORKS)[number]['id'];
 
 const CURRENCIES = [
   { code: 'NGN', flag: '🇳🇬', name: 'Nigerian Naira' },
@@ -38,6 +42,8 @@ type QuoteResult = {
   /** Visible fee in basis points. */
   fee_bps?: number;
   valid_until?: number;
+  /** Networks a bank payout can be paid from right now. */
+  source_networks?: string[];
 };
 
 export default function BankCashOutPage() {
@@ -138,16 +144,7 @@ export default function BankCashOutPage() {
 
   const tokenBalances = aggregateTokenBalancesUsd(balanceData?.perChain);
 
-  // Default to the settlement token with the highest live balance (once).
-  useEffect(() => {
-    if (tokenTouchedRef.current || !balanceData?.perChain) return;
-    const best = pickHighestBalanceToken(
-      balanceData.perChain,
-      BANK_SETTLEMENT_TOKENS,
-      'USDC',
-    );
-    setToken(best);
-  }, [balanceData?.perChain]);
+  const [manualSource, setManualSource] = useState<SourceNetwork | null>(null);
 
   const spendable = spendableLedgerUsd({
     balanceData,
@@ -200,7 +197,24 @@ export default function BankCashOutPage() {
   const sendUsd = Number(sendAmount);
   const hasSendAmount = Number.isFinite(sendUsd) && sendUsd > 0;
   const belowMinimum = hasSendAmount && sendUsd < MIN_SEND_USD;
-  const canChoosePayment = !comingSoon && hasSendAmount && !belowMinimum;
+
+  // Pay from: one payout pays from one network. Preselect one that covers the amount
+  // (Base first); the user can switch. The server re-checks the balance before reserving.
+  const sourceOptions = SOURCE_NETWORKS.filter((n) =>
+    (quote?.source_networks ?? ['base']).includes(n.id),
+  );
+  const sourceBalance = (id: SourceNetwork) =>
+    tokenBalanceForChain(balanceData?.perChain, SOURCE_NETWORKS.find((n) => n.id === id)!.chainId, 'USDC');
+  const autoSource: SourceNetwork =
+    sourceOptions.find((n) => sourceBalance(n.id) >= (hasSendAmount ? sendUsd : 0))?.id ??
+    sourceOptions.reduce((best, n) => (sourceBalance(n.id) > sourceBalance(best.id) ? n : best), sourceOptions[0]).id;
+  const source: SourceNetwork =
+    manualSource && sourceOptions.some((n) => n.id === manualSource) ? manualSource : autoSource;
+  const sourceName = SOURCE_NETWORKS.find((n) => n.id === source)!.name;
+  const maxSingleSend = Math.max(0, ...sourceOptions.map((n) => sourceBalance(n.id)));
+  const sourceShort = !!balanceData?.perChain && hasSendAmount && sendUsd > sourceBalance(source);
+
+  const canChoosePayment = !comingSoon && hasSendAmount && !belowMinimum && !sourceShort;
 
   const buildCashOutParams = () =>
     new URLSearchParams({
@@ -211,6 +225,7 @@ export default function BankCashOutPage() {
       currency: currency || 'NGN',
       rate: rate?.toString() || '0',
       fee: String(feeBps),
+      source,
     });
 
   const goToAddAccount = () => {
@@ -285,6 +300,35 @@ export default function BankCashOutPage() {
               <p className="text-[#888888] text-[14px] font-medium">
                 Available: ${availableBalance}
               </p>
+              {sourceOptions.length > 1 && (
+                <div>
+                  <p className="text-[#888888] text-[13px] font-medium mb-2">Pay from</p>
+                  <div className="flex gap-2">
+                    {sourceOptions.map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => setManualSource(n.id)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
+                          source === n.id
+                            ? 'bg-[#E1EFFF] border-[#2261FE]/30 text-[#2261FE]'
+                            : 'bg-white border-gray-200 text-[#3D3D3D]'
+                        }`}
+                      >
+                        <img src={n.icon} alt="" className="w-4 h-4 rounded-full" />
+                        {n.name} · ${sourceBalance(n.id).toFixed(2)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sourceShort && (
+                <p className="text-[#E11D48] text-[13px] font-medium">
+                  {maxSingleSend >= sendUsd
+                    ? `Not enough USDC on ${sourceName}. Switch network above.`
+                    : `You can send up to $${(Math.floor(maxSingleSend * 100) / 100).toFixed(2)} in one payout.`}
+                </p>
+              )}
               {belowMinimum && (
                 <p className="text-[#E11D48] text-[13px] font-medium">
                   Minimum send is ${MIN_SEND_USD}

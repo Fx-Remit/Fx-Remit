@@ -23,6 +23,8 @@ export type CreatePendingRequestBody = {
   recipientType?: 'bank' | 'mobile';
   token: string;
   externalId?: string;
+  /** Network the USDC is paid from (#196); the server re-checks its balance. */
+  sourceNetwork?: 'base' | 'celo';
 };
 
 export type PaycrestSettlementPayload = {
@@ -65,6 +67,7 @@ export function buildCreatePendingBody(
     recipientType: input.recipientType,
     token: input.token,
     externalId: input.externalId,
+    ...(input.sourceNetwork ? { sourceNetwork: input.sourceNetwork } : {}),
   };
 }
 

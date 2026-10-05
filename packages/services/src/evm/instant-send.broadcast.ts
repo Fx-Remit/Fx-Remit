@@ -137,6 +137,10 @@ export async function broadcastSettlementTransfer(opts: {
   if (!remittance) {
     throw new InstantSendWalletError('ORDER_NOT_FOUND', 'Transaction not found');
   }
+  if (remittance.sourceNetwork && remittance.sourceNetwork !== PAYCREST_SETTLEMENT.network) {
+    // This direct send only pays Base USDC; other source networks go through the forwarder.
+    throw new InstantSendWalletError('FUNDING_PATH_MISMATCH', 'This payout is funded from another network');
+  }
 
   if (TransactionService.isOnChainTxHash(remittance.txHash)) {
     return { txHash: remittance.txHash, alreadyBroadcast: true };

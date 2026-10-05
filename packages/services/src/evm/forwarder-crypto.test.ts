@@ -27,6 +27,7 @@ import { TransactionService } from '../transactions/transaction.service.js';
 import { CryptoAddressService } from '../crypto-addresses/crypto-address.service.js';
 import { InstantSendWalletError } from './instant-send.broadcast.js';
 import {
+  broadcastForwarderPayout,
   broadcastForwarderCryptoTransfer,
   cryptoFundingPathFor,
   forwarderAuthorizationNonce,
@@ -437,5 +438,41 @@ describe('recoverStuckForwarderClaims for crypto rows', () => {
     assert.deepEqual(receiptChains, [42220]);
     assert.equal(attach.mock.callCount(), 1);
     assert.deepEqual(h.markConfirmed.mock.calls[0].arguments, ['u1', 'celo', DEST.toLowerCase()]);
+  });
+});
+
+describe('broadcastForwarderPayout from Celo (#196)', () => {
+  it('funds a Celo-sourced bank payout through the forwarder on Celo', async () => {
+    const h = harness();
+    mock.method(TransactionService, 'findPendingRemittanceForBroadcast', async () =>
+      cryptoRow({ txHash: 'pending-pc-celo-1', recipientBank: 'OPay', recipientAcc: '0000000000', sourceNetwork: 'celo' }),
+    );
+    mock.method(forwarderDeps, 'getSettlement', async (_id: string, network?: string | null) => ({
+      success: true,
+      order: { providerAccount: { receiveAddress: DEST, amountToTransfer: '50', validUntil: new Date(NOW + 30 * 60_000).toISOString() } },
+      settlement: { network, tokenAddress: network === 'celo' ? CELO_USDC : BASE_USDC, decimals: 6 },
+    }) as never);
+    await broadcastForwarderPayout({ privyDid: 'did:privy:u1', userId: 'u1', walletAddress: PAYER, orderId: ORDER });
+    assert.equal(h.typedData[0].domain.chainId, 42220);
+    assert.equal(h.typedData[0].domain.verifyingContract, CELO_USDC);
+    assert.deepEqual(h.relayerChains, [42220]);
+    assert.equal(h.markConfirmed.mock.callCount(), 0);
+  });
+
+  it('refuses a Celo-sourced bank payout while Celo is not switched on', async () => {
+    harness();
+    mock.method(TransactionService, 'findPendingRemittanceForBroadcast', async () =>
+      cryptoRow({ txHash: 'pending-pc-celo-1', recipientBank: 'OPay', sourceNetwork: 'celo' }),
+    );
+    const saved = process.env.PAYOUT_FORWARDER_CHAINS;
+    process.env.PAYOUT_FORWARDER_CHAINS = '8453';
+    try {
+      await assert.rejects(
+        broadcastForwarderPayout({ privyDid: 'did:privy:u1', userId: 'u1', walletAddress: PAYER, orderId: ORDER }),
+        code('FORWARDER_UNAVAILABLE'),
+      );
+    } finally {
+      process.env.PAYOUT_FORWARDER_CHAINS = saved;
+    }
   });
 });
