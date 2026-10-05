@@ -441,7 +441,10 @@ function CryptoCashOutContent() {
 
       const provider = (await wallet.getEthereumProvider()) as Eip1193Provider;
       const amountRaw = parseUnits(reservedUsd, transfer.decimals);
-      const funding: 'forwarder' | 'direct' = pendingData.funding === 'forwarder' ? 'forwarder' : 'direct';
+      if (pendingData.funding !== 'forwarder' && pendingData.funding !== 'direct') {
+        throw new Error('Cash-out is unavailable on this network right now.');
+      }
+      const funding: 'forwarder' | 'direct' = pendingData.funding;
 
       let canServerBroadcast = isEmbeddedPrivy && isDelegated;
       if (isEmbeddedPrivy && !canServerBroadcast) {

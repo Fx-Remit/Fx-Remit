@@ -232,13 +232,27 @@ export async function POST(req: Request) {
     const resumedToken = resolveToken(resolvedNetwork, tx.sourceToken || tokenMeta.symbol);
     const transferMeta = resumedToken || tokenMeta;
 
+    // How the client must send it: an order keeps the path it started on; otherwise
+    // through PayoutForwarder, or the legacy wallet send while the forwarder is off.
+    const rowFunding =
+      tx.fundingPath === 'forwarder' || tx.fundingPath === 'direct'
+        ? tx.fundingPath
+        : resolvedNetwork === network
+          ? funding
+          : cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, resolvedNetwork);
+    if (rowFunding === 'unavailable') {
+      // Nothing was sent; the client cancels this reserve.
+      return NextResponse.json(
+        { error: `Cash-out on ${resolvedNetwork} is unavailable right now`, code: 'NETWORK_UNAVAILABLE' },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json({
       success: true,
       abandonToken,
       transaction: serializeTransaction(tx),
-      // How the client must send it: through PayoutForwarder, or the legacy wallet send.
-      funding:
-        resolvedNetwork === network ? funding : cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, resolvedNetwork),
+      funding: rowFunding,
       transfer: {
         network: resolvedNetwork,
         chainId: NETWORK_CHAIN_ID[resolvedNetwork],

@@ -3,6 +3,7 @@ import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens.js';
 import { PAYCREST_SETTLEMENT } from '../paycrest/payout.service.js';
 import { CRYPTO_CASH_OUT_CHAIN_ID } from '../transactions/transaction.service.js';
 import { RpcClient } from './rpc.client.js';
+import { payoutForwarderAddress } from './forwarder-payout.js';
 
 const TRANSFER_ABI = parseAbi(['event Transfer(address indexed from, address indexed to, uint256 value)']);
 
@@ -69,10 +70,11 @@ export async function verifySettlementHash(opts: {
   const wallet = getAddress(opts.walletAddress);
   const token = expected.token.toLowerCase();
   const to = expected.to ? getAddress(expected.to) : null;
-  // Through PayoutForwarder the money moves in two legs of the same amount:
+  // Through PayoutForwarder the money moves in two linked legs of the same amount:
   // wallet → forwarder, then forwarder → destination.
-  let leftWallet = false;
-  let reachedDestination = false;
+  const forwarder = payoutForwarderAddress();
+  let walletToForwarder = false;
+  let forwarderToDestination = false;
   type RawLog = { address: string; data: Hex; topics: [Hex, ...Hex[]] | [] };
   type Decoded = { eventName: string; args: { from: string; to: string; value: bigint } };
   for (const log of receipt.logs as unknown as RawLog[]) {
@@ -83,11 +85,11 @@ export async function verifySettlementHash(opts: {
       const from = getAddress(ev.args.from);
       const dest = getAddress(ev.args.to);
       if (from === wallet && (!to || dest === to)) return 'VERIFIED';
-      if (from === wallet) leftWallet = true;
-      if (to && dest === to) reachedDestination = true;
+      if (forwarder && from === wallet && dest === forwarder) walletToForwarder = true;
+      if (forwarder && to && from === forwarder && dest === to) forwarderToDestination = true;
     } catch {
       // Not a Transfer (e.g. Approval, AuthorizationUsed).
     }
   }
-  return leftWallet && reachedDestination ? 'VERIFIED' : 'MISMATCH';
+  return walletToForwarder && forwarderToDestination ? 'VERIFIED' : 'MISMATCH';
 }

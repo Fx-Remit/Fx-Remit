@@ -93,6 +93,7 @@ const TRANSACTION_API_SELECT = {
   orderSenderFee: true,
   orderRate: true,
   orderFeeUsd: true,
+  fundingPath: true,
   createdAt: true,
   updatedAt: true,
 } as const;

@@ -5,6 +5,7 @@ process.env.PAYOUT_FORWARDER_ADDRESS = '0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F
 process.env.RELAYER_PRIVATE_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 process.env.BASE_RPC_URL ??= 'http://127.0.0.1:8545';
 process.env.CELO_RPC_URL ??= 'http://127.0.0.1:8546';
+process.env.PAYOUT_FORWARDER_CHAINS = '8453,42220';
 
 import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -286,10 +287,45 @@ describe('broadcastForwarderCryptoTransfer: terms come only from the reserved ro
     });
   }
 
+  it('lets the user sign above the silent cap, up to the contract limit', async () => {
+    const big = { amountUsd: { toString: () => '5000' } };
+    const ok = harness({ row: cryptoRow(big), trusted: false, balance: 5_000_000_000n });
+    // Past the cap: claimed and relayed (the fake receipt is sized for $50, so settlement stops there).
+    await send({ signature: SIGNATURE, validBefore: String(Math.floor(NOW / 1000) + 600) }).catch((err) => {
+      assert.notEqual((err as InstantSendWalletError).code, 'AMOUNT_CAP');
+    });
+    assert.equal(ok.claim.mock.callCount(), 1);
+    assert.deepEqual(ok.relayerChains, [42220]);
+    mock.restoreAll();
+
+    const h = harness({ row: cryptoRow({ amountUsd: { toString: () => '10000.000001' } }), trusted: false });
+    await assert.rejects(send({ signature: SIGNATURE, validBefore: String(Math.floor(NOW / 1000) + 600) }), code('AMOUNT_CAP'));
+    assert.equal(h.claim.mock.callCount(), 0);
+  });
+
   it('refuses when the wallet holds less USDC than reserved', async () => {
     const h = harness({ balance: AMOUNT - 1n });
     await assert.rejects(send(), code('INSUFFICIENT_USDC'));
     assert.equal(h.claim.mock.callCount(), 0);
+  });
+});
+
+describe('broadcastForwarderCryptoTransfer: resume', () => {
+  it('resumes a saved Celo relayer tx on Celo and attaches it', async () => {
+    const raw = await signedPayoutTx(42220);
+    const h = harness({
+      row: cryptoRow({ txHash: `broadcasting-${KEY}`, fundingPath: 'forwarder', fundingTxHash: keccak256(raw), fundingTxRaw: raw }),
+    });
+    const receiptChains: number[] = [];
+    mock.method(forwarderDeps, 'getReceipt', async (_hash: Hex, chainId: number = 8453) => {
+      receiptChains.push(chainId);
+      return receipt(CELO_USDC);
+    });
+    const result = await send();
+    assert.equal(result.txHash, keccak256(raw));
+    assert.ok(receiptChains.length > 0 && receiptChains.every((c) => c === 42220));
+    assert.equal(h.claim.mock.callCount(), 0);
+    assert.equal(h.markConfirmed.mock.callCount(), 1);
   });
 });
 
@@ -336,6 +372,13 @@ describe('cryptoFundingPathFor', () => {
     });
   });
 
+  it('is unavailable until the chain is switched on in PAYOUT_FORWARDER_CHAINS', () => {
+    withEnv({ PAYOUT_FORWARDER_ENABLED: 'true', PAYOUT_FORWARDER_CHAINS: '8453' }, () => {
+      assert.equal(cryptoFundingPathFor(user, 'base'), 'forwarder');
+      assert.equal(cryptoFundingPathFor(user, 'celo'), 'unavailable');
+    });
+  });
+
   it('is unavailable, not direct, when the forwarder is on but the chain has no RPC', () => {
     withEnv({ PAYOUT_FORWARDER_ENABLED: 'true', CELO_RPC_URL: undefined }, () => {
       assert.equal(cryptoFundingPathFor(user, 'celo'), 'unavailable');
@@ -350,6 +393,24 @@ describe('cryptoFundingPathFor', () => {
 });
 
 describe('recoverStuckForwarderClaims for crypto rows', () => {
+  it('keeps claims held on a chain that is not switched on', async () => {
+    harness();
+    const raw = await signedPayoutTx(42220);
+    const getReceipt = mock.method(forwarderDeps, 'getReceipt', async () => receipt(CELO_USDC));
+    prisma.transaction.findMany = mock.fn(async () => [
+      { userId: 'u1', orderId: ORDER, txHash: `broadcasting-${KEY}`, fundingTxHash: keccak256(raw), fundingTxRaw: raw, recipientBank: 'crypto:celo', recipientAcc: DEST.toLowerCase() },
+    ]) as never;
+    const saved = process.env.PAYOUT_FORWARDER_CHAINS;
+    process.env.PAYOUT_FORWARDER_CHAINS = '8453';
+    try {
+      const { results } = (await recoverStuckForwarderClaims()) as { results: { outcome: string }[] };
+      assert.deepEqual(results.map((r) => r.outcome), ['waiting']);
+      assert.equal(getReceipt.mock.callCount(), 0);
+    } finally {
+      process.env.PAYOUT_FORWARDER_CHAINS = saved;
+    }
+  });
+
   it('reads the chain from the saved relayer tx and attaches a landed Celo payout', async () => {
     const h = harness();
     const raw = await signedPayoutTx(42220);

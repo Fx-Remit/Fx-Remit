@@ -1,3 +1,4 @@
+process.env.PAYOUT_FORWARDER_ADDRESS ??= '0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83';
 import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeAbiParameters, pad, type Hex } from 'viem';
@@ -53,6 +54,13 @@ describe('verifySettlementHash', () => {
       receipt([transferLog(CELO_USDC, WALLET, FORWARDER, 12_500_000n), transferLog(CELO_USDC, FORWARDER, DEST, 12_500_000n)]),
     );
     assert.equal(await verifySettlementHash({ row: cryptoRow, walletAddress: WALLET, txHash: HASH }), 'VERIFIED');
+  });
+
+  it('rejects unlinked legs: a self-transfer plus a transfer into the destination', async () => {
+    mock.method(settlementProofDeps, 'getReceipt', async () =>
+      receipt([transferLog(CELO_USDC, WALLET, WALLET, 12_500_000n), transferLog(CELO_USDC, DEST, DEST, 12_500_000n)]),
+    );
+    assert.equal(await verifySettlementHash({ row: cryptoRow, walletAddress: WALLET, txHash: HASH }), 'MISMATCH');
   });
 
   it('rejects two legs that do not both match the reserved amount', async () => {

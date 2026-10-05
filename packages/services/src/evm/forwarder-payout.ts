@@ -24,7 +24,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { PrivyClient } from '@privy-io/node';
 import { prisma } from '@fx-remit/database';
 import { PAYCREST_SETTLEMENT, PayoutService } from '../paycrest/payout.service.js';
-import { TransactionService } from '../transactions/transaction.service.js';
+import { CRYPTO_CASH_OUT_CHAIN_ID, TransactionService } from '../transactions/transaction.service.js';
 import { INSTANT_SEND_MAX_USDC_RAW } from './instant-send.policy.js';
 import { InstantSendWalletError, resolveDelegatedWalletId } from './instant-send.broadcast.js';
 import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens.js';
@@ -91,6 +91,22 @@ function rpcUrl(chainId: ForwarderChainId): string | undefined {
   return process.env[FORWARDER_CHAINS[chainId].rpcEnv]?.trim() || undefined;
 }
 
+/** Forwarder chain for a crypto cash-out network ('base', 'celo'), or null if it doesn't run there. */
+export function forwarderChainForNetwork(network: string): ForwarderChainId | null {
+  const chainId = CRYPTO_CASH_OUT_CHAIN_ID[network];
+  return chainId !== undefined && isForwarderChainId(chainId) ? chainId : null;
+}
+
+/**
+ * Chains the forwarder is switched on for (PAYOUT_FORWARDER_CHAINS, comma-separated ids).
+ * Base only by default: another chain needs an explicit switch once its deploy, relayer
+ * gas and RPC are confirmed.
+ */
+function enabledForwarderChains(): Set<number> {
+  const raw = process.env.PAYOUT_FORWARDER_CHAINS?.trim() || '8453';
+  return new Set(raw.split(',').map((s) => Number(s.trim())).filter(Number.isFinite));
+}
+
 export function payoutForwarderAddress(): Address | null {
   const raw = process.env.PAYOUT_FORWARDER_ADDRESS?.trim();
   return raw && isAddress(raw) ? getAddress(raw) : null;
@@ -98,7 +114,8 @@ export function payoutForwarderAddress(): Address | null {
 
 export function isPayoutForwarderConfigured(chainId: ForwarderChainId = 8453): boolean {
   return Boolean(
-    payoutForwarderAddress() &&
+    enabledForwarderChains().has(chainId) &&
+      payoutForwarderAddress() &&
       process.env.RELAYER_PRIVATE_KEY?.trim() &&
       // A dedicated RPC per chain: load-balanced public endpoints give stale nonces and receipts.
       rpcUrl(chainId) &&
@@ -132,7 +149,7 @@ export function cryptoFundingPathFor(
   user: { id: string; privyDid: string },
   network: string,
 ): 'forwarder' | 'direct' | 'unavailable' {
-  const chainId: ForwarderChainId | null = network === 'base' ? 8453 : network === 'celo' ? 42220 : null;
+  const chainId = forwarderChainForNetwork(network);
   if (chainId === null) return 'unavailable';
   if (!isPayoutForwarderEnabledFor(user)) return 'direct';
   return isPayoutForwarderConfigured(chainId) ? 'forwarder' : 'unavailable';
@@ -156,16 +173,22 @@ export type ForwarderPublicClient = {
   sendRawTransaction(args: { serializedTransaction: Hex }): Promise<Hex>;
 };
 
+const publicClients = new Map<string, ForwarderPublicClient>();
+
 /** Network, signing and locking seams; tests replace these. */
 export const forwarderDeps = {
   resolveWallet: resolveDelegatedWalletId,
   getSettlement: (paycrestOrderId: string) => PayoutService.getSettlementOrder(paycrestOrderId),
 
   publicClient(chainId: ForwarderChainId = 8453): ForwarderPublicClient {
-    return createPublicClient({
-      chain: FORWARDER_CHAINS[chainId].chain,
-      transport: http(rpcUrl(chainId)),
-    }) as unknown as ForwarderPublicClient;
+    const url = rpcUrl(chainId);
+    const key = `${chainId}:${url ?? ''}`;
+    let client = publicClients.get(key);
+    if (!client) {
+      client = createPublicClient({ chain: FORWARDER_CHAINS[chainId].chain, transport: http(url) }) as unknown as ForwarderPublicClient;
+      publicClients.set(key, client);
+    }
+    return client;
   },
 
   relayerAddress(): Address {
@@ -542,9 +565,10 @@ async function relayClaimedPayout(
 type SavedFundingRow = Pick<Remittance, 'userId' | 'orderId' | 'txHash' | 'fundingTxHash' | 'fundingTxRaw'> &
   Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc'>>;
 
-/** Chain of a row with no saved tx yet: crypto rows name it, bank payouts settle on Base. */
-function chainOfRow(row: { recipientBank?: string | null }): ForwarderChainId {
-  return (row.recipientBank ?? '') === 'crypto:celo' ? 42220 : 8453;
+/** Chain of a row with no saved tx yet: crypto rows name it, bank payouts settle on Base. Null if unknown. */
+function chainOfRow(row: { recipientBank?: string | null }): ForwarderChainId | null {
+  const bank = row.recipientBank ?? '';
+  return bank.startsWith('crypto:') ? forwarderChainForNetwork(bank.slice('crypto:'.length)) : 8453;
 }
 
 /** Decode and sanity-check the relayer tx saved on a claimed row. */
@@ -657,6 +681,12 @@ export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; 
   const results: { orderId: string; outcome: ForwarderRecoveryOutcome }[] = [];
   for (const row of rows) {
     let outcome: ForwarderRecoveryOutcome;
+    const chainId = savedTxChain(row) ?? chainOfRow(row);
+    if (chainId === null || !isPayoutForwarderConfigured(chainId)) {
+      // Never judge a claim on a chain we can't read reliably (no switch or no dedicated RPC): keep it held.
+      results.push({ orderId: row.orderId.toString(), outcome: 'waiting' });
+      continue;
+    }
     try {
       outcome = await recoverOneClaim(row, forwarder);
     } catch (err) {
@@ -681,12 +711,24 @@ export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; 
   return { results };
 }
 
+/** Chain id baked into a saved relayer tx, if there is one and it parses. */
+function savedTxChain(row: SavedFundingRow): ForwarderChainId | null {
+  if (!row.fundingTxRaw) return null;
+  try {
+    const chainId = parseTransaction(row.fundingTxRaw as Hex).chainId ?? 8453;
+    return isForwarderChainId(chainId) ? chainId : null;
+  } catch {
+    return null;
+  }
+}
+
 async function recoverOneClaim(row: SavedFundingRow, forwarder: Address): Promise<ForwarderRecoveryOutcome> {
   if (!row.fundingTxHash || !row.fundingTxRaw) {
     // Claimed, but the request died before a tx was saved, so nothing was broadcast.
     const paycrestOrderId = TransactionService.paycrestOrderIdFromTxHash(row.txHash);
     if (!paycrestOrderId) return 'error';
     const chainId = chainOfRow(row);
+    if (chainId === null) return 'waiting';
     await assertNotFundedOnChain({
       userId: row.userId,
       orderId: row.orderId,
@@ -882,13 +924,14 @@ async function markCryptoDestinationConfirmed(
 const USER_AUTHORIZATION_SLACK_MS = 2 * 60_000;
 const USDC_DECIMALS = 6;
 
-type CryptoTerms = { network: 'base' | 'celo'; chainId: ForwarderChainId; usdc: Address; payer: Address; sink: Address; amount: bigint };
+type CryptoTerms = { network: string; chainId: ForwarderChainId; usdc: Address; payer: Address; sink: Address; amount: bigint };
 
 /** Everything about a crypto cash-out comes from the reserved row; the client sends only the orderId. */
 function cryptoPayoutTerms(remittance: Remittance, walletAddress: string): CryptoTerms {
   const bank = remittance.recipientBank ?? '';
   const network = bank.startsWith('crypto:') ? bank.slice('crypto:'.length) : '';
-  if (network !== 'base' && network !== 'celo') {
+  const chainId = forwarderChainForNetwork(network);
+  if (chainId === null) {
     throw new InstantSendWalletError('NOT_CRYPTO_CASH_OUT', 'This cash-out network is not supported');
   }
   if ((remittance.sourceToken || '').toUpperCase() !== 'USDC') {
@@ -905,14 +948,10 @@ function cryptoPayoutTerms(remittance: Remittance, walletAddress: string): Crypt
     throw new InstantSendWalletError('SINK_IS_PAYER', "You can't cash out to your own FX Remit wallet");
   }
   const amount = parseUnits(remittance.amountUsd.toString(), USDC_DECIMALS);
-  if (amount <= 0n) {
-    throw new InstantSendWalletError('INVALID_AMOUNT', 'Transfer amount must be positive');
+  if (amount <= 0n || amount > INSTANT_SEND_MAX_USDC_RAW) {
+    // The forwarder itself refuses anything over $10k.
+    throw new InstantSendWalletError('AMOUNT_CAP', 'Transfer amount is outside the payout limit');
   }
-  // The Privy rule allows up to $10k to the forwarder for any sink; the crypto cap is ours to hold.
-  if (amount > BigInt(CRYPTO_INSTANT_SEND_MAX_USD) * 10n ** BigInt(USDC_DECIMALS)) {
-    throw new InstantSendWalletError('AMOUNT_CAP', `Crypto cash-outs are limited to $${CRYPTO_INSTANT_SEND_MAX_USD}`);
-  }
-  const chainId: ForwarderChainId = network === 'celo' ? 42220 : 8453;
   return { network, chainId, usdc: usdcOn(chainId), payer, sink, amount };
 }
 
@@ -1007,6 +1046,11 @@ export async function broadcastForwarderCryptoTransfer(opts: {
     }
     userValidBefore = BigInt(raw);
   } else {
+    // A silent send has no user prompt, so it keeps the tighter crypto cap. The Privy rule allows
+    // up to $10k to the forwarder for any sink, so this cap is ours to hold. Over it, the user signs.
+    if (terms.amount > BigInt(CRYPTO_INSTANT_SEND_MAX_USD) * 10n ** BigInt(USDC_DECIMALS)) {
+      throw new InstantSendWalletError('AMOUNT_CAP', 'Confirm this send in your wallet');
+    }
     const destination = terms.sink.toLowerCase();
     const trusted = await CryptoAddressService.listForUser(opts.userId, { backfill: false }).then((rows) =>
       rows.find((r) => r.network === terms.network && r.address.toLowerCase() === destination),
