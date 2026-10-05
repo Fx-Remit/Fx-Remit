@@ -1,3 +1,6 @@
+process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID = 'test-quorum';
+process.env.NEXT_PUBLIC_PRIVY_POLICY_ID = 'test-policy';
+process.env.NEXT_PUBLIC_PRIVY_POLICY_ID_CRYPTO = 'test-crypto-policy';
 process.env.NEXT_PUBLIC_PRIVY_APP_ID ??= 'test-app';
 process.env.PRIVY_APP_SECRET ??= 'test-secret';
 process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY ??= 'test-auth-key';
@@ -273,6 +276,7 @@ describe('broadcastSettlementTransfer', () => {
 
     let sendCalls = 0;
     mock.method(PrivyClient.prototype, 'wallets', () => ({
+      get: async () => ({ additional_signers: [{ signer_id: 'test-quorum', override_policy_ids: ['test-policy', 'test-crypto-policy'] }] }),
       ethereum: () => ({
         sendTransaction: async () => {
           sendCalls += 1;
@@ -365,6 +369,7 @@ describe('broadcastSettlementTransfer', () => {
       return true;
     });
     mock.method(PrivyClient.prototype, 'wallets', () => ({
+      get: async () => ({ additional_signers: [{ signer_id: 'test-quorum', override_policy_ids: ['test-policy', 'test-crypto-policy'] }] }),
       ethereum: () => ({
         sendTransaction: async () => {
           throw new Error('timeout / 502');
@@ -442,6 +447,7 @@ describe('broadcastSettlementTransfer', () => {
       return true;
     });
     mock.method(PrivyClient.prototype, 'wallets', () => ({
+      get: async () => ({ additional_signers: [{ signer_id: 'test-quorum', override_policy_ids: ['test-policy', 'test-crypto-policy'] }] }),
       ethereum: () => ({
         sendTransaction: async () => {
           throw new Error('Transaction denied by policy');
@@ -493,8 +499,6 @@ describe('payoutPolicyStatus (#192)', () => {
     } finally {
       process.env.NEXT_PUBLIC_PRIVY_POLICY_ID = saved[0];
       process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID = saved[1];
-      if (saved[0] === undefined) delete process.env.NEXT_PUBLIC_PRIVY_POLICY_ID;
-      if (saved[1] === undefined) delete process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID;
     }
   };
   const signers = (list: unknown[]) =>
@@ -518,10 +522,54 @@ describe('payoutPolicyStatus (#192)', () => {
   });
 
   it('is unknown when ids are not configured or Privy cannot be read', async () => {
+    const savedQuorum = process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID;
+    delete process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID;
     assert.equal(await payoutPolicyStatus('w1'), 'unknown');
+    process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID = savedQuorum;
     await withIds(async () => {
       mock.method(PrivyClient.prototype, 'wallets', () => ({ get: async () => { throw new Error('down'); } }) as any);
       assert.equal(await payoutPolicyStatus('w1'), 'unknown');
     });
+  });
+});
+
+describe('broadcastSettlementTransfer payout permission (#192)', () => {
+  const row = {
+    id: 'tx-p',
+    userId: 'u1',
+    orderId: 9n,
+    txHash: 'pending-pc-9',
+    amountUsd: { toString: () => '5' },
+    type: 'REMITTANCE',
+    sourceNetwork: null,
+  };
+  function stub(signers: unknown) {
+    mock.method(TransactionService, 'findPendingRemittanceForBroadcast', async () => row as never);
+    mock.method(PayoutService, 'getSettlementOrder', async () => ({
+      success: true,
+      order: { providerAccount: { receiveAddress: '0x2222222222222222222222222222222222222222', amountToTransfer: '5' } },
+      settlement: { tokenAddress: PAYCREST_SETTLEMENT.tokenAddress, decimals: 6 },
+    }) as never);
+    mock.method(PrivyClient.prototype, 'users', () => ({
+      _get: async () => ({ id: 'did:privy:u1', linked_accounts: [{ type: 'wallet', wallet_client_type: 'privy', address: '0x1111111111111111111111111111111111111111', id: 'w1', delegated: true }] }),
+    }) as any);
+    mock.method(PrivyClient.prototype, 'wallets', () => ({ get: typeof signers === 'function' ? signers : async () => signers }) as any);
+    return mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+  }
+  const send = () =>
+    broadcastSettlementTransfer({ privyDid: 'did:privy:u1', userId: 'u1', walletAddress: '0x1111111111111111111111111111111111111111', orderId: 9n });
+
+  it('asks for a permission update before claiming when the payout policy is missing', async () => {
+    const claim = stub({ additional_signers: [{ signer_id: 'test-quorum', override_policy_ids: ['test-crypto-policy'] }] });
+    await assert.rejects(send(), (err: unknown) => err instanceof InstantSendWalletError && err.code === 'PERMISSION_UPDATE_REQUIRED');
+    assert.equal(claim.mock.callCount(), 0);
+  });
+
+  it('refuses to claim when the permission cannot be confirmed', async () => {
+    const claim = stub(async () => {
+      throw new Error('privy down');
+    });
+    await assert.rejects(send(), (err: unknown) => err instanceof InstantSendWalletError && err.code === 'PERMISSION_CHECK_FAILED');
+    assert.equal(claim.mock.callCount(), 0);
   });
 });

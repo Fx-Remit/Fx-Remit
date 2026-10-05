@@ -109,6 +109,8 @@ export function ConfirmTransactionSheet({
   const isExternalWallet = !!embeddedWallet && !isEmbeddedPrivy;
 
   const [localDelegated, setLocalDelegated] = useState(false);
+  /** Set when a re-grant removed our signer but couldn't add it back: the next Send must grant. */
+  const forceGrantRef = useRef(false);
   /** Once we have a reserved order this sheet must not open a second create-pending. */
   const reservedOrderIdRef = useRef<string | null>(null);
 
@@ -192,11 +194,13 @@ export function ConfirmTransactionSheet({
   const enableFasterPayouts = async (opts: { replace?: boolean } = {}): Promise<boolean> => {
     if (!embeddedWallet?.address || !isEmbeddedPrivy) {
       setError('This payout needs the in-app wallet on this account');
+      setStatus('idle');
       return false;
     }
     const keyQuorumId = process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID?.trim();
     if (!keyQuorumId) {
       setError('Instant Send is not configured (missing key quorum)');
+      setStatus('idle');
       console.error(
         '[CONFIRM] NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID is missing — cannot addSigners',
       );
@@ -205,6 +209,7 @@ export function ConfirmTransactionSheet({
     const policyId = process.env.NEXT_PUBLIC_PRIVY_POLICY_ID?.trim();
     if (!policyId) {
       setError('Instant Send is not configured (missing policy)');
+      setStatus('idle');
       console.error(
         '[CONFIRM] NEXT_PUBLIC_PRIVY_POLICY_ID is missing — refusing unrestricted addSigners',
       );
@@ -232,13 +237,15 @@ export function ConfirmTransactionSheet({
           ],
         });
       let updatedUser;
-      try {
-        ({ user: updatedUser } = await grant());
-      } catch (err) {
-        if (!opts.replace || isUserRejection(err)) throw err;
+      if (opts.replace) {
+        // Privy has no in-place update, and adding an existing signer may be accepted without
+        // changing its policy: remove ours, then add it back with the payout policy.
         await removeSigners({ address: embeddedWallet.address });
-        ({ user: updatedUser } = await grant());
+        forceGrantRef.current = true;
+        setLocalDelegated(false);
       }
+      ({ user: updatedUser } = await grant());
+      forceGrantRef.current = false;
       setLocalDelegated(true);
       const addr = embeddedWallet.address.toLowerCase();
       const linked = updatedUser?.linkedAccounts?.find(
@@ -284,7 +291,7 @@ export function ConfirmTransactionSheet({
 
     logDelegationSnapshot('Send tapped');
 
-    if (!isDelegated) {
+    if (!isDelegated || forceGrantRef.current) {
       const granted = await enableFasterPayouts();
       if (!granted) {
         onSendingChange?.(false);
@@ -379,6 +386,14 @@ export function ConfirmTransactionSheet({
         // again once, then retry once. Never loop on prompts (#192).
         const granted = await enableFasterPayouts({ replace: true });
         if (!granted) {
+          // Nothing was claimed; the reserve stays until Send succeeds or the sheet is closed.
+          setError('Payout permission not updated. Your payout is on hold: tap Send to try again, or close to cancel.');
+          setStatus('idle');
+          onSendingChange?.(false);
+          return;
+        }
+        if (session.wasAbandoned() || session.wasConsumed()) {
+          setStatus('idle');
           onSendingChange?.(false);
           return;
         }

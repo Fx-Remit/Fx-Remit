@@ -5,7 +5,7 @@ import { CryptoAddressService } from '../crypto-addresses/crypto-address.service
 import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens.js';
 import { ERC20_TRANSFER_ABI } from './instant-send.policy.js';
 import { CRYPTO_INSTANT_SEND_MAX_USD, isCryptoInstantSendConfigured } from './crypto-instant-send.policy.js';
-import { resolveDelegatedWalletId, InstantSendNotConfiguredError, InstantSendWalletError } from './instant-send.broadcast.js';
+import { payoutPolicyStatus, resolveDelegatedWalletId, InstantSendNotConfiguredError, InstantSendWalletError } from './instant-send.broadcast.js';
 
 const CRYPTO_CASH_OUT_CHAIN_ID: Record<string, number> = {
   base: 8453,
@@ -103,6 +103,11 @@ export async function broadcastCryptoTransfer(opts: {
 
   if (!delegated) {
     throw new InstantSendWalletError('NOT_DELEGATED', 'Enable Instant Send to allow FX-Remit to complete this send');
+  }
+  // A refused signature after the claim would leave the reserve stuck: confirm the crypto policy
+  // first. Anything but 'ok' sends the client to the wallet-confirmed send instead (#192).
+  if ((await payoutPolicyStatus(walletId, process.env.NEXT_PUBLIC_PRIVY_POLICY_ID_CRYPTO?.trim())) !== 'ok') {
+    throw new InstantSendWalletError('PERMISSION_UPDATE_REQUIRED', 'Confirm this send in your wallet');
   }
 
   const data = encodeFunctionData({
