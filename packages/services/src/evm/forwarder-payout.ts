@@ -164,6 +164,13 @@ export function bankSourceNetworksAvailable(): Array<'base' | 'celo'> {
   return celo ? ['base', 'celo'] : ['base'];
 }
 
+/** Whether this user's bank payout may be paid from `network` (Celo only through the forwarder). */
+export function bankSourceEnabledFor(user: { id: string; privyDid: string }, network: string): boolean {
+  if (network === 'base') return true;
+  const chainId = forwarderChainForNetwork(network);
+  return chainId !== null && isPayoutForwarderEnabledFor(user) && isPayoutForwarderConfigured(chainId);
+}
+
 /** Same value as PayoutForwarder.authorizationNonce(orderId, sink). */
 export function forwarderAuthorizationNonce(orderId: bigint, sink: Address): Hex {
   return keccak256(encodeAbiParameters([{ type: 'uint256' }, { type: 'address' }], [orderId, sink]));
@@ -579,12 +586,11 @@ async function relayClaimedPayout(
 
 /** A claim with a saved relayer tx: find out what happened to it, resend it, or retire it. */
 type SavedFundingRow = Pick<Remittance, 'userId' | 'orderId' | 'txHash' | 'fundingTxHash' | 'fundingTxRaw'> &
-  Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc'>>;
+  Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc' | 'sourceNetwork'>>;
 
-/** Chain of a row with no saved tx yet: crypto rows name it, bank payouts settle on Base. Null if unknown. */
-function chainOfRow(row: { recipientBank?: string | null }): ForwarderChainId | null {
-  const bank = row.recipientBank ?? '';
-  return bank.startsWith('crypto:') ? forwarderChainForNetwork(bank.slice('crypto:'.length)) : 8453;
+/** Chain a row pays from (crypto network, or a bank payout's source network). Null if unknown. */
+function chainOfRow(row: { recipientBank?: string | null; sourceNetwork?: string | null }): ForwarderChainId | null {
+  return forwarderChainForNetwork(TransactionService.payoutNetworkOf(row));
 }
 
 /** Decode and sanity-check the relayer tx saved on a claimed row. */
@@ -689,6 +695,7 @@ export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; 
       fundingTxRaw: true,
       recipientBank: true,
       recipientAcc: true,
+      sourceNetwork: true,
     },
     orderBy: { updatedAt: 'asc' },
     take: opts.limit ?? 50,

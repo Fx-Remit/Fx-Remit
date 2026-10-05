@@ -145,6 +145,8 @@ export default function BankCashOutPage() {
   const tokenBalances = aggregateTokenBalancesUsd(balanceData?.perChain);
 
   const [manualSource, setManualSource] = useState<SourceNetwork | null>(null);
+  /** Networks a bank payout can be paid from right now, from the last quote response. */
+  const [availableSources, setAvailableSources] = useState<string[]>(['base']);
 
   const spendable = spendableLedgerUsd({
     balanceData,
@@ -153,22 +155,35 @@ export default function BankCashOutPage() {
   });
   const availableBalance = spendable.amount;
 
+  // Pay from: one payout pays from one network. Preselect one that covers the typed amount
+  // (Base first); the user can switch. The server re-checks the balance before reserving.
+  const typedSendUsd = lastEdited === 'send' ? Number(amountInput) : NaN;
+  const sourceOptions = SOURCE_NETWORKS.filter((n) => availableSources.includes(n.id));
+  const sourceBalance = (id: SourceNetwork) =>
+    tokenBalanceForChain(balanceData?.perChain, SOURCE_NETWORKS.find((n) => n.id === id)!.chainId, 'USDC');
+  const autoSource: SourceNetwork =
+    sourceOptions.find((n) => sourceBalance(n.id) >= (typedSendUsd > 0 ? typedSendUsd : 0))?.id ??
+    sourceOptions.reduce((best, n) => (sourceBalance(n.id) > sourceBalance(best.id) ? n : best), sourceOptions[0]).id;
+  const source: SourceNetwork =
+    manualSource && sourceOptions.some((n) => n.id === manualSource) ? manualSource : autoSource;
+
   // For tiered wholesale rates, we pass the send amount if available, otherwise fallback to 1 unit.
   const queryAmount = lastEdited === 'send' && debouncedAmount ? debouncedAmount : '1';
 
   // Fetch rate — unsupported Paycrest corridors surface as Coming soon (no throw/retry spam).
   const { data: quote, isLoading: isLoadingRate } = useQuery({
-    queryKey: ['quote', token, currency, queryAmount],
+    queryKey: ['quote', token, currency, queryAmount, source],
     queryFn: async (): Promise<QuoteResult> => {
       const res = await fetch(
-        `/api/quote?source=${token}&destination=${currency}&amount=${queryAmount}`,
+        `/api/quote?source=${token}&destination=${currency}&amount=${queryAmount}&network=${source}`,
       );
       const data = await res.json().catch(() => ({}));
       if (res.status === 404 || data?.code === 'COMING_SOON') {
         return { comingSoon: true };
       }
       if (!data.success) throw new Error(data.error || 'Failed to fetch quote');
-      return data.quote as QuoteResult;
+      if (Array.isArray(data.source_networks)) setAvailableSources(data.source_networks);
+      return { ...data.quote, source_networks: data.source_networks } as QuoteResult;
     },
     enabled: !!currency && !!token,
     retry: false,
@@ -198,18 +213,6 @@ export default function BankCashOutPage() {
   const hasSendAmount = Number.isFinite(sendUsd) && sendUsd > 0;
   const belowMinimum = hasSendAmount && sendUsd < MIN_SEND_USD;
 
-  // Pay from: one payout pays from one network. Preselect one that covers the amount
-  // (Base first); the user can switch. The server re-checks the balance before reserving.
-  const sourceOptions = SOURCE_NETWORKS.filter((n) =>
-    (quote?.source_networks ?? ['base']).includes(n.id),
-  );
-  const sourceBalance = (id: SourceNetwork) =>
-    tokenBalanceForChain(balanceData?.perChain, SOURCE_NETWORKS.find((n) => n.id === id)!.chainId, 'USDC');
-  const autoSource: SourceNetwork =
-    sourceOptions.find((n) => sourceBalance(n.id) >= (hasSendAmount ? sendUsd : 0))?.id ??
-    sourceOptions.reduce((best, n) => (sourceBalance(n.id) > sourceBalance(best.id) ? n : best), sourceOptions[0]).id;
-  const source: SourceNetwork =
-    manualSource && sourceOptions.some((n) => n.id === manualSource) ? manualSource : autoSource;
   const sourceName = SOURCE_NETWORKS.find((n) => n.id === source)!.name;
   const maxSingleSend = Math.max(0, ...sourceOptions.map((n) => sourceBalance(n.id)));
   const sourceShort = !!balanceData?.perChain && hasSendAmount && sendUsd > sourceBalance(source);

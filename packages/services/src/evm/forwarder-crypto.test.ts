@@ -476,3 +476,22 @@ describe('broadcastForwarderPayout from Celo (#196)', () => {
     }
   });
 });
+
+describe('recoverStuckForwarderClaims for Celo-funded bank payouts (#196)', () => {
+  it('checks a claim with nothing saved against the Celo forwarder, not Base', async () => {
+    harness();
+    const fundedChains: number[] = [];
+    mock.method(forwarderDeps, 'isFunded', async (_f: string, _o: bigint, chainId: number = 8453) => {
+      fundedChains.push(chainId);
+      return false;
+    });
+    const release = mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    prisma.transaction.findMany = mock.fn(async () => [
+      { userId: 'u1', orderId: ORDER, txHash: 'broadcasting-pc-celo-1', fundingTxHash: null, fundingTxRaw: null, recipientBank: 'OPay', recipientAcc: '0000000000', sourceNetwork: 'celo' },
+    ]) as never;
+    const { results } = (await recoverStuckForwarderClaims()) as { results: { outcome: string }[] };
+    assert.deepEqual(results.map((r) => r.outcome), ['released']);
+    assert.deepEqual(fundedChains, [42220]);
+    assert.equal(release.mock.callCount(), 1);
+  });
+});

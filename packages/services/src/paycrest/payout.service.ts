@@ -1,5 +1,6 @@
 import { prisma } from '@fx-remit/database';
 import { PaycrestClient } from './paycrest.client';
+import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens';
 
 /**
  * Paycrest sender offramp settlement rail.
@@ -18,14 +19,15 @@ export const PAYCREST_SETTLEMENT = {
  * Networks a bank payout can be funded from. Paycrest accepts USDC on both; the
  * PayoutForwarder runs on both. Base stays the default for rows without a source.
  */
+const CELO_USDC = DEPOSIT_TOKENS[42220].find((t) => t.symbol === 'USDC')!;
 export const BANK_SOURCE_NETWORKS = {
   base: PAYCREST_SETTLEMENT,
   celo: {
     network: 'celo' as const,
     chainId: 42220,
     token: 'USDC' as const,
-    tokenAddress: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C' as `0x${string}`,
-    decimals: 6,
+    tokenAddress: CELO_USDC.address,
+    decimals: CELO_USDC.decimals,
   },
 };
 export type BankSourceNetwork = keyof typeof BANK_SOURCE_NETWORKS;
@@ -76,6 +78,14 @@ export class PayoutService {
     console.log(
       `[PayoutService] Creating Paycrest Order: ${params.amount} ${settlementToken} (${network}) -> ${params.destinationCurrency}`,
     );
+
+    if (!bankSettlementFor(network)) {
+      return {
+        success: false as const,
+        error: `Unsupported source network ${network}`,
+        status: 400,
+      };
+    }
 
     if (!params.refundAddress) {
       return {
@@ -241,7 +251,7 @@ export class PayoutService {
         });
       }
 
-      const source = bankSettlementFor(network) ?? PAYCREST_SETTLEMENT;
+      const source = bankSettlementFor(network)!;
       return {
         success: true as const,
         order,

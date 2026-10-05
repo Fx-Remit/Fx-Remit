@@ -12,10 +12,10 @@ import {
   ExternalIdConflictError,
   RecipientService,
   withUniqueOrderId,
-  isPayoutForwarderConfigured,
-  isPayoutForwarderEnabledFor,
+  bankSourceEnabledFor,
   sourceNetworkAvailability,
 } from '@fx-remit/services';
+import { isAddress } from 'viem';
 
 export const dynamic = "force-dynamic";
 
@@ -221,10 +221,7 @@ export async function POST(req: Request) {
 
     if (!resumeReserved) {
       // Celo-funded payouts only go through the forwarder; there is no direct Celo send.
-      if (
-        sourceNetwork === 'celo' &&
-        !(isPayoutForwarderEnabledFor({ id: user.id, privyDid: claims.userId }) && isPayoutForwarderConfigured(42220))
-      ) {
+      if (!bankSourceEnabledFor({ id: user.id, privyDid: claims.userId }, sourceNetwork)) {
         return NextResponse.json(
           { error: 'Paying out from Celo is unavailable right now', code: 'NETWORK_UNAVAILABLE' },
           { status: 503 },
@@ -232,13 +229,20 @@ export async function POST(req: Request) {
       }
       // One payout pays from one network: its on-chain USDC, minus what's already reserved there,
       // must cover the amount. Checked before reserving or creating any Paycrest order.
-      if (user.walletAddress) {
+      if (user.walletAddress && isAddress(user.walletAddress)) {
         const availability = await sourceNetworkAvailability({
           userId: user.id,
           walletAddress: user.walletAddress,
           network: sourceNetwork,
         });
-        if (availability && Number(availability.availableUsd) < amountUsd) {
+        if (!availability) {
+          // Can't read the chain: the payout couldn't be sent either, so don't reserve.
+          return NextResponse.json(
+            { error: "Couldn't check your balance right now. Try again in a moment.", code: 'BALANCE_UNAVAILABLE' },
+            { status: 503 },
+          );
+        }
+        if (Number(availability.availableUsd) < amountUsd) {
           const max = Math.floor(Number(availability.availableUsd) * 100) / 100;
           return NextResponse.json(
             {

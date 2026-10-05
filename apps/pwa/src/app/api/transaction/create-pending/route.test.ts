@@ -320,6 +320,15 @@ describe('POST /api/transaction/create-pending source network (#196)', () => {
     assert.equal(createPending.mock.callCount(), 0);
   });
 
+  it("doesn't reserve when the network balance can't be read", async () => {
+    const { createPending } = stub({ onChainRaw: 0n });
+    mock.method(forwarderDeps, 'publicClient', () => ({ readContract: async () => { throw new Error('rpc down'); } }) as any);
+    const res = await POST(requestFrom('base'));
+    assert.equal(res.status, 503);
+    assert.equal((await res.json()).code, 'BALANCE_UNAVAILABLE');
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+
   it('defaults to Base, saves the source on the row and creates the order there', async () => {
     const { createPending, createOrder } = stub({ onChainRaw: 100_000_000n });
     await POST(requestFrom());

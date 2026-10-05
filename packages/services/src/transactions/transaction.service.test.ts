@@ -1506,6 +1506,25 @@ describe('TransactionService.attachOnChainHash', () => {
     assert.equal(updateManyMock.mock.callCount(), 1);
   });
 
+  it('stamps Celo on a bank payout paid from Celo, and refuses an unknown source network', async () => {
+    const celoRow = sampleTx({ userId: 'user-1', status: 'PENDING', txHash: 'pending-pnd_2', recipientBank: '058', sourceNetwork: 'celo' } as any);
+    prisma.transaction.findFirst = mock.fn(async () => celoRow) as any;
+    prisma.transaction.findUnique = mock.fn(async () => ({ ...celoRow, txHash: HASH, chainId: 42220 })) as any;
+    const updateMany = mock.fn(async (args: any) => {
+      assert.equal(args.data.chainId, 42220);
+      return { count: 1 };
+    });
+    prisma.transaction.updateMany = updateMany as any;
+    await TransactionService.attachOnChainHash({ userId: 'user-1', orderId: 42n, txHash: HASH });
+    assert.equal(updateMany.mock.callCount(), 1);
+
+    prisma.transaction.findFirst = mock.fn(async () => ({ ...celoRow, sourceNetwork: 'solana' })) as any;
+    await assert.rejects(
+      TransactionService.attachOnChainHash({ userId: 'user-1', orderId: 42n, txHash: HASH }),
+      /Unknown source network/,
+    );
+  });
+
   it('returns null when userId does not own the row', async () => {
     prisma.transaction.findFirst = mock.fn(async () => null) as any;
 

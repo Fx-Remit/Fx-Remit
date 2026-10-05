@@ -1222,6 +1222,16 @@ export class TransactionService {
   }
 
   /**
+   * Network a remittance pays from: crypto cash-outs name it in recipientBank ("crypto:celo"),
+   * bank payouts in sourceNetwork (null = Base). Callers map it to a chain and fail closed on
+   * names they don't know.
+   */
+  static payoutNetworkOf(row: { recipientBank?: string | null; sourceNetwork?: string | null }): string {
+    const bank = row.recipientBank ?? "";
+    return bank.startsWith("crypto:") ? bank.slice("crypto:".length) : row.sourceNetwork || "base";
+  }
+
+  /**
    * USD still reserved for this user's unsent cash-outs that will pay from `network`:
    * bank payouts with that source (null source = Base) and crypto cash-outs on it.
    * The wallet's on-chain balance on that network must also cover these.
@@ -1237,11 +1247,7 @@ export class TransactionService {
       select: { amountUsd: true, recipientBank: true, sourceNetwork: true },
     });
     return rows
-      .filter((r) => {
-        const bank = r.recipientBank ?? "";
-        if (bank.startsWith("crypto:")) return bank === `crypto:${network}`;
-        return (r.sourceNetwork ?? "base") === network;
-      })
+      .filter((r) => this.payoutNetworkOf(r) === network)
       .reduce((sum, r) => sum.plus(r.amountUsd.toString()), new Prisma.Decimal(0));
   }
 
@@ -1764,9 +1770,11 @@ export class TransactionService {
       ? (existing.recipientBank || '').slice('crypto:'.length)
       : null;
     // Bank payouts settle on their source network (Base unless funded from Celo).
-    let settlementChainId = isCrypto
-      ? PAYCREST_SETTLEMENT.chainId
-      : (bankSettlementFor(existing.sourceNetwork)?.chainId ?? PAYCREST_SETTLEMENT.chainId);
+    const bankSource = isCrypto ? null : bankSettlementFor(existing.sourceNetwork);
+    if (!isCrypto && !bankSource) {
+      throw new Error(`Unknown source network ${existing.sourceNetwork} on ${existing.id}`);
+    }
+    let settlementChainId = isCrypto ? PAYCREST_SETTLEMENT.chainId : bankSource!.chainId;
     if (isCrypto && cryptoNetwork) {
       const mapped = CRYPTO_CASH_OUT_CHAIN_ID[cryptoNetwork];
       if (mapped != null) {
