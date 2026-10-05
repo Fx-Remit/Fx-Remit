@@ -136,8 +136,12 @@ describe('POST /api/transaction/create-crypto-pending amount precision', () => {
     const createPending = mock.method(TransactionService, 'createPending', async () => {
       throw new Error('should not reserve');
     });
+    for (const amount of [1.1234567, 0.1 + 0.2, 1e-13]) {
+      const res = await POST(requestWithAmount(amount));
+      assert.equal(res.status, 422, String(amount));
+    }
     const res = await POST(requestWithAmount(1.1234567));
-    assert.equal(res.status, 422);
+    assert.match((await res.json()).details[0], /at most 6 decimal places/);
     assert.equal(createPending.mock.callCount(), 0);
   });
 
@@ -146,8 +150,10 @@ describe('POST /api/transaction/create-crypto-pending amount precision', () => {
     const createPending = mock.method(TransactionService, 'createPending', async () => {
       throw new InsufficientBalanceError('user-1', '1.123456');
     });
-    const res = await POST(requestWithAmount(1.123456));
-    assert.equal(res.status, 402);
-    assert.equal(createPending.mock.callCount(), 1);
+    for (const amount of [1.123456, 8192.000002, 9999.999999]) {
+      const res = await POST(requestWithAmount(amount));
+      assert.equal(res.status, 402, String(amount));
+    }
+    assert.equal(createPending.mock.callCount(), 3);
   });
 });

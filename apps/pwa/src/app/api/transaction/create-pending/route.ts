@@ -22,14 +22,10 @@ const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET?.trim() ?? "";
 const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
 import { z } from 'zod';
+import { cashOutAmountUsd } from '../../../../lib/cash-out/usd-amount';
 
 const createPendingSchema = z.object({
-  amountUsd: z.coerce
-    .number()
-    .positive("amountUsd must be a positive number")
-    .max(10_000, "Transaction amount exceeds maximum of $10,000")
-    // USDC has 6 decimals: the reserve must equal what can be sent exactly.
-    .refine((v) => Math.abs(v * 1e6 - Math.round(v * 1e6)) < 1e-6, "amountUsd supports at most 6 decimals"),
+  amountUsd: cashOutAmountUsd,
   /** Ignored when present — server recomputes from live retail quote (#98). */
   payoutFiat: z.coerce.number().positive().optional(),
   /** Client quote TTL (ms epoch) from /api/quote; must still be fresh. */
