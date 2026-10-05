@@ -116,6 +116,8 @@ export async function broadcastCryptoTransfer(opts: {
     userId: opts.userId,
     orderId: opts.orderId,
     pendingTxHash,
+    // Pin the path so the forwarder never funds an order this send may already have paid.
+    fundingPath: 'direct',
   });
   if (!claimed) {
     const again = await TransactionService.findRemittanceForBroadcast({
