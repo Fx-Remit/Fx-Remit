@@ -495,3 +495,19 @@ describe('recoverStuckForwarderClaims for Celo-funded bank payouts (#196)', () =
     assert.equal(release.mock.callCount(), 1);
   });
 });
+
+describe('broadcastForwarderCryptoTransfer payout permission (#192)', () => {
+  it('refuses a silent send before claiming when the payout policy is missing', async () => {
+    const h = harness();
+    mock.method(forwarderDeps, 'policyStatus', async () => 'missing');
+    await assert.rejects(send(), code('PERMISSION_UPDATE_REQUIRED'));
+    assert.equal(h.claim.mock.callCount(), 0);
+  });
+
+  it('never checks the policy when the user signs', async () => {
+    harness({ trusted: false });
+    const status = mock.method(forwarderDeps, 'policyStatus', async () => 'missing');
+    await send({ signature: SIGNATURE, validBefore: String(Math.floor(NOW / 1000) + 600) });
+    assert.equal(status.mock.callCount(), 0);
+  });
+});

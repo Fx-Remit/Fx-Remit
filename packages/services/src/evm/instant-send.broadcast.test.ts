@@ -12,6 +12,7 @@ import {
   broadcastSettlementTransfer,
   InstantSendNotConfiguredError,
   InstantSendWalletError,
+  payoutPolicyStatus,
 } from './instant-send.broadcast.js';
 import { ERC20_TRANSFER_ABI, INSTANT_SEND_MAX_USDC_RAW } from './instant-send.policy.js';
 
@@ -479,5 +480,48 @@ describe('broadcastSettlementTransfer source network (#196)', () => {
       broadcastSettlementTransfer({ privyDid: 'did:privy:u1', userId: 'u1', walletAddress: '0x1111111111111111111111111111111111111111', orderId: 7n }),
       (err: unknown) => err instanceof InstantSendWalletError && err.code === 'FUNDING_PATH_MISMATCH',
     );
+  });
+});
+
+describe('payoutPolicyStatus (#192)', () => {
+  const withIds = async (fn: () => Promise<void>) => {
+    const saved = [process.env.NEXT_PUBLIC_PRIVY_POLICY_ID, process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID];
+    process.env.NEXT_PUBLIC_PRIVY_POLICY_ID = 'payout-policy';
+    process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID = 'our-quorum';
+    try {
+      await fn();
+    } finally {
+      process.env.NEXT_PUBLIC_PRIVY_POLICY_ID = saved[0];
+      process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID = saved[1];
+      if (saved[0] === undefined) delete process.env.NEXT_PUBLIC_PRIVY_POLICY_ID;
+      if (saved[1] === undefined) delete process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID;
+    }
+  };
+  const signers = (list: unknown[]) =>
+    mock.method(PrivyClient.prototype, 'wallets', () => ({ get: async () => ({ additional_signers: list }) }) as any);
+
+  it('is ok when our signer carries the payout policy', async () => {
+    await withIds(async () => {
+      signers([{ signer_id: 'our-quorum', override_policy_ids: ['payout-policy'] }]);
+      assert.equal(await payoutPolicyStatus('w1'), 'ok');
+    });
+  });
+
+  it('is missing when our signer has only another policy, or is absent', async () => {
+    await withIds(async () => {
+      signers([{ signer_id: 'our-quorum', override_policy_ids: ['crypto-policy'] }]);
+      assert.equal(await payoutPolicyStatus('w1'), 'missing');
+      mock.restoreAll();
+      signers([]);
+      assert.equal(await payoutPolicyStatus('w1'), 'missing');
+    });
+  });
+
+  it('is unknown when ids are not configured or Privy cannot be read', async () => {
+    assert.equal(await payoutPolicyStatus('w1'), 'unknown');
+    await withIds(async () => {
+      mock.method(PrivyClient.prototype, 'wallets', () => ({ get: async () => { throw new Error('down'); } }) as any);
+      assert.equal(await payoutPolicyStatus('w1'), 'unknown');
+    });
   });
 });

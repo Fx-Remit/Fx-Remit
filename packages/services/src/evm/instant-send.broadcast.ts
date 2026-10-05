@@ -104,6 +104,32 @@ export async function resolveDelegatedWalletId(opts: {
   };
 }
 
+/**
+ * Whether our server signer on this wallet carries the payout policy (NEXT_PUBLIC_PRIVY_POLICY_ID).
+ * - 'missing': our signer is there but with other policies only (e.g. an older crypto-only grant),
+ *   so signing would be refused; the client must grant the payout policy again (#192).
+ * - 'unknown': ids not configured or Privy unreadable; callers let signing decide (it fails safe).
+ */
+export async function payoutPolicyStatus(walletId: string): Promise<'ok' | 'missing' | 'unknown'> {
+  const policyId = process.env.NEXT_PUBLIC_PRIVY_POLICY_ID?.trim();
+  const quorumId = process.env.NEXT_PUBLIC_PRIVY_KEY_QUORUM_ID?.trim();
+  if (!policyId || !quorumId) return 'unknown';
+  try {
+    const wallet = (await privyNodeClient().wallets().get(walletId)) as {
+      additional_signers?: { signer_id?: string; override_policy_ids?: string[]; policy_ids?: string[] }[];
+    };
+    const ours = (wallet.additional_signers ?? []).find((s) => s.signer_id === quorumId);
+    if (!ours) return 'missing';
+    const policies = ours.override_policy_ids ?? ours.policy_ids ?? [];
+    return policies.includes(policyId) ? 'ok' : 'missing';
+  } catch (err) {
+    console.warn('[InstantSend] could not read wallet signers; letting signing decide', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return 'unknown';
+  }
+}
+
 function settlementAmountHuman(
   amountToTransfer: string | number | undefined,
   fallbackUsd: string | number,
@@ -235,6 +261,10 @@ export async function broadcastSettlementTransfer(opts: {
       'NOT_DELEGATED',
       'Enable Instant Send to allow FX-Remit to complete payouts',
     );
+  }
+  if ((await payoutPolicyStatus(walletId)) === 'missing') {
+    // Checked before claiming: nothing was sent.
+    throw new InstantSendWalletError('PERMISSION_UPDATE_REQUIRED', 'Update your payout permission to finish this payout.');
   }
 
   const data = encodeFunctionData({
