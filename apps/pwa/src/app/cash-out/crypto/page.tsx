@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserStore } from '@/store/user-store';
 import { parseUnits, encodeFunctionData, isAddress } from 'viem';
 import { postCancelPending } from '@/lib/cash-out/create-pending-client';
+import { MAX_AMOUNT_DECIMALS, amountDecimals, reserveErrorMessage } from '@/lib/cash-out/usd-amount';
 import { spendableLedgerUsd } from '@/lib/cash-out/spendable-balance';
 import { tokenBalanceForChain, aggregateTokenBalancesUsd } from '@/lib/cash-out/token-balances';
 
@@ -269,6 +270,9 @@ function CryptoCashOutContent() {
     }
   };
 
+  /** USDC/USDT can't move more than 6 decimals; the server rejects it too. */
+  const amountTooPrecise = amount.trim() !== '' && amountDecimals(amount.trim()) > MAX_AMOUNT_DECIMALS;
+
   const handleSend = async () => {
     setIsConfirmOpen(false);
     setStatus('processing');
@@ -380,11 +384,7 @@ function CryptoCashOutContent() {
       });
       const pendingData = await pendingRes.json().catch(() => ({}));
       if (!pendingRes.ok) {
-        throw new Error(
-          typeof pendingData.error === 'string'
-            ? pendingData.error
-            : 'Failed to reserve balance',
-        );
+        throw new Error(reserveErrorMessage(pendingData, 'Failed to reserve balance'));
       }
 
       externalId = pendingData.transaction?.externalId as string | undefined;
@@ -674,7 +674,10 @@ function CryptoCashOutContent() {
                 type="number"
                 placeholder="0"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setError(null);
+                }}
                 style={{ borderColor: '#D1D1D1' }}
                 className="w-full h-[56px] rounded-[12px] bg-white border pl-8 pr-4 text-[#1C1C1C] text-[16px] font-semibold focus:outline-none focus:border-[#2261FE] transition-colors shadow-sm"
               />
@@ -693,6 +696,11 @@ function CryptoCashOutContent() {
                 : `Available: $${availableBalance}`}
               {!spendable.ready ? ' (syncing…)' : ''}
             </p>
+            {amountTooPrecise && (
+              <p className="mt-1 text-[12px] font-medium text-[#E11D48]">
+                Amount can have at most {MAX_AMOUNT_DECIMALS} decimal places.
+              </p>
+            )}
             {balanceSplitAcrossChains && (
               <p className="mt-1 text-[12px] font-medium text-[#E11D48]">
                 Split across networks — only ${liveTokenBalanceLabel} {token} is on {NETWORK_DATA[network]?.name}. Choose a different network above or send a smaller amount.
@@ -795,6 +803,7 @@ function CryptoCashOutContent() {
               : !spendable.ready ||
                 !walletAddress ||
                 !amount ||
+                amountTooPrecise ||
                 parseFloat(amount) <= 0 ||
                 parseFloat(amount) > effectiveAvailableUsd)
           }

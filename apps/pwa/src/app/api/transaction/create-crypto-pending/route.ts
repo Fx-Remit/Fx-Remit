@@ -11,6 +11,7 @@ import {
 } from '@fx-remit/services';
 import { z } from 'zod';
 import { isAddress } from 'viem';
+import { cashOutAmountUsd } from '../../../../lib/cash-out/usd-amount';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,10 +26,7 @@ const NETWORK_CHAIN_ID = {
 } as const;
 
 const createCryptoPendingSchema = z.object({
-  amountUsd: z.coerce
-    .number()
-    .positive('amountUsd must be a positive number')
-    .max(10_000, 'Transaction amount exceeds maximum of $10,000'),
+  amountUsd: cashOutAmountUsd,
   destinationAddress: z
     .string()
     .trim()

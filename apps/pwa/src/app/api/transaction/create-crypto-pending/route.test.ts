@@ -116,3 +116,44 @@ describe('POST /api/transaction/create-crypto-pending response', () => {
     }
   });
 });
+
+describe('POST /api/transaction/create-crypto-pending amount precision', () => {
+  function requestWithAmount(amountUsd: number) {
+    return new Request('http://localhost/api/transaction/create-crypto-pending', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer test-token' },
+      body: JSON.stringify({
+        amountUsd,
+        destinationAddress: '0x000000000000000000000000000000000000bEEF',
+        network: 'base',
+        token: 'USDC',
+      }),
+    });
+  }
+
+  it('rejects an amount with more than 6 decimals before reserving anything', async () => {
+    stubBeforeCreate();
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new Error('should not reserve');
+    });
+    for (const amount of [1.1234567, 0.1 + 0.2, 1e-13]) {
+      const res = await POST(requestWithAmount(amount));
+      assert.equal(res.status, 422, String(amount));
+    }
+    const res = await POST(requestWithAmount(1.1234567));
+    assert.match((await res.json()).details[0], /at most 6 decimal places/);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+
+  it('accepts exactly 6 decimals', async () => {
+    stubBeforeCreate();
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new InsufficientBalanceError('user-1', '1.123456');
+    });
+    for (const amount of [1.123456, 8192.000002, 9999.999999]) {
+      const res = await POST(requestWithAmount(amount));
+      assert.equal(res.status, 402, String(amount));
+    }
+    assert.equal(createPending.mock.callCount(), 3);
+  });
+});
