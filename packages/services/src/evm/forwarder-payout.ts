@@ -30,6 +30,7 @@ import { InstantSendWalletError, payoutPolicyStatus, resolveDelegatedWalletId } 
 import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens.js';
 import { CryptoAddressService } from '../crypto-addresses/crypto-address.service.js';
 import { CRYPTO_INSTANT_SEND_MAX_USD } from './crypto-instant-send.policy.js';
+import { reportAlert } from '../alerts/alert.service.js';
 
 /** pg advisory lock id serializing relayer nonces across server instances. */
 const RELAYER_LOCK_ID = 4_665_873_266n;
@@ -171,6 +172,68 @@ export function bankSourceEnabledFor(user: { id: string; privyDid: string }, net
   return chainId !== null && isPayoutForwarderEnabledFor(user) && isPayoutForwarderConfigured(chainId);
 }
 
+/** Generous gas for one payout() call (measured ~100-120k), used to size the relayer check. */
+const PAYOUT_GAS_ESTIMATE = 150_000n;
+
+export type RelayerGasStatus =
+  | { chainId: ForwarderChainId; balanceWei: string; payoutsLeft: number; low: boolean }
+  | { chainId: ForwarderChainId; error: string };
+
+/**
+ * Nightly: how many payouts the relayer can still pay gas for on each switched-on chain, at the
+ * current gas price. Alerts (RELAYER_GAS_LOW) below RELAYER_MIN_PAYOUTS (default 200): when the
+ * relayer runs dry, every forwarder payout on that chain stops.
+ */
+export async function checkRelayerGas(): Promise<RelayerGasStatus[]> {
+  const configured = Number(process.env.RELAYER_MIN_PAYOUTS?.trim());
+  // A blank or mistyped value must not switch the alert off.
+  const minPayouts = Number.isFinite(configured) && configured > 0 ? configured : 200;
+  const chains = [...enabledForwarderChains()].filter(
+    (c): c is ForwarderChainId => isForwarderChainId(c) && isPayoutForwarderConfigured(c),
+  );
+  const results: RelayerGasStatus[] = [];
+  for (const chainId of chains) {
+    try {
+      const client = forwarderDeps.publicClient(chainId);
+      const relayer = forwarderDeps.relayerAddress();
+      const [balance, gasPrice, fees] = await Promise.all([
+        client.getBalance!({ address: relayer }),
+        client.getGasPrice!(),
+        client.estimateFeesPerGas ? client.estimateFeesPerGas().catch(() => null) : Promise.resolve(null),
+      ]);
+      // The node requires balance >= gas × maxFeePerGas, which sits above the current price. On
+      // Base the relayer also pays an L1 data fee that the gas price leaves out: count it double.
+      const feePerGas = fees?.maxFeePerGas && fees.maxFeePerGas > gasPrice ? fees.maxFeePerGas : gasPrice;
+      const perPayout = feePerGas * PAYOUT_GAS_ESTIMATE * (chainId === 8453 ? 2n : 1n);
+      const payoutsLeft = perPayout > 0n ? Number(balance / perPayout) : Number.MAX_SAFE_INTEGER;
+      const low = payoutsLeft < minPayouts;
+      if (low) {
+        void reportAlert({
+          alert: 'RELAYER_GAS_LOW',
+          severity: 'high',
+          chainId,
+          relayer,
+          balanceWei: balance.toString(),
+          payoutsLeft,
+          message: `Relayer gas covers about ${payoutsLeft} more payouts on chain ${chainId}; top it up before payouts stop`,
+        });
+      }
+      results.push({ chainId, balanceWei: balance.toString(), payoutsLeft, low });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      // A check that can't run must not look like a healthy relayer.
+      void reportAlert({
+        alert: 'RELAYER_GAS_CHECK_FAILED',
+        severity: 'high',
+        chainId,
+        message: `Couldn't read the relayer's gas on chain ${chainId}: ${error}`,
+      });
+      results.push({ chainId, error });
+    }
+  }
+  return results;
+}
+
 /** Same value as PayoutForwarder.authorizationNonce(orderId, sink). */
 export function forwarderAuthorizationNonce(orderId: bigint, sink: Address): Hex {
   return keccak256(encodeAbiParameters([{ type: 'uint256' }, { type: 'address' }], [orderId, sink]));
@@ -187,6 +250,10 @@ export type ForwarderPublicClient = {
   getTransactionCount(args: { address: Address; blockTag: 'latest' | 'pending' }): Promise<number>;
   getTransactionReceipt(args: { hash: Hex }): Promise<TransactionReceipt>;
   sendRawTransaction(args: { serializedTransaction: Hex }): Promise<Hex>;
+  /** Used by the relayer gas check only. */
+  getBalance?(args: { address: Address }): Promise<bigint>;
+  getGasPrice?(): Promise<bigint>;
+  estimateFeesPerGas?(): Promise<{ maxFeePerGas?: bigint }>;
 };
 
 const publicClients = new Map<string, ForwarderPublicClient>();
@@ -787,15 +854,13 @@ async function recoverOneClaim(row: SavedFundingRow, forwarder: Address): Promis
   if (receipt) {
     if (receipt.status !== 'success') await discardIfUnfunded(ctx, hash, 'PAYOUT_REVERTED');
     if (!fundingReceiptMatches(receipt, ctx)) {
-      console.error(
-        JSON.stringify({
-          alert: 'FORWARDER_RECEIPT_MISMATCH',
-          severity: 'high',
-          orderId: ctx.orderId.toString(),
-          txHash: hash,
-          message: 'Saved tx receipt lacks the expected PayoutFunded / USDC transfers; claim kept for ops review',
-        }),
-      );
+      void reportAlert({
+        alert: 'FORWARDER_RECEIPT_MISMATCH',
+        severity: 'high',
+        orderId: ctx.orderId.toString(),
+        txHash: hash,
+        message: 'Saved tx receipt lacks the expected PayoutFunded / USDC transfers; claim kept for ops review',
+      });
       return 'kept-for-ops';
     }
     await TransactionService.attachOnChainHash({ userId: ctx.userId, orderId: ctx.orderId, txHash: hash });
@@ -839,14 +904,12 @@ async function assertNotFundedOnChain(ctx: FundingContext): Promise<void> {
     throw uncertain(ctx, '0x' as Hex, err);
   }
   if (funded) {
-    console.error(
-      JSON.stringify({
-        alert: 'FORWARDER_ORDER_FUNDED_BY_OTHER_TX',
-        severity: 'high',
-        orderId: ctx.orderId.toString(),
-        message: 'Order is funded on-chain without a matching saved tx; claim kept for ops to attach the funding tx',
-      }),
-    );
+    void reportAlert({
+      alert: 'FORWARDER_ORDER_FUNDED_BY_OTHER_TX',
+      severity: 'high',
+      orderId: ctx.orderId.toString(),
+      message: 'Order is funded on-chain without a matching saved tx; claim kept for ops to attach the funding tx',
+    });
     throw uncertain(ctx, '0x' as Hex);
   }
 }
@@ -858,15 +921,13 @@ async function assertNotFundedOnChain(ctx: FundingContext): Promise<void> {
  */
 async function discardIfUnfunded(ctx: FundingContext, hash: Hex, codeIfDiscarded: 'PAYOUT_DROPPED' | 'PAYOUT_REVERTED'): Promise<never> {
   if (await forwarderDeps.isFunded(ctx.forwarder, ctx.orderId, ctx.chainId)) {
-    console.error(
-      JSON.stringify({
-        alert: 'FORWARDER_ORDER_FUNDED_BY_OTHER_TX',
-        severity: 'high',
-        orderId: ctx.orderId.toString(),
-        savedTxHash: hash,
-        message: 'Order is funded on-chain but not by the saved tx; claim kept for ops to attach the funding tx',
-      }),
-    );
+    void reportAlert({
+      alert: 'FORWARDER_ORDER_FUNDED_BY_OTHER_TX',
+      severity: 'high',
+      orderId: ctx.orderId.toString(),
+      savedTxHash: hash,
+      message: 'Order is funded on-chain but not by the saved tx; claim kept for ops to attach the funding tx',
+    });
     throw uncertain(ctx, hash);
   }
   const cleared = await TransactionService.discardFundingTx({
@@ -907,15 +968,13 @@ async function settleStoredFunding(ctx: FundingContext, hash: Hex) {
     }
   }
   if (!fundingReceiptMatches(receipt, ctx)) {
-    console.error(
-      JSON.stringify({
-        alert: 'FORWARDER_RECEIPT_MISMATCH',
-        severity: 'high',
-        orderId: ctx.orderId.toString(),
-        txHash: hash,
-        message: 'Receipt lacks the expected PayoutFunded / USDC transfers; claim kept for ops review',
-      }),
-    );
+    void reportAlert({
+      alert: 'FORWARDER_RECEIPT_MISMATCH',
+      severity: 'high',
+      orderId: ctx.orderId.toString(),
+      txHash: hash,
+      message: 'Receipt lacks the expected PayoutFunded / USDC transfers; claim kept for ops review',
+    });
     throw new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
   }
 

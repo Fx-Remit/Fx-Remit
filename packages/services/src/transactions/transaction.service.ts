@@ -3,6 +3,7 @@ import { Decimal } from "decimal.js";
 import { RpcClient } from "../evm/rpc.client";
 import { PAYCREST_SETTLEMENT, bankSettlementFor } from "../paycrest/payout.service.js";
 import { NotificationService } from "../notifications/notification.service.js";
+import { reportAlert } from "../alerts/alert.service.js";
 
 /** Chain a manual-wallet crypto cash-out actually settles on (recipientBank: "crypto:<network>"). */
 export const CRYPTO_CASH_OUT_CHAIN_ID: Record<string, number> = {
@@ -453,19 +454,17 @@ export class TransactionService {
               updatedAt: new Date(),
             },
           });
-          console.error(
-            JSON.stringify({
-              alert: "INDEXER_DEBIT_INSUFFICIENT_BALANCE",
-              severity: "high",
-              transactionId: dbTx.id,
-              userId: user.id,
-              orderId: data.orderId.toString(),
-              amountUsd: amount.toString(),
-              txHash: data.txHash,
-              message:
-                "Indexer remittance created but walletBalance < amount; flagged REFUND_REQUIRED without debiting (fail closed)",
-            }),
-          );
+          void reportAlert({
+            alert: "INDEXER_DEBIT_INSUFFICIENT_BALANCE",
+            severity: "high",
+            transactionId: dbTx.id,
+            userId: user.id,
+            orderId: data.orderId.toString(),
+            amountUsd: amount.toString(),
+            txHash: data.txHash,
+            message:
+              "Indexer remittance created but walletBalance < amount; flagged REFUND_REQUIRED without debiting (fail closed)",
+          });
           return await tx.transaction.findUnique({ where: { id: dbTx.id } });
         }
       }
@@ -1164,21 +1163,19 @@ export class TransactionService {
     });
 
     for (const row of stale) {
-      console.error(
-        JSON.stringify({
-          alert: 'BROADCAST_CLAIM_STUCK',
-          severity: 'high',
-          transactionId: row.id,
-          orderId: row.orderId.toString(),
-          externalId: row.externalId,
-          txHash: row.txHash,
-          amountUsd: row.amountUsd.toString(),
-          updatedAt: row.updatedAt.toISOString(),
-          olderThanMs,
-          message:
-            'Instant Send claim stuck on broadcasting-* — ops: attach on-chain hash via sync-hash / cancel-stuck-pending --attach, or --force-release only after confirming no USDC left the wallet',
-        }),
-      );
+      void reportAlert({
+        alert: 'BROADCAST_CLAIM_STUCK',
+        severity: 'high',
+        transactionId: row.id,
+        orderId: row.orderId.toString(),
+        externalId: row.externalId,
+        txHash: row.txHash,
+        amountUsd: row.amountUsd.toString(),
+        updatedAt: row.updatedAt.toISOString(),
+        olderThanMs,
+        message:
+          'Instant Send claim stuck on broadcasting-* — ops: attach on-chain hash via sync-hash / cancel-stuck-pending --attach, or --force-release only after confirming no USDC left the wallet',
+      });
     }
 
     return { scanned: stale.length, escalated: stale.length };
@@ -1344,19 +1341,17 @@ export class TransactionService {
       return { outcome: "skipped", transaction: current };
     }
 
-    console.error(
-      JSON.stringify({
-        alert: "REFUND_REQUIRED",
-        severity: "high",
-        transactionId: tx.id,
-        orderId: tx.orderId.toString(),
-        amountUsd: String(tx.amountUsd),
-        txHash: tx.txHash,
-        externalId: tx.externalId,
-        message:
-          "Orphan remittance missing recipient metadata (on-chain or unknown-* hash); spendable reserved until on-chain refund credits via creditInboundDeposit or ops write-off via restoreRefundRequired",
-      }),
-    );
+    void reportAlert({
+      alert: "REFUND_REQUIRED",
+      severity: "high",
+      transactionId: tx.id,
+      orderId: tx.orderId.toString(),
+      amountUsd: String(tx.amountUsd),
+      txHash: tx.txHash,
+      externalId: tx.externalId,
+      message:
+        "Orphan remittance missing recipient metadata (on-chain or unknown-* hash); spendable reserved until on-chain refund credits via creditInboundDeposit or ops write-off via restoreRefundRequired",
+    });
 
     const flagged = await prisma.transaction.findUnique({ where: { id: tx.id } });
     return { outcome: "flagged", transaction: flagged };
@@ -1553,19 +1548,17 @@ export class TransactionService {
 
         // On-chain 0x or indexer unknown-* — do not restoreRefundRequired.
         escalated += 1;
-        console.error(
-          JSON.stringify({
-            alert: "REFUND_REQUIRED_TTL_ESCALATION",
-            severity: "high",
-            transactionId: row.id,
-            orderId: row.orderId.toString(),
-            amountUsd: row.amountUsd.toString(),
-            txHash: row.txHash,
-            olderThanMs,
-            message:
-              "Stale funded/unknown-hash REFUND_REQUIRED with no refundTxHash; ops must confirm on-chain refund then completeRefundRequiredAfterOnChainCredit, or write-off via restoreRefundRequired only if no refund will credit",
-          }),
-        );
+        void reportAlert({
+          alert: "REFUND_REQUIRED_TTL_ESCALATION",
+          severity: "high",
+          transactionId: row.id,
+          orderId: row.orderId.toString(),
+          amountUsd: row.amountUsd.toString(),
+          txHash: row.txHash,
+          olderThanMs,
+          message:
+            "Stale funded/unknown-hash REFUND_REQUIRED with no refundTxHash; ops must confirm on-chain refund then completeRefundRequiredAfterOnChainCredit, or write-off via restoreRefundRequired only if no refund will credit",
+        });
       } catch (err) {
         failed += 1;
         console.error(
@@ -1784,16 +1777,14 @@ export class TransactionService {
         // network: z.enum(['base', 'celo']) into recipientBank. Falling back
         // to Base silently would reintroduce the exact mislabeling bug this
         // branch exists to fix, so surface it loudly instead.
-        console.error(
-          JSON.stringify({
-            alert: 'UNMAPPED_CRYPTO_CASH_OUT_NETWORK',
-            severity: 'high',
-            transactionId: existing.id,
-            recipientBank: existing.recipientBank,
-            cryptoNetwork,
-            message: 'Falling back to Paycrest/Base chainId — network needs adding to CRYPTO_CASH_OUT_CHAIN_ID',
-          }),
-        );
+        void reportAlert({
+          alert: 'UNMAPPED_CRYPTO_CASH_OUT_NETWORK',
+          severity: 'high',
+          transactionId: existing.id,
+          recipientBank: existing.recipientBank,
+          cryptoNetwork,
+          message: 'Falling back to Paycrest/Base chainId — network needs adding to CRYPTO_CASH_OUT_CHAIN_ID',
+        });
       }
     }
 
