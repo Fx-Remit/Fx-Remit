@@ -72,3 +72,35 @@ describe('reportAlert', () => {
     await assert.doesNotReject(reportAlert(event));
   });
 });
+
+describe('reportAlert guards (#194 review)', () => {
+  it('does not mute an alert whose every delivery failed', async () => {
+    process.env.ALERT_WEBHOOK_URL = 'https://hooks.example/abc';
+    let fail = true;
+    const fetchSpy = mock.method(alertDeps, 'fetch', async () => (fail ? new Response('busy', { status: 429 }) : new Response('ok')));
+    await reportAlert(event);
+    fail = false;
+    await reportAlert(event);
+    assert.equal(fetchSpy.mock.callCount(), 2);
+  });
+
+  it('never logs the delivery URL or error text (the bot token lives in the URL)', async () => {
+    process.env.ALERT_TELEGRAM_BOT_TOKEN = 'secret-bot-token';
+    process.env.ALERT_TELEGRAM_CHAT_ID = '1';
+    mock.method(alertDeps, 'fetch', async () => {
+      throw new TypeError('Failed to parse URL from https://api.telegram.org/botsecret-bot-token/sendMessage');
+    });
+    await reportAlert(event);
+    const logged = JSON.stringify((console.error as unknown as { mock: { calls: { arguments: unknown[] }[] } }).mock.calls.map((c) => c.arguments));
+    assert.equal(logged.includes('secret-bot-token'), false);
+    assert.match(logged, /"channel":"telegram"/);
+  });
+
+  it('treats different details as different alerts', async () => {
+    process.env.ALERT_WEBHOOK_URL = 'https://hooks.example/abc';
+    const fetchSpy = mock.method(alertDeps, 'fetch', async () => new Response('ok'));
+    await reportAlert({ alert: 'PRICING_ENV_MISSING', severity: 'high', variable: 'PAYOUT_FEE_BPS' });
+    await reportAlert({ alert: 'PRICING_ENV_MISSING', severity: 'high', variable: 'PAYOUT_SPREAD_BPS' });
+    assert.equal(fetchSpy.mock.callCount(), 2);
+  });
+});

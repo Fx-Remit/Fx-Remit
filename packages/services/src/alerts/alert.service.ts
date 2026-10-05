@@ -19,11 +19,19 @@ export const alertDeps = {
   now: () => Date.now(),
 };
 
+/** Every scalar detail except the free-text message, so different subjects never mute each other. */
 function subjectOf(event: AlertEvent): string {
-  for (const key of ['orderId', 'transactionId', 'txHash', 'chainId', 'network']) {
-    if (event[key] != null) return `${key}=${String(event[key])}`;
+  return Object.entries(event)
+    .filter(([key, value]) => key !== 'message' && value != null && typeof value !== 'object')
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .sort()
+    .join('&');
+}
+
+function prune(now: number): void {
+  for (const [key, at] of recent) {
+    if (now - at >= DEDUPE_MS) recent.delete(key);
   }
-  return '';
 }
 
 function textOf(event: AlertEvent): string {
@@ -36,7 +44,7 @@ function textOf(event: AlertEvent): string {
   return lines.join('\n').slice(0, 3_500);
 }
 
-function post(url: string, body: unknown): Promise<void> {
+function post(channel: 'telegram' | 'webhook', url: string, body: unknown): Promise<void> {
   return alertDeps
     .fetch(url, {
       method: 'POST',
@@ -44,9 +52,24 @@ function post(url: string, body: unknown): Promise<void> {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
     })
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    });
+    .then(
+      (res) => {
+        if (!res.ok) throw new DeliveryError(channel, `HTTP ${res.status}`);
+      },
+      (err: unknown) => {
+        // Never log the error text: a fetch error can echo the URL, which holds the bot token.
+        throw new DeliveryError(channel, err instanceof Error ? err.name : 'error');
+      },
+    );
+}
+
+class DeliveryError extends Error {
+  constructor(
+    readonly channel: string,
+    readonly reason: string,
+  ) {
+    super(`${channel}: ${reason}`);
+  }
 }
 
 /**
@@ -61,9 +84,9 @@ export function reportAlert(event: AlertEvent): Promise<void> {
   console.error(JSON.stringify(event));
 
   const now = alertDeps.now();
-  const key = `${event.alert}|${subjectOf(event)}`;
-  const last = recent.get(key);
-  if (last !== undefined && now - last < DEDUPE_MS) return Promise.resolve();
+  prune(now);
+  const key = subjectOf(event);
+  if (recent.has(key)) return Promise.resolve();
   recent.set(key, now);
 
   const text = textOf(event);
@@ -71,24 +94,28 @@ export function reportAlert(event: AlertEvent): Promise<void> {
   const botToken = process.env.ALERT_TELEGRAM_BOT_TOKEN?.trim();
   const chatId = process.env.ALERT_TELEGRAM_CHAT_ID?.trim();
   if (botToken && chatId) {
-    deliveries.push(post(`https://api.telegram.org/bot${botToken}/sendMessage`, { chat_id: chatId, text }));
+    deliveries.push(post('telegram', `https://api.telegram.org/bot${botToken}/sendMessage`, { chat_id: chatId, text }));
   }
   const webhook = process.env.ALERT_WEBHOOK_URL?.trim();
   if (webhook) {
     // Slack reads `text`, Discord reads `content`.
-    deliveries.push(post(webhook, { text, content: text }));
+    deliveries.push(post('webhook', webhook, { text, content: text }));
   }
   if (!deliveries.length) return Promise.resolve();
 
   const task = Promise.allSettled(deliveries).then((results) => {
     for (const r of results) {
       if (r.status === 'rejected') {
+        const reason = r.reason instanceof DeliveryError ? r.reason : null;
         console.error('[Alerts] delivery failed', {
           alert: event.alert,
-          message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          channel: reason?.channel ?? 'unknown',
+          reason: reason?.reason ?? 'error',
         });
       }
     }
+    // Nothing got through: don't mute this alert, so the next occurrence tries again.
+    if (results.every((r) => r.status === 'rejected')) recent.delete(key);
   });
   try {
     waitUntil(task);

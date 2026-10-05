@@ -185,7 +185,9 @@ export type RelayerGasStatus =
  * relayer runs dry, every forwarder payout on that chain stops.
  */
 export async function checkRelayerGas(): Promise<RelayerGasStatus[]> {
-  const minPayouts = Number(process.env.RELAYER_MIN_PAYOUTS ?? 200);
+  const configured = Number(process.env.RELAYER_MIN_PAYOUTS?.trim());
+  // A blank or mistyped value must not switch the alert off.
+  const minPayouts = Number.isFinite(configured) && configured > 0 ? configured : 200;
   const chains = [...enabledForwarderChains()].filter(
     (c): c is ForwarderChainId => isForwarderChainId(c) && isPayoutForwarderConfigured(c),
   );
@@ -194,8 +196,15 @@ export async function checkRelayerGas(): Promise<RelayerGasStatus[]> {
     try {
       const client = forwarderDeps.publicClient(chainId);
       const relayer = forwarderDeps.relayerAddress();
-      const [balance, gasPrice] = await Promise.all([client.getBalance!({ address: relayer }), client.getGasPrice!()]);
-      const perPayout = gasPrice * PAYOUT_GAS_ESTIMATE;
+      const [balance, gasPrice, fees] = await Promise.all([
+        client.getBalance!({ address: relayer }),
+        client.getGasPrice!(),
+        client.estimateFeesPerGas ? client.estimateFeesPerGas().catch(() => null) : Promise.resolve(null),
+      ]);
+      // The node requires balance >= gas × maxFeePerGas, which sits above the current price. On
+      // Base the relayer also pays an L1 data fee that the gas price leaves out: count it double.
+      const feePerGas = fees?.maxFeePerGas && fees.maxFeePerGas > gasPrice ? fees.maxFeePerGas : gasPrice;
+      const perPayout = feePerGas * PAYOUT_GAS_ESTIMATE * (chainId === 8453 ? 2n : 1n);
       const payoutsLeft = perPayout > 0n ? Number(balance / perPayout) : Number.MAX_SAFE_INTEGER;
       const low = payoutsLeft < minPayouts;
       if (low) {
@@ -211,7 +220,15 @@ export async function checkRelayerGas(): Promise<RelayerGasStatus[]> {
       }
       results.push({ chainId, balanceWei: balance.toString(), payoutsLeft, low });
     } catch (err) {
-      results.push({ chainId, error: err instanceof Error ? err.message : String(err) });
+      const error = err instanceof Error ? err.message : String(err);
+      // A check that can't run must not look like a healthy relayer.
+      void reportAlert({
+        alert: 'RELAYER_GAS_CHECK_FAILED',
+        severity: 'high',
+        chainId,
+        message: `Couldn't read the relayer's gas on chain ${chainId}: ${error}`,
+      });
+      results.push({ chainId, error });
     }
   }
   return results;
@@ -236,6 +253,7 @@ export type ForwarderPublicClient = {
   /** Used by the relayer gas check only. */
   getBalance?(args: { address: Address }): Promise<bigint>;
   getGasPrice?(): Promise<bigint>;
+  estimateFeesPerGas?(): Promise<{ maxFeePerGas?: bigint }>;
 };
 
 const publicClients = new Map<string, ForwarderPublicClient>();
