@@ -380,10 +380,14 @@ function CryptoCashOutContent() {
       });
       const pendingData = await pendingRes.json().catch(() => ({}));
       if (!pendingRes.ok) {
+        // 422s carry the specific reason (e.g. too many decimals) in details.
+        const detail = Array.isArray(pendingData.details) ? pendingData.details[0] : null;
         throw new Error(
-          typeof pendingData.error === 'string'
-            ? pendingData.error
-            : 'Failed to reserve balance',
+          typeof detail === 'string'
+            ? detail
+            : typeof pendingData.error === 'string'
+              ? pendingData.error
+              : 'Failed to reserve balance',
         );
       }
 

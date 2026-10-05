@@ -28,7 +28,9 @@ const createCryptoPendingSchema = z.object({
   amountUsd: z.coerce
     .number()
     .positive('amountUsd must be a positive number')
-    .max(10_000, 'Transaction amount exceeds maximum of $10,000'),
+    .max(10_000, 'Transaction amount exceeds maximum of $10,000')
+    // USDC/USDT have 6 decimals: the reserve must equal what can be sent exactly.
+    .refine((v) => Math.abs(v * 1e6 - Math.round(v * 1e6)) < 1e-6, 'amountUsd supports at most 6 decimals'),
   destinationAddress: z
     .string()
     .trim()
