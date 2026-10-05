@@ -27,6 +27,7 @@ import { TransactionService } from '../transactions/transaction.service.js';
 import { CryptoAddressService } from '../crypto-addresses/crypto-address.service.js';
 import { InstantSendWalletError } from './instant-send.broadcast.js';
 import {
+  checkRelayerGas,
   broadcastForwarderPayout,
   broadcastForwarderCryptoTransfer,
   cryptoFundingPathFor,
@@ -509,5 +510,62 @@ describe('broadcastForwarderCryptoTransfer payout permission (#192)', () => {
     const status = mock.method(forwarderDeps, 'policyStatus', async () => 'missing');
     await send({ signature: SIGNATURE, validBefore: String(Math.floor(NOW / 1000) + 600) });
     assert.equal(status.mock.callCount(), 0);
+  });
+});
+
+describe('checkRelayerGas (#194)', () => {
+  it('reports payouts left per switched-on chain and alerts when low', async () => {
+    const balances: Record<number, bigint> = { 8453: 10n ** 15n, 42220: 10n ** 13n };
+    mock.method(forwarderDeps, 'publicClient', (chainId: number = 8453) => ({
+      getBalance: async () => balances[chainId],
+      getGasPrice: async () => 10_000_000n, // 0.01 gwei: 1.5e12 wei per payout
+    }) as never);
+    const errors = mock.method(console, 'error', () => {});
+    const results = await checkRelayerGas();
+    const byChain = Object.fromEntries(results.map((r) => [r.chainId, r]));
+    // Base counts double for its L1 data fee: 1e15 / (1.5e12 × 2) = 333.
+    assert.deepEqual(byChain[8453], { chainId: 8453, balanceWei: String(10n ** 15n), payoutsLeft: 333, low: false });
+    assert.deepEqual(byChain[42220], { chainId: 42220, balanceWei: String(10n ** 13n), payoutsLeft: 6, low: true });
+    const logged = errors.mock.calls.map((c) => String(c.arguments[0])).filter((l) => l.includes('RELAYER_GAS_LOW'));
+    assert.equal(logged.length, 1);
+    assert.equal(JSON.parse(logged[0]).chainId, 42220);
+  });
+});
+
+describe('checkRelayerGas guards (#194)', () => {
+  it('sizes the cost from maxFeePerGas when it is above the gas price', async () => {
+    mock.method(forwarderDeps, 'publicClient', () => ({
+      getBalance: async () => 3n * 10n ** 13n,
+      getGasPrice: async () => 10_000_000n,
+      estimateFeesPerGas: async () => ({ maxFeePerGas: 20_000_000n }),
+    }) as never);
+    mock.method(console, 'error', () => {});
+    const celo = (await checkRelayerGas()).find((r) => r.chainId === 42220) as { payoutsLeft: number };
+    assert.equal(celo.payoutsLeft, 10); // 3e13 / (2e7 × 150k)
+  });
+
+  it('keeps alerting when RELAYER_MIN_PAYOUTS is blank or not a number', async () => {
+    mock.method(forwarderDeps, 'publicClient', () => ({ getBalance: async () => 10n ** 13n, getGasPrice: async () => 10_000_000n }) as never);
+    mock.method(console, 'error', () => {});
+    for (const value of ['', 'abc', '0']) {
+      process.env.RELAYER_MIN_PAYOUTS = value;
+      const results = await checkRelayerGas();
+      assert.ok(results.every((r) => 'low' in r && r.low), value);
+    }
+    delete process.env.RELAYER_MIN_PAYOUTS;
+  });
+
+  it('alerts when the check itself fails, instead of looking healthy', async () => {
+    mock.method(forwarderDeps, 'publicClient', () => ({
+      getBalance: async () => {
+        throw new Error('rpc down');
+      },
+      getGasPrice: async () => 1n,
+    }) as never);
+    const errors = mock.method(console, 'error', () => {});
+    const results = await checkRelayerGas();
+    assert.ok(results.every((r) => 'error' in r));
+    const failed = errors.mock.calls.map((c) => String(c.arguments[0])).filter((l) => l.includes('RELAYER_GAS_CHECK_FAILED'));
+    assert.equal(failed.length, results.length);
   });
 });
