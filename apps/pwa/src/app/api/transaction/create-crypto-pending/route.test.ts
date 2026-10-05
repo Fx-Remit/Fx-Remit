@@ -116,3 +116,95 @@ describe('POST /api/transaction/create-crypto-pending response', () => {
     }
   });
 });
+
+describe('POST /api/transaction/create-crypto-pending amount precision', () => {
+  function requestWithAmount(amountUsd: number) {
+    return new Request('http://localhost/api/transaction/create-crypto-pending', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer test-token' },
+      body: JSON.stringify({
+        amountUsd,
+        destinationAddress: '0x000000000000000000000000000000000000bEEF',
+        network: 'base',
+        token: 'USDC',
+      }),
+    });
+  }
+
+  it('rejects an amount with more than 6 decimals before reserving anything', async () => {
+    stubBeforeCreate();
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new Error('should not reserve');
+    });
+    for (const amount of [1.1234567, 0.1 + 0.2, 1e-13]) {
+      const res = await POST(requestWithAmount(amount));
+      assert.equal(res.status, 422, String(amount));
+    }
+    const res = await POST(requestWithAmount(1.1234567));
+    assert.match((await res.json()).details[0], /at most 6 decimal places/);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+
+  it('accepts exactly 6 decimals', async () => {
+    stubBeforeCreate();
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new InsufficientBalanceError('user-1', '1.123456');
+    });
+    for (const amount of [1.123456, 8192.000002, 9999.999999]) {
+      const res = await POST(requestWithAmount(amount));
+      assert.equal(res.status, 402, String(amount));
+    }
+    assert.equal(createPending.mock.callCount(), 3);
+  });
+});
+
+describe('POST /api/transaction/create-crypto-pending scope (#190)', () => {
+  function requestWith(body: Record<string, unknown>) {
+    return new Request('http://localhost/api/transaction/create-crypto-pending', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer test-token' },
+      body: JSON.stringify({
+        amountUsd: 5,
+        destinationAddress: '0x000000000000000000000000000000000000bEEF',
+        network: 'base',
+        token: 'USDC',
+        ...body,
+      }),
+    });
+  }
+
+  it('offers only Base and Celo', async () => {
+    stubBeforeCreate();
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new Error('should not reserve');
+    });
+    const res = await POST(requestWith({ network: 'arbitrum' }));
+    assert.equal(res.status, 422);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+
+  it('cashes out USDC only, for now', async () => {
+    stubBeforeCreate();
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new Error('should not reserve');
+    });
+    const res = await POST(requestWith({ token: 'USDT' }));
+    assert.equal(res.status, 422);
+    assert.match((await res.json()).error, /Only USDC/);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+
+  it("refuses the user's own FX Remit wallet as the destination", async () => {
+    mock.method(PrivyClient.prototype, 'verifyAuthToken', async () => ({ userId: 'did:privy:user-1' }));
+    prisma.user.findUnique = mock.fn(async () => ({
+      id: 'user-1',
+      walletAddress: '0x000000000000000000000000000000000000BEEF',
+    })) as any;
+    const createPending = mock.method(TransactionService, 'createPending', async () => {
+      throw new Error('should not reserve');
+    });
+    const res = await POST(requestWith({}));
+    assert.equal(res.status, 422);
+    assert.equal(createPending.mock.callCount(), 0);
+  });
+});

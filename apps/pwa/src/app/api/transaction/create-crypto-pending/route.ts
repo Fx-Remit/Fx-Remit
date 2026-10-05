@@ -8,9 +8,11 @@ import {
   ExternalIdConflictError,
   DEPOSIT_TOKENS,
   withUniqueOrderId,
+  cryptoFundingPathFor,
 } from '@fx-remit/services';
 import { z } from 'zod';
 import { isAddress } from 'viem';
+import { cashOutAmountUsd } from '../../../../lib/cash-out/usd-amount';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,15 +27,13 @@ const NETWORK_CHAIN_ID = {
 } as const;
 
 const createCryptoPendingSchema = z.object({
-  amountUsd: z.coerce
-    .number()
-    .positive('amountUsd must be a positive number')
-    .max(10_000, 'Transaction amount exceeds maximum of $10,000'),
+  amountUsd: cashOutAmountUsd,
   destinationAddress: z
     .string()
     .trim()
     .refine((a) => isAddress(a), 'destinationAddress must be a valid address'),
-  network: z.enum(['base', 'celo', 'arbitrum']),
+  // Crypto cash-out goes through PayoutForwarder, which runs on Base and Celo (#190).
+  network: z.enum(['base', 'celo']),
   token: z.string().trim().min(1, 'token is required'),
   externalId: z.string().optional(),
 });
@@ -147,13 +147,30 @@ export async function POST(req: Request) {
       );
     }
 
+    // PayoutForwarder moves USDC only; USDT follows with Forwarder V2 (#191).
+    if (tokenMeta.symbol.toUpperCase() !== 'USDC') {
+      return NextResponse.json({ error: 'Only USDC can be cashed out right now' }, { status: 422 });
+    }
+
     const user = await prisma.user.findUnique({
       where: { privyDid: claims.userId },
-      select: { id: true },
+      select: { id: true, walletAddress: true },
     });
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    if (user.walletAddress && user.walletAddress.toLowerCase() === destinationAddress.toLowerCase()) {
+      return NextResponse.json({ error: "You can't cash out to your own FX Remit wallet" }, { status: 422 });
+    }
+
+    const funding = cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, network);
+    if (funding === 'unavailable') {
+      return NextResponse.json(
+        { error: `Cash-out on ${network} is unavailable right now`, code: 'NETWORK_UNAVAILABLE' },
+        { status: 503 },
+      );
     }
 
     const appExternalId =
@@ -215,10 +232,27 @@ export async function POST(req: Request) {
     const resumedToken = resolveToken(resolvedNetwork, tx.sourceToken || tokenMeta.symbol);
     const transferMeta = resumedToken || tokenMeta;
 
+    // How the client must send it: an order keeps the path it started on; otherwise
+    // through PayoutForwarder, or the legacy wallet send while the forwarder is off.
+    const rowFunding =
+      tx.fundingPath === 'forwarder' || tx.fundingPath === 'direct'
+        ? tx.fundingPath
+        : resolvedNetwork === network
+          ? funding
+          : cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, resolvedNetwork);
+    if (rowFunding === 'unavailable') {
+      // Nothing was sent; the client cancels this reserve.
+      return NextResponse.json(
+        { error: `Cash-out on ${resolvedNetwork} is unavailable right now`, code: 'NETWORK_UNAVAILABLE' },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json({
       success: true,
       abandonToken,
       transaction: serializeTransaction(tx),
+      funding: rowFunding,
       transfer: {
         network: resolvedNetwork,
         chainId: NETWORK_CHAIN_ID[resolvedNetwork],

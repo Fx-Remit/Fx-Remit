@@ -2,6 +2,7 @@ import type {
   CreatePendingRequestBody,
   SettlementPrefetchSession,
 } from './settlement-prefetch';
+import { reserveErrorMessage } from './usd-amount';
 
 export class CreatePendingHttpError extends Error {
   readonly status: number;
@@ -45,13 +46,13 @@ export async function postCreatePending(
     const data = (await response.json().catch(() => ({}))) as {
       error?: unknown;
       code?: unknown;
+      details?: unknown;
     };
     if (response.ok) {
       return data;
     }
     const code = typeof data.code === 'string' ? data.code : undefined;
-    const message =
-      typeof data.error === 'string' ? data.error : 'Failed to prepare settlement';
+    const message = reserveErrorMessage(data, 'Failed to prepare settlement');
 
     // Fresh PROCESSING claim: wait for attach / sibling create, then retry.
     if (code === 'ORDER_IN_FLIGHT' && attempt < maxAttempts - 1) {
