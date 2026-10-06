@@ -323,6 +323,7 @@ export async function POST(req: Request) {
               }
             : null,
           sourceNetwork,
+          corridor: (destinationCurrency || 'NGN').toUpperCase(),
         }),
       );
     } catch (err) {

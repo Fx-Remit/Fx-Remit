@@ -112,6 +112,20 @@ describe('ReconciliationService — happy paths', () => {
     assert.equal(createOrder.mock.callCount(), 1);
   });
 
+  it("re-creates the order in the payout's own currency and network (#195, #196)", async () => {
+    prisma.transaction.findMany = mock.fn(async () => [
+      stuckTx({ txHash: 'pending-ext-77', corridor: 'KES', sourceNetwork: 'celo' }),
+      stuckTx({ id: 'tx-old', txHash: 'pending-ext-78', externalId: 'ext-78', corridor: null, sourceNetwork: null }),
+    ]) as any;
+    prisma.transaction.updateMany = mock.fn(async () => ({ count: 1 })) as any;
+    const createOrder = mock.method(PayoutService, 'createPaycrestOrder', async () => ({ success: true, order: { id: 'ord' } }));
+
+    await ReconciliationService.reconcileStuckTransactions();
+    const args = createOrder.mock.calls.map((c) => c.arguments[0] as any);
+    assert.deepEqual([args[0].destinationCurrency, args[0].network], ['KES', 'celo']);
+    assert.deepEqual([args[1].destinationCurrency, args[1].network], ['NGN', 'base']);
+  });
+
   it('uses SUSPENSE_WALLET_ADDRESS when user wallet missing (placeholder recovery)', async () => {
     process.env.SUSPENSE_WALLET_ADDRESS = '0xSuspense';
     prisma.transaction.findMany = mock.fn(async () => [

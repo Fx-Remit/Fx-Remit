@@ -332,6 +332,7 @@ describe('POST /api/transaction/create-pending source network (#196)', () => {
   it('defaults to Base, saves the source on the row and creates the order there', async () => {
     const { createPending, createOrder } = stub({ onChainRaw: 100_000_000n });
     await POST(requestFrom());
+    assert.equal((createPending.mock.calls[0].arguments[0] as any).corridor, 'NGN');
     assert.equal((createPending.mock.calls[0].arguments[0] as any).sourceNetwork, 'base');
     assert.equal((createOrder.mock.calls[0].arguments[0] as any).network, 'base');
   });
