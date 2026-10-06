@@ -8,7 +8,9 @@ import "../src/FXRemitConstants.sol";
 /**
  * Deploys PayoutForwarderV2 through the CREATE2 deployer with a fixed salt.
  * Same salt + same constructor args + same bytecode => same address on Base and Celo. Deploy every
- * chain from the same commit: any edit to PayoutForwarderV2.sol or IERC3009.sol changes the address.
+ * chain from the same commit and the same `pnpm install`: the address changes with any edit to
+ * PayoutForwarderV2.sol or IERC3009.sol, the installed OpenZeppelin version, or the compiler
+ * settings in foundry.toml (solc version, optimizer, via-IR).
  * Tokens are configured afterwards by the owner (ConfigurePayoutForwarderV2.s.sol).
  *
  * Env:

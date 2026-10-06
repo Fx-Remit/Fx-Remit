@@ -468,6 +468,28 @@ contract PayoutForwarderV2Test is Test {
         assertEq(usdt.balanceOf(sink), AMOUNT);
     }
 
+    function test_approval_invertedWindowIsRefused_andAZeroWidthOneWorks() public {
+        vm.prank(payer);
+        usdt.approve(address(forwarder), type(uint256).max);
+        uint256 nowTs = vm.getBlockTimestamp();
+
+        // validAfter > deadline: NotYetValid while now <= deadline, Expired after.
+        uint256 validAfter = nowTs + 10;
+        uint256 deadline = nowTs + 5;
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
+        vm.expectRevert(PayoutForwarderV2.NotYetValid.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+        vm.warp(deadline + 1);
+        vm.expectRevert(PayoutForwarderV2.Expired.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+
+        // validAfter == deadline == now is a valid one-second window.
+        nowTs = vm.getBlockTimestamp();
+        sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, nowTs, nowTs);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, nowTs, nowTs);
+        assertEq(usdt.balanceOf(sink), AMOUNT);
+    }
+
     function test_voidOrder_closesAnAbandonedOrderForGood_withoutReadingAsPaid() public {
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
@@ -504,6 +526,15 @@ contract PayoutForwarderV2Test is Test {
         vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyFunded.selector, ORDER));
         forwarder.voidOrder(ORDER);
         assertTrue(forwarder.funded(ORDER));
+        assertFalse(forwarder.voided(ORDER));
+    }
+
+    function test_voidOrder_cannotVoidAnOrderV1Funded() public {
+        // Otherwise voided() would say "closed without a transfer" for an order V1 paid.
+        legacy.setFunded(ORDER);
+        vm.prank(relayer);
+        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyFunded.selector, ORDER));
+        forwarder.voidOrder(ORDER);
         assertFalse(forwarder.voided(ORDER));
     }
 

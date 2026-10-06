@@ -190,13 +190,14 @@ contract PayoutForwarderV2 is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     }
 
     /**
-     * @notice Close an order for good without moving funds (e.g. an abandoned APPROVAL-mode order
-     * whose signature is still within its deadline). Relayer or owner. Sets `voided`, never
-     * `funded`, so a voided order never reads as paid.
+     * @notice Close an order for good without moving funds, in either mode: an abandoned
+     * APPROVAL-mode signature or a still-valid EIP-3009 authorization can no longer be used.
+     * Relayer or owner. Sets `voided`, never `funded`, so a voided order never reads as paid;
+     * an order funded here or in V1 can't be voided.
      */
     function voidOrder(uint256 orderId) external {
         if (!isRelayer[msg.sender] && msg.sender != owner()) revert NotRelayerOrOwner();
-        if (funded[orderId]) revert AlreadyFunded(orderId);
+        if (_isFunded(orderId)) revert AlreadyFunded(orderId);
         if (voided[orderId]) revert AlreadyVoided(orderId);
         voided[orderId] = true;
         emit OrderVoided(orderId);
@@ -236,12 +237,15 @@ contract PayoutForwarderV2 is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     function _claim(uint256 orderId, address payer, address sink, address token, uint256 amount) internal {
         if (amount == 0 || amount > MAX_AMOUNT) revert InvalidAmount();
         if (sink == address(0) || sink == payer || sink == address(this) || sink == token) revert InvalidSink();
-        if (funded[orderId]) revert AlreadyFunded(orderId);
+        if (_isFunded(orderId)) revert AlreadyFunded(orderId);
         if (voided[orderId]) revert AlreadyVoided(orderId);
-        if (legacyForwarder.code.length > 0 && ILegacyForwarder(legacyForwarder).funded(orderId)) {
-            revert AlreadyFunded(orderId);
-        }
         funded[orderId] = true;
+    }
+
+    /// @dev Funded here, or by the V1 forwarder.
+    function _isFunded(uint256 orderId) internal view returns (bool) {
+        return funded[orderId]
+            || (legacyForwarder.code.length > 0 && ILegacyForwarder(legacyForwarder).funded(orderId));
     }
 
     function _forward(uint256 orderId, address payer, address sink, address token, uint256 amount, uint256 balanceBefore)
