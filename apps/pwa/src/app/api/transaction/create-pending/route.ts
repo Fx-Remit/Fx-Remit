@@ -349,6 +349,8 @@ export async function POST(req: Request) {
 
     const externalKey = tx.externalId || appExternalId;
     const abandonToken = mintAbandonToken(externalKey, user.id);
+    // A reserve keeps the currency it was bound in: its saved split and rate are in that currency.
+    const rowCurrency = (tx.corridor || destinationCurrency || 'NGN').toUpperCase();
     // Authoritative fiat is always the persisted row (resume keeps original bind).
     const quoteMeta = {
       retailRate: boundQuote?.retailRate,
@@ -380,7 +382,7 @@ export async function POST(req: Request) {
           userId: user.id,
           bankCode,
           recipientType,
-          destinationCurrency,
+          destinationCurrency: rowCurrency,
           recipientBank,
           recipientAcc,
           recipientName,
@@ -407,7 +409,7 @@ export async function POST(req: Request) {
       senderFee: orderPricing.senderFee,
       rate: orderPricing.rate,
       sourceToken,
-      destinationCurrency: destinationCurrency || "NGN",
+      destinationCurrency: rowCurrency,
       recipient: {
         institution: bankCode || recipientBank,
         accountIdentifier: recipientAcc,
@@ -443,7 +445,7 @@ export async function POST(req: Request) {
                 userId: user.id,
                 bankCode,
                 recipientType,
-                destinationCurrency,
+                destinationCurrency: rowCurrency,
                 recipientBank,
                 recipientAcc,
                 recipientName,
@@ -543,7 +545,7 @@ export async function POST(req: Request) {
       userId: user.id,
       bankCode,
       recipientType,
-      destinationCurrency,
+      destinationCurrency: rowCurrency,
       recipientBank,
       recipientAcc,
       recipientName,

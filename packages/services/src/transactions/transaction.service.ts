@@ -720,6 +720,7 @@ export class TransactionService {
         amountUsd: updated.amountUsd.toString(),
         payoutFiat: updated.payoutFiat?.toString(),
         recipientName: updated.recipientName,
+        currency: (updated.recipientBank ?? '').startsWith('crypto:') ? updated.sourceToken : updated.corridor,
       });
     }
 
@@ -1830,6 +1831,7 @@ export class TransactionService {
         amountUsd: row.amountUsd.toString(),
         payoutFiat: row.payoutFiat?.toString(),
         recipientName: row.recipientName,
+        currency: row.sourceToken,
       });
     }
     return row;
