@@ -32,16 +32,19 @@ export function TransactionDetailSheet({
 
   const exchangeRate =
     transaction.rate ||
-    (() => {
-      const sent = Number(transaction.sentAmount);
-      const received = Number(transaction.receivedAmount);
-      if (!(sent > 0 && received > 0)) return null;
-      const effective = received / sent;
-      return `1 ${transaction.sentToken} = ${effective.toLocaleString(undefined, {
-        maximumFractionDigits: 2,
-        minimumFractionDigits: 2,
-      })} ${transaction.receivedToken}`;
-    })();
+    // Same token on both sides (crypto cash-out): there's no exchange rate to show.
+    (transaction.sentToken === transaction.receivedToken
+      ? null
+      : (() => {
+          const sent = Number(transaction.sentAmount);
+          const received = Number(transaction.receivedAmount);
+          if (!(sent > 0 && received > 0)) return null;
+          const effective = received / sent;
+          return `1 ${transaction.sentToken} = ${effective.toLocaleString(undefined, {
+            maximumFractionDigits: 2,
+            minimumFractionDigits: 2,
+          })} ${transaction.receivedToken}`;
+        })());
 
   const isCompleted = transaction.status === 'completed';
   const isPending = transaction.status === 'pending';

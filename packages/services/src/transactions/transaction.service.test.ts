@@ -130,6 +130,11 @@ describe('TransactionService.serialize — happy paths', () => {
     }
   });
 
+  it('returns the payout currency, null on older rows (#195)', () => {
+    assert.equal(TransactionService.serialize(sampleTx({ corridor: 'KES' } as any) as any).currency, 'KES');
+    assert.equal(TransactionService.serialize(sampleTx() as any).currency, null);
+  });
+
   it('returns no fee or rate for rows reserved before the fee was saved', () => {
     const serialized = TransactionService.serialize(sampleTx() as any);
     assert.equal(serialized.feeUsd, null);

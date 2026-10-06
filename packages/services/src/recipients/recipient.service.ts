@@ -130,6 +130,7 @@ export class RecipientService {
         sourceToken: true,
         createdAt: true,
         payoutFiat: true,
+        corridor: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -157,8 +158,8 @@ export class RecipientService {
           ? bankDisplay
           : bankDisplay || institutionCode;
 
-      // Currency not on row — default NGN (current live corridor). Distinct accounts still unique by code+acc.
-      const currency = 'NGN';
+      // The payout's currency (#195); rows from before it was saved are naira.
+      const currency = (tx.corridor || 'NGN').toUpperCase();
       const key = `${currency}|${institutionCode}|${accountIdentifier}`;
       if (seen.has(key)) continue;
       seen.add(key);

@@ -108,3 +108,30 @@ describe('NotificationService.deletePushSubscription', () => {
     );
   });
 });
+
+describe('NotificationService.notifyRemittanceStatus currency (#195)', () => {
+  const bodies = async (input: Record<string, unknown>) => {
+    const spy = mock.method(NotificationService, 'notifyDurableBestEffort', async () => null);
+    await NotificationService.notifyRemittanceStatus({
+      userId: 'u1',
+      transactionId: 't1',
+      status: 'COMPLETED',
+      amountUsd: '5',
+      recipientName: 'Ada',
+      ...input,
+    } as never);
+    const body = (spy.mock.calls[0].arguments[0] as { body: string }).body;
+    spy.mock.restore();
+    return body;
+  };
+
+  it('uses ₦ for naira and for older rows with no currency', async () => {
+    assert.equal(await bodies({ payoutFiat: '6640', currency: 'NGN' }), '₦6,640 sent to Ada');
+    assert.equal(await bodies({ payoutFiat: '6640' }), '₦6,640 sent to Ada');
+  });
+
+  it("names other currencies and crypto tokens instead of showing ₦", async () => {
+    assert.equal(await bodies({ payoutFiat: '645.5', currency: 'KES' }), '645.5 KES sent to Ada');
+    assert.equal(await bodies({ payoutFiat: '0.55', currency: 'USDC' }), '0.55 USDC sent to Ada');
+  });
+});
