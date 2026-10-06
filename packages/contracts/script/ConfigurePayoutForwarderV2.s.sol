@@ -17,8 +17,6 @@ import "../src/FXRemitConstants.sol";
  * forge script script/ConfigurePayoutForwarderV2.s.sol --rpc-url $BASE_RPC_URL --broadcast
  */
 contract ConfigurePayoutForwarderV2 is Script {
-    address constant BASE_USDT = 0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2;
-    address constant CELO_USDT = 0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e;
 
     function run() external {
         PayoutForwarderV2 forwarder = PayoutForwarderV2(vm.envAddress("FORWARDER_V2"));
@@ -26,10 +24,10 @@ contract ConfigurePayoutForwarderV2 is Script {
         PayoutForwarderV2.Mode[] memory modes = new PayoutForwarderV2.Mode[](2);
         if (block.chainid == 8453) {
             (tokens[0], modes[0]) = (FXRemitConstants.BASE_USDC, PayoutForwarderV2.Mode.EIP3009);
-            (tokens[1], modes[1]) = (BASE_USDT, PayoutForwarderV2.Mode.APPROVAL);
+            (tokens[1], modes[1]) = (FXRemitConstants.BASE_USDT, PayoutForwarderV2.Mode.APPROVAL);
         } else if (block.chainid == 42220) {
             (tokens[0], modes[0]) = (FXRemitConstants.CELO_USDC, PayoutForwarderV2.Mode.EIP3009);
-            (tokens[1], modes[1]) = (CELO_USDT, PayoutForwarderV2.Mode.EIP3009);
+            (tokens[1], modes[1]) = (FXRemitConstants.CELO_USDT, PayoutForwarderV2.Mode.EIP3009);
         } else {
             revert("unsupported chain");
         }

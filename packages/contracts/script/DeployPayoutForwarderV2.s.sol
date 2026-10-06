@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Script.sol";
 import "../src/PayoutForwarderV2.sol";
+import "../src/FXRemitConstants.sol";
 
 /**
  * Deploys PayoutForwarderV2 through the CREATE2 deployer with a fixed salt.
@@ -13,13 +14,15 @@ import "../src/PayoutForwarderV2.sol";
  *   PRIVATE_KEY        any funded wallet (only pays gas; gets no role)
  *   FORWARDER_OWNER    same address on every target chain
  *   FORWARDER_RELAYER  relayer wallet (same address on every chain)
+ *   EXPECTED_V2        optional: the address printed by the first chain's deploy. Set it for every
+ *                      later chain so a different build can't land at a different address.
  *
  * forge script script/DeployPayoutForwarderV2.s.sol --rpc-url $BASE_RPC_URL --broadcast --verify
  */
 contract DeployPayoutForwarderV2 is Script {
     bytes32 constant SALT = keccak256("fx-remit.payout-forwarder.v2");
     /// @dev V1, same address on Base and Celo; V2 refuses orders it already funded.
-    address constant V1 = 0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83;
+    address constant V1 = FXRemitConstants.PAYOUT_FORWARDER_V1;
 
     function run() external returns (PayoutForwarderV2 forwarder) {
         address owner = vm.envAddress("FORWARDER_OWNER");
@@ -32,6 +35,10 @@ contract DeployPayoutForwarderV2 is Script {
             keccak256(abi.encodePacked(type(PayoutForwarderV2).creationCode, abi.encode(owner, relayer, V1)));
         address expected = vm.computeCreate2Address(SALT, initCodeHash);
         console.log("Chain", block.chainid, "expected PayoutForwarderV2 at", expected);
+        address pinned = vm.envOr("EXPECTED_V2", address(0));
+        require(pinned == address(0) || pinned == expected, "build differs from the first chain's deploy");
+        // Without V1 on this chain the double-funding guard would be skipped.
+        require(V1.code.length > 0, "V1 forwarder not deployed on this chain");
         if (expected.code.length > 0) {
             console.log("Already deployed here; nothing to do.");
             return PayoutForwarderV2(expected);

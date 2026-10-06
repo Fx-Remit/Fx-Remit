@@ -9,6 +9,27 @@ import "../src/PayoutForwarderV2.sol";
 import "./mocks/MockUSDC3009.sol";
 import "./mocks/MockToken.sol";
 
+/// @dev Plain 6-decimal ERC-20 like USDT on Base (no EIP-3009, no permit).
+contract MockUSDT6 is MockToken {
+    constructor() MockToken("Tether USD", "USDT") {}
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+}
+
+/// @dev 6-decimal token that skims 1% on every transfer.
+contract MockFeeToken is MockUSDT6 {
+    function _update(address from, address to, uint256 value) internal override {
+        if (from != address(0) && to != address(0)) {
+            uint256 fee = value / 100;
+            super._update(from, address(0xdead), fee);
+            value -= fee;
+        }
+        super._update(from, to, value);
+    }
+}
+
 contract MockLegacyForwarder {
     mapping(uint256 => bool) public funded;
 
@@ -38,7 +59,7 @@ contract PayoutForwarderV2Test is Test {
     PayoutForwarderV2 forwarder;
     MockLegacyForwarder legacy;
     MockUSDC3009 usdc; // EIP-3009 token (USDC; USDT on Celo behaves the same)
-    MockToken usdt; // approval token (USDT on Base)
+    MockUSDT6 usdt; // approval token (USDT on Base)
 
     address owner = makeAddr("safe");
     address relayer = makeAddr("relayer");
@@ -55,7 +76,7 @@ contract PayoutForwarderV2Test is Test {
         vm.chainId(8453);
         payer = vm.addr(payerKey);
         usdc = new MockUSDC3009();
-        usdt = new MockToken("Tether USD", "USDT");
+        usdt = new MockUSDT6();
         usdc.mint(payer, 1_000e6);
         usdt.mint(payer, 1_000e6);
         legacy = new MockLegacyForwarder();
@@ -92,7 +113,19 @@ contract PayoutForwarderV2Test is Test {
         view
         returns (bytes memory)
     {
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, forwarder.payoutDigest(orderId, token, to, amount, deadline));
+        return _signPayoutFor(key, orderId, vm.addr(key), token, to, amount, deadline);
+    }
+
+    function _signPayoutFor(
+        uint256 key,
+        uint256 orderId,
+        address from,
+        address token,
+        address to,
+        uint256 amount,
+        uint256 deadline
+    ) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, forwarder.payoutDigest(orderId, from, token, to, amount, deadline));
         return abi.encodePacked(r, s, v);
     }
 
@@ -198,7 +231,7 @@ contract PayoutForwarderV2Test is Test {
         usdt.mint(address(wallet), 100e6);
         wallet.approve(address(usdt), address(forwarder), type(uint256).max);
         uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(walletOwnerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        bytes memory sig = _signPayoutFor(walletOwnerKey, ORDER, address(wallet), address(usdt), sink, AMOUNT, deadline);
 
         _payApproved(ORDER, address(wallet), sink, AMOUNT, sig, deadline);
         assertEq(usdt.balanceOf(sink), AMOUNT);
@@ -244,7 +277,8 @@ contract PayoutForwarderV2Test is Test {
         vm.prank(payer);
         usdt.approve(address(fresh), type(uint256).max);
         uint256 deadline = block.timestamp + 600;
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(payerKey, fresh.payoutDigest(ORDER, address(usdt), sink, AMOUNT, deadline));
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(payerKey, fresh.payoutDigest(ORDER, payer, address(usdt), sink, AMOUNT, deadline));
         vm.prank(relayer);
         fresh.payoutWithApproval(ORDER, payer, sink, address(usdt), AMOUNT, deadline, abi.encodePacked(r, s, v));
         assertEq(usdt.balanceOf(sink), AMOUNT);
@@ -320,5 +354,117 @@ contract PayoutForwarderV2Test is Test {
         vm.prank(relayer);
         vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.WrongMode.selector, address(usdc)));
         forwarder.payoutWithAuthorization(ORDER, payer, sink, address(usdc), AMOUNT, validBefore, v, r, s);
+    }
+
+    // --- review hardening --------------------------------------------------
+
+    function test_approval_signatureIsBoundToThePayingWallet() public {
+        // One key controls an EOA and a smart wallet; both approved V2. A signature for the EOA
+        // must not let the relayer charge the smart wallet instead.
+        MockSmartWallet wallet = new MockSmartWallet(payer);
+        usdt.mint(address(wallet), 100e6);
+        wallet.approve(address(usdt), address(forwarder), type(uint256).max);
+        vm.prank(payer);
+        usdt.approve(address(forwarder), type(uint256).max);
+        uint256 deadline = block.timestamp + 600;
+        bytes memory forEoa = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+
+        vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
+        _payApproved(ORDER, address(wallet), sink, AMOUNT, forEoa, deadline);
+        assertEq(usdt.balanceOf(address(wallet)), 100e6);
+    }
+
+    function test_approval_signatureDoesNotReplayAcrossChainsOrForwarders() public {
+        vm.prank(payer);
+        usdt.approve(address(forwarder), type(uint256).max);
+        uint256 deadline = block.timestamp + 600;
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+
+        PayoutForwarderV2 other = new PayoutForwarderV2(owner, relayer, address(legacy));
+        vm.prank(owner);
+        other.setToken(address(usdt), PayoutForwarderV2.Mode.APPROVAL);
+        vm.prank(payer);
+        usdt.approve(address(other), type(uint256).max);
+        vm.prank(relayer);
+        vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
+        other.payoutWithApproval(ORDER, payer, sink, address(usdt), AMOUNT, deadline, sig);
+
+        vm.chainId(42220);
+        vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+    }
+
+    function test_approval_aUsedSignatureCannotBeSubmittedAgain() public {
+        vm.prank(payer);
+        usdt.approve(address(forwarder), type(uint256).max);
+        uint256 deadline = block.timestamp + 600;
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyFunded.selector, ORDER));
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        assertEq(usdt.balanceOf(sink), AMOUNT);
+    }
+
+    function test_approval_deadlineCannotBeMoreThanAnHourAhead() public {
+        vm.prank(payer);
+        usdt.approve(address(forwarder), type(uint256).max);
+        uint256 deadline = block.timestamp + 1 hours + 1;
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        vm.expectRevert(PayoutForwarderV2.Expired.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+    }
+
+    function test_voidOrder_closesAnAbandonedOrderForGood() public {
+        vm.prank(payer);
+        usdt.approve(address(forwarder), type(uint256).max);
+        uint256 deadline = block.timestamp + 600;
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+
+        vm.expectRevert(PayoutForwarderV2.NotRelayerOrOwner.selector);
+        forwarder.voidOrder(ORDER);
+        vm.prank(relayer);
+        forwarder.voidOrder(ORDER);
+
+        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyFunded.selector, ORDER));
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        assertEq(usdt.balanceOf(payer), 1_000e6);
+    }
+
+    function test_onlySixDecimalTokensCanBeListed() public {
+        MockToken eighteen = new MockToken("Celo Dollar", "cUSD");
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.UnsupportedDecimals.selector, address(eighteen)));
+        forwarder.setToken(address(eighteen), PayoutForwarderV2.Mode.APPROVAL);
+        vm.prank(owner);
+        forwarder.setToken(address(eighteen), PayoutForwarderV2.Mode.NONE); // delisting is always allowed
+    }
+
+    function test_feeOnTransferTokenIsRefused() public {
+        MockFeeToken fee = new MockFeeToken();
+        fee.mint(payer, 100e6);
+        vm.prank(owner);
+        forwarder.setToken(address(fee), PayoutForwarderV2.Mode.APPROVAL);
+        vm.prank(payer);
+        fee.approve(address(forwarder), type(uint256).max);
+        uint256 deadline = block.timestamp + 600;
+        bytes memory sig = _signPayout(payerKey, ORDER, address(fee), sink, AMOUNT, deadline);
+        vm.prank(relayer);
+        vm.expectRevert();
+        forwarder.payoutWithApproval(ORDER, payer, sink, address(fee), AMOUNT, deadline, sig);
+        assertEq(fee.balanceOf(sink), 0);
+    }
+
+    function test_refusesALegacyAddressWithNoCode() public {
+        vm.expectRevert(PayoutForwarderV2.LegacyNotDeployed.selector);
+        new PayoutForwarderV2(owner, relayer, makeAddr("no-code"));
+    }
+
+    function test_rescueCannotTouchPayerAllowances() public {
+        vm.prank(payer);
+        usdt.approve(address(forwarder), type(uint256).max);
+        vm.prank(owner);
+        vm.expectRevert();
+        forwarder.rescueTokens(address(usdt), owner, 1e6);
+        assertEq(usdt.balanceOf(payer), 1_000e6);
     }
 }

@@ -15,9 +15,9 @@ contract PayoutForwarderV2ForkTest is Test {
     bytes32 constant RECEIVE_TYPEHASH = keccak256(
         "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
     );
-    address constant V1 = 0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83;
-    address constant BASE_USDT = 0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2;
-    address constant CELO_USDT = 0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e;
+    address constant V1 = FXRemitConstants.PAYOUT_FORWARDER_V1;
+    address constant BASE_USDT = FXRemitConstants.BASE_USDT;
+    address constant CELO_USDT = FXRemitConstants.CELO_USDT;
     /// @dev A real Base bank payout V1 funded on 2026-10-04.
     uint256 constant V1_FUNDED_ORDER = 1791123170007264;
 
@@ -91,7 +91,7 @@ contract PayoutForwarderV2ForkTest is Test {
         uint256 amount = 50e6;
         uint256 deadline = block.timestamp + 600;
         (uint8 v, bytes32 r, bytes32 s) =
-            vm.sign(payerKey, forwarder.payoutDigest(orderId, BASE_USDT, sink, amount, deadline));
+            vm.sign(payerKey, forwarder.payoutDigest(orderId, payer, BASE_USDT, sink, amount, deadline));
         vm.prank(relayer);
         forwarder.payoutWithApproval(orderId, payer, sink, BASE_USDT, amount, deadline, abi.encodePacked(r, s, v));
         _assertMoved(BASE_USDT, amount);

@@ -19,6 +19,9 @@ library FXRemitConstants {
         0x4200000000000000000000000000000000000006;
     address public constant BASE_USDC =
         0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
+    /// @dev Bridged USDT on Base: no EIP-3009 and no permit.
+    address public constant BASE_USDT =
+        0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2;
 
     // --- Arbitrum One (42161) ---
     address public constant ARB_GATEWAY =
@@ -41,6 +44,12 @@ library FXRemitConstants {
         0x765DE816845861e75A25fCA122bb6898B8B1282a;
     address public constant CELO_USDC =
         0xcebA9300f2b948710d2653dD7B07f33A8B32118C;
+    address public constant CELO_USDT =
+        0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e;
+
+    // --- Payout forwarders (same address on Base and Celo) ---
+    address public constant PAYOUT_FORWARDER_V1 =
+        0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83;
     address public constant CELO_MENTO_EXCHANGE_ID =
         0x471EcE3750Da237f93B8E339c536989b8978a438;
 }
