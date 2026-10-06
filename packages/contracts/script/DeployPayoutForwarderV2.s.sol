@@ -7,15 +7,16 @@ import "../src/FXRemitConstants.sol";
 
 /**
  * Deploys PayoutForwarderV2 through the CREATE2 deployer with a fixed salt.
- * Same salt + same constructor args => same address on Base and Celo.
+ * Same salt + same constructor args + same bytecode => same address on Base and Celo. Deploy every
+ * chain from the same commit: any edit to PayoutForwarderV2.sol or IERC3009.sol changes the address.
  * Tokens are configured afterwards by the owner (ConfigurePayoutForwarderV2.s.sol).
  *
  * Env:
  *   PRIVATE_KEY        any funded wallet (only pays gas; gets no role)
  *   FORWARDER_OWNER    same address on every target chain
  *   FORWARDER_RELAYER  relayer wallet (same address on every chain)
- *   EXPECTED_V2        optional: the address printed by the first chain's deploy. Set it for every
- *                      later chain so a different build can't land at a different address.
+ *   EXPECTED_V2        required: the V2 address. Run once without --broadcast to print it, then set
+ *                      it for every chain so a different build can't land at a different address.
  *
  * forge script script/DeployPayoutForwarderV2.s.sol --rpc-url $BASE_RPC_URL --broadcast --verify
  */
@@ -36,7 +37,8 @@ contract DeployPayoutForwarderV2 is Script {
         address expected = vm.computeCreate2Address(SALT, initCodeHash);
         console.log("Chain", block.chainid, "expected PayoutForwarderV2 at", expected);
         address pinned = vm.envOr("EXPECTED_V2", address(0));
-        require(pinned == address(0) || pinned == expected, "build differs from the first chain's deploy");
+        require(pinned != address(0), string.concat("set EXPECTED_V2=", vm.toString(expected), " for every chain"));
+        require(pinned == expected, "build differs from EXPECTED_V2: deploy every chain from the same commit");
         // Without V1 on this chain the double-funding guard would be skipped.
         require(V1.code.length > 0, "V1 forwarder not deployed on this chain");
         if (expected.code.length > 0) {

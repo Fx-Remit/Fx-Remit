@@ -89,11 +89,14 @@ contract PayoutForwarderV2ForkTest is Test {
 
         uint256 orderId = 1_790_000_000_102;
         uint256 amount = 50e6;
-        uint256 deadline = block.timestamp + 600;
+        uint256 validAfter = block.timestamp;
+        uint256 deadline = validAfter + 600;
         (uint8 v, bytes32 r, bytes32 s) =
-            vm.sign(payerKey, forwarder.payoutDigest(orderId, payer, BASE_USDT, sink, amount, deadline));
+            vm.sign(payerKey, forwarder.payoutDigest(orderId, payer, BASE_USDT, sink, amount, validAfter, deadline));
         vm.prank(relayer);
-        forwarder.payoutWithApproval(orderId, payer, sink, BASE_USDT, amount, deadline, abi.encodePacked(r, s, v));
+        forwarder.payoutWithApproval(
+            orderId, payer, sink, BASE_USDT, amount, validAfter, deadline, abi.encodePacked(r, s, v)
+        );
         _assertMoved(BASE_USDT, amount);
     }
 
