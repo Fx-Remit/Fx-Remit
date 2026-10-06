@@ -13,6 +13,8 @@ export type HistoryTransaction = {
   recipientName?: string | null;
   recipientBank?: string | null;
   recipientAcc?: string | null;
+  /** Bank payouts: currency paid out (NGN, KES, …); null on older rows (NGN). */
+  currency?: string | null;
   orderId?: string;
   chainId?: number;
   txHash?: string;
@@ -73,11 +75,14 @@ export function toTransactionDetail(tx: HistoryTransaction) {
         ? receivedAmount / sentAmount
         : null;
   const status = tx.status?.toLowerCase();
+  // Crypto cash-outs move the token itself; bank payouts arrive in the row's currency (#195).
+  const isCrypto = (tx.recipientBank ?? '').startsWith('crypto:');
+  const receivedToken = isCrypto ? sentToken : (tx.currency || 'NGN').toUpperCase();
 
   return {
     id: tx.id,
     type: tx.type || 'REMITTANCE',
-    pair: `${sentToken}/NGN`,
+    pair: `${sentToken}/${receivedToken}`,
     date: new Date(tx.createdAt).toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
@@ -91,9 +96,9 @@ export function toTransactionDetail(tx: HistoryTransaction) {
     sentAmount: sentAmount.toFixed(2),
     sentToken,
     receivedAmount: receivedAmount.toFixed(2),
-    receivedToken: 'NGN',
+    receivedToken,
     // Same format as the confirm screen, so both show the same rate.
-    rate: rate != null ? `1 ${sentToken} = ${rate.toLocaleString()} NGN` : undefined,
+    rate: rate != null && !isCrypto ? `1 ${sentToken} = ${rate.toLocaleString()} ${receivedToken}` : undefined,
     fee: hasFee
       ? formatCashOutFee(sentAmount, Math.round((tx.feeUsd! / sentAmount) * 10000))
       : undefined,
