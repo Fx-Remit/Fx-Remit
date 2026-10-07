@@ -11,7 +11,7 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IERC3009} from "./PayoutForwarder.sol";
+import {IERC3009} from "./IERC3009.sol";
 
 /// @dev The V1 forwarder's funded() view, to refuse orders it already paid.
 interface ILegacyForwarder {
@@ -24,7 +24,7 @@ interface ILegacyForwarder {
  * its destination in a single transaction, and records it. Same guarantees as PayoutForwarder,
  * for any allowlisted token:
  * - Only an allowed relayer can call; the relayer pays the gas.
- * - Each orderId is funded once, here or in the V1 forwarder.
+ * - Each orderId is funded once, here or in the V1 forwarder, and never after voidOrder.
  * - The contract never keeps tokens: payer → this → sink in one call, balance checked.
  * - Every payout emits PayoutFunded(orderId, payer, sink, token, amount).
  *
@@ -33,8 +33,8 @@ interface ILegacyForwarder {
  *   nonce = keccak256(orderId, sink). Only this contract can redeem it. No allowance exists.
  * - APPROVAL: for tokens without EIP-3009 (e.g. USDT on Base). The payer approves this contract
  *   once, and every payout still needs the payer's EIP-712 signature over
- *   Payout(orderId, payer, token, sink, amount, deadline), at most an hour ahead. The relayer
- *   alone can never pull funds, nor pick which of a signer's wallets pays.
+ *   Payout(orderId, payer, token, sink, amount, validAfter, deadline), valid for at most an hour.
+ *   The relayer alone can never pull funds, nor pick which of a signer's wallets pays.
  *
  * EIP-3009 mode takes (v, r, s), so it serves EOA payers (including EIP-7702 accounts); smart
  * contract wallets use APPROVAL-mode tokens only.
@@ -57,18 +57,21 @@ contract PayoutForwarderV2 is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// @notice Largest single payout: $10,000. Only 6-decimal tokens can be listed.
     uint256 public constant MAX_AMOUNT = 10_000e6;
 
-    /// @notice An APPROVAL-mode signature may be valid for at most this long.
+    /// @notice An APPROVAL-mode signature may be valid for at most this long (deadline - validAfter).
     uint256 public constant MAX_SIGNATURE_WINDOW = 1 hours;
 
     bytes32 public constant PAYOUT_TYPEHASH = keccak256(
-        "Payout(uint256 orderId,address payer,address token,address sink,uint256 amount,uint256 deadline)"
+        "Payout(uint256 orderId,address payer,address token,address sink,uint256 amount,uint256 validAfter,uint256 deadline)"
     );
 
     /// @notice The V1 forwarder; orders it funded are refused here. Zero or no code: skipped.
     address public immutable legacyForwarder;
 
     mapping(address => bool) public isRelayer;
+    /// @notice True only once the order's tokens moved through this contract.
     mapping(uint256 => bool) public funded;
+    /// @notice Orders closed by voidOrder: no tokens moved, and they can never be funded.
+    mapping(uint256 => bool) public voided;
     mapping(address => Mode) public tokenMode;
 
     event PayoutFunded(
@@ -87,9 +90,12 @@ contract PayoutForwarderV2 is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     error InvalidAmount();
     error InvalidSink();
     error AlreadyFunded(uint256 orderId);
+    error AlreadyVoided(uint256 orderId);
     error WrongMode(address token);
     error InvalidSignature();
     error Expired();
+    error NotYetValid();
+    error SignatureWindowTooLong();
     error BalanceChanged();
     error SinkNotPaidInFull();
     error UnsupportedDecimals(address token);
@@ -121,12 +127,18 @@ contract PayoutForwarderV2 is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     }
 
     /// @notice EIP-712 digest the payer signs for an APPROVAL-mode payout.
-    function payoutDigest(uint256 orderId, address payer, address token, address sink, uint256 amount, uint256 deadline)
-        public
-        view
-        returns (bytes32)
-    {
-        return _hashTypedDataV4(keccak256(abi.encode(PAYOUT_TYPEHASH, orderId, payer, token, sink, amount, deadline)));
+    function payoutDigest(
+        uint256 orderId,
+        address payer,
+        address token,
+        address sink,
+        uint256 amount,
+        uint256 validAfter,
+        uint256 deadline
+    ) public view returns (bytes32) {
+        return _hashTypedDataV4(
+            keccak256(abi.encode(PAYOUT_TYPEHASH, orderId, payer, token, sink, amount, validAfter, deadline))
+        );
     }
 
     /// @notice Fund one order with an EIP-3009 token (the payer signed ReceiveWithAuthorization).
@@ -158,14 +170,18 @@ contract PayoutForwarderV2 is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         address sink,
         address token,
         uint256 amount,
+        uint256 validAfter,
         uint256 deadline,
         bytes calldata signature
     ) external onlyRelayer whenNotPaused nonReentrant {
         if (tokenMode[token] != Mode.APPROVAL) revert WrongMode(token);
-        if (block.timestamp > deadline || deadline > block.timestamp + MAX_SIGNATURE_WINDOW) revert Expired();
-        if (!_isPayerSignature(payer, payoutDigest(orderId, payer, token, sink, amount, deadline), signature)) {
-            revert InvalidSignature();
-        }
+        if (block.timestamp > deadline) revert Expired();
+        if (block.timestamp < validAfter) revert NotYetValid();
+        // validAfter <= now <= deadline here, so this can't underflow. Bounds the signature's whole
+        // lifetime, not just how far ahead its deadline is when submitted.
+        if (deadline - validAfter > MAX_SIGNATURE_WINDOW) revert SignatureWindowTooLong();
+        bytes32 digest = payoutDigest(orderId, payer, token, sink, amount, validAfter, deadline);
+        if (!_isPayerSignature(payer, digest, signature)) revert InvalidSignature();
         _claim(orderId, payer, sink, token, amount);
         uint256 balanceBefore = IERC20(token).balanceOf(address(this));
 
@@ -174,13 +190,16 @@ contract PayoutForwarderV2 is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     }
 
     /**
-     * @notice Close an order for good without moving funds (e.g. an abandoned APPROVAL-mode order
-     * whose signature is still within its deadline). Relayer or owner.
+     * @notice Close an order for good without moving funds, in either mode: an abandoned
+     * APPROVAL-mode signature or a still-valid EIP-3009 authorization can no longer be used.
+     * Relayer or owner. Sets `voided`, never `funded`, so a voided order never reads as paid;
+     * an order funded here or in V1 can't be voided.
      */
     function voidOrder(uint256 orderId) external {
         if (!isRelayer[msg.sender] && msg.sender != owner()) revert NotRelayerOrOwner();
-        if (funded[orderId]) revert AlreadyFunded(orderId);
-        funded[orderId] = true;
+        if (_isFunded(orderId)) revert AlreadyFunded(orderId);
+        if (voided[orderId]) revert AlreadyVoided(orderId);
+        voided[orderId] = true;
         emit OrderVoided(orderId);
     }
 
@@ -218,11 +237,15 @@ contract PayoutForwarderV2 is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     function _claim(uint256 orderId, address payer, address sink, address token, uint256 amount) internal {
         if (amount == 0 || amount > MAX_AMOUNT) revert InvalidAmount();
         if (sink == address(0) || sink == payer || sink == address(this) || sink == token) revert InvalidSink();
-        if (funded[orderId]) revert AlreadyFunded(orderId);
-        if (legacyForwarder.code.length > 0 && ILegacyForwarder(legacyForwarder).funded(orderId)) {
-            revert AlreadyFunded(orderId);
-        }
+        if (_isFunded(orderId)) revert AlreadyFunded(orderId);
+        if (voided[orderId]) revert AlreadyVoided(orderId);
         funded[orderId] = true;
+    }
+
+    /// @dev Funded here, or by the V1 forwarder.
+    function _isFunded(uint256 orderId) internal view returns (bool) {
+        return funded[orderId]
+            || (legacyForwarder.code.length > 0 && ILegacyForwarder(legacyForwarder).funded(orderId));
     }
 
     function _forward(uint256 orderId, address payer, address sink, address token, uint256 amount, uint256 balanceBefore)

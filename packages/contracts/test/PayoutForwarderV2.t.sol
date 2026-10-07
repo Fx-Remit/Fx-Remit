@@ -108,12 +108,23 @@ contract PayoutForwarderV2Test is Test {
         (v, r, s) = vm.sign(payerKey, keccak256(abi.encodePacked("\x19\x01", usdc.DOMAIN_SEPARATOR(), structHash)));
     }
 
-    function _signPayout(uint256 key, uint256 orderId, address token, address to, uint256 amount, uint256 deadline)
-        internal
-        view
-        returns (bytes memory)
-    {
-        return _signPayoutFor(key, orderId, vm.addr(key), token, to, amount, deadline);
+    /// @dev A signature valid from now for 10 minutes, as the app signs it. Reads the time through
+    /// the cheatcode: under via-IR a local copy of block.timestamp can be re-read after vm.warp.
+    function _window() internal view returns (uint256 validAfter, uint256 deadline) {
+        uint256 nowTs = vm.getBlockTimestamp();
+        return (nowTs, nowTs + 600);
+    }
+
+    function _signPayout(
+        uint256 key,
+        uint256 orderId,
+        address token,
+        address to,
+        uint256 amount,
+        uint256 validAfter,
+        uint256 deadline
+    ) internal view returns (bytes memory) {
+        return _signPayoutFor(key, orderId, vm.addr(key), token, to, amount, validAfter, deadline);
     }
 
     function _signPayoutFor(
@@ -123,9 +134,11 @@ contract PayoutForwarderV2Test is Test {
         address token,
         address to,
         uint256 amount,
+        uint256 validAfter,
         uint256 deadline
     ) internal view returns (bytes memory) {
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, forwarder.payoutDigest(orderId, from, token, to, amount, deadline));
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(key, forwarder.payoutDigest(orderId, from, token, to, amount, validAfter, deadline));
         return abi.encodePacked(r, s, v);
     }
 
@@ -136,11 +149,17 @@ contract PayoutForwarderV2Test is Test {
         forwarder.payoutWithAuthorization(orderId, payer, to, address(usdc), amount, validBefore, v, r, s);
     }
 
-    function _payApproved(uint256 orderId, address from, address to, uint256 amount, bytes memory sig, uint256 deadline)
-        internal
-    {
+    function _payApproved(
+        uint256 orderId,
+        address from,
+        address to,
+        uint256 amount,
+        bytes memory sig,
+        uint256 validAfter,
+        uint256 deadline
+    ) internal {
         vm.prank(relayer);
-        forwarder.payoutWithApproval(orderId, from, to, address(usdt), amount, deadline, sig);
+        forwarder.payoutWithApproval(orderId, from, to, address(usdt), amount, validAfter, deadline, sig);
     }
 
     // --- EIP-3009 mode -----------------------------------------------------
@@ -169,12 +188,12 @@ contract PayoutForwarderV2Test is Test {
     function test_approval_movesExactAmountWithAllowanceAndSignature() public {
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
 
         vm.expectEmit(true, true, true, true, address(forwarder));
         emit PayoutFunded(ORDER, payer, sink, address(usdt), AMOUNT);
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
 
         assertEq(usdt.balanceOf(sink), AMOUNT);
         assertEq(usdt.balanceOf(address(forwarder)), 0);
@@ -184,22 +203,22 @@ contract PayoutForwarderV2Test is Test {
     function test_approval_relayerCannotPullWithoutThePayersSignature() public {
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
+        (uint256 validAfter, uint256 deadline) = _window();
         uint256 otherKey = uint256(keccak256("someone-else"));
 
         // Signed by someone else.
-        bytes memory wrongSigner = _signPayout(otherKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        bytes memory wrongSigner = _signPayout(otherKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
         vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
-        _payApproved(ORDER, payer, sink, AMOUNT, wrongSigner, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, wrongSigner, validAfter, deadline);
 
         // Payer's signature, but for a different destination, amount or order.
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
         vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
-        _payApproved(ORDER, payer, makeAddr("attacker"), AMOUNT, sig, deadline);
+        _payApproved(ORDER, payer, makeAddr("attacker"), AMOUNT, sig, validAfter, deadline);
         vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
-        _payApproved(ORDER, payer, sink, AMOUNT + 1, sig, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT + 1, sig, validAfter, deadline);
         vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
-        _payApproved(ORDER + 1, payer, sink, AMOUNT, sig, deadline);
+        _payApproved(ORDER + 1, payer, sink, AMOUNT, sig, validAfter, deadline);
 
         assertEq(usdt.balanceOf(payer), 1_000e6);
         assertFalse(forwarder.funded(ORDER));
@@ -208,20 +227,20 @@ contract PayoutForwarderV2Test is Test {
     function test_approval_expiredDeadlineIsRefused() public {
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
         vm.warp(deadline + 1);
         vm.expectRevert(PayoutForwarderV2.Expired.selector);
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
     }
 
     function test_approval_withoutAllowanceRevertsAndLeavesOrderUnfunded() public {
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
         vm.expectRevert(
             abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(forwarder), 0, AMOUNT)
         );
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
         assertFalse(forwarder.funded(ORDER));
     }
 
@@ -230,10 +249,10 @@ contract PayoutForwarderV2Test is Test {
         MockSmartWallet wallet = new MockSmartWallet(vm.addr(walletOwnerKey));
         usdt.mint(address(wallet), 100e6);
         wallet.approve(address(usdt), address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayoutFor(walletOwnerKey, ORDER, address(wallet), address(usdt), sink, AMOUNT, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayoutFor(walletOwnerKey, ORDER, address(wallet), address(usdt), sink, AMOUNT, validAfter, deadline);
 
-        _payApproved(ORDER, address(wallet), sink, AMOUNT, sig, deadline);
+        _payApproved(ORDER, address(wallet), sink, AMOUNT, sig, validAfter, deadline);
         assertEq(usdt.balanceOf(sink), AMOUNT);
     }
 
@@ -242,9 +261,9 @@ contract PayoutForwarderV2Test is Test {
         vm.etch(payer, hex"ef0100aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
         assertEq(usdt.balanceOf(sink), AMOUNT);
     }
 
@@ -255,10 +274,10 @@ contract PayoutForwarderV2Test is Test {
 
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
         vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyFunded.selector, ORDER));
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
     }
 
     function test_refusesAnOrderTheV1ForwarderAlreadyFunded() public {
@@ -276,26 +295,28 @@ contract PayoutForwarderV2Test is Test {
         fresh.setToken(address(usdt), PayoutForwarderV2.Mode.APPROVAL);
         vm.prank(payer);
         usdt.approve(address(fresh), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
+        (uint256 validAfter, uint256 deadline) = _window();
         (uint8 v, bytes32 r, bytes32 s) =
-            vm.sign(payerKey, fresh.payoutDigest(ORDER, payer, address(usdt), sink, AMOUNT, deadline));
+            vm.sign(payerKey, fresh.payoutDigest(ORDER, payer, address(usdt), sink, AMOUNT, validAfter, deadline));
         vm.prank(relayer);
-        fresh.payoutWithApproval(ORDER, payer, sink, address(usdt), AMOUNT, deadline, abi.encodePacked(r, s, v));
+        fresh.payoutWithApproval(
+            ORDER, payer, sink, address(usdt), AMOUNT, validAfter, deadline, abi.encodePacked(r, s, v)
+        );
         assertEq(usdt.balanceOf(sink), AMOUNT);
     }
 
     // --- guards -------------------------------------------------------------
 
     function test_eachTokenOnlyWorksInItsOwnMode() public {
-        uint256 deadline = block.timestamp + 600;
+        (uint256 validAfter, uint256 deadline) = _window();
         vm.startPrank(relayer);
         vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.WrongMode.selector, address(usdt)));
         forwarder.payoutWithAuthorization(ORDER, payer, sink, address(usdt), AMOUNT, deadline, 27, bytes32(0), bytes32(0));
         vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.WrongMode.selector, address(usdc)));
-        forwarder.payoutWithApproval(ORDER, payer, sink, address(usdc), AMOUNT, deadline, "");
+        forwarder.payoutWithApproval(ORDER, payer, sink, address(usdc), AMOUNT, validAfter, deadline, "");
         address unlisted = makeAddr("unlisted");
         vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.WrongMode.selector, unlisted));
-        forwarder.payoutWithApproval(ORDER, payer, sink, unlisted, AMOUNT, deadline, "");
+        forwarder.payoutWithApproval(ORDER, payer, sink, unlisted, AMOUNT, validAfter, deadline, "");
         vm.stopPrank();
     }
 
@@ -366,19 +387,19 @@ contract PayoutForwarderV2Test is Test {
         wallet.approve(address(usdt), address(forwarder), type(uint256).max);
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory forEoa = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory forEoa = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
 
         vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
-        _payApproved(ORDER, address(wallet), sink, AMOUNT, forEoa, deadline);
+        _payApproved(ORDER, address(wallet), sink, AMOUNT, forEoa, validAfter, deadline);
         assertEq(usdt.balanceOf(address(wallet)), 100e6);
     }
 
     function test_approval_signatureDoesNotReplayAcrossChainsOrForwarders() public {
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
 
         PayoutForwarderV2 other = new PayoutForwarderV2(owner, relayer, address(legacy));
         vm.prank(owner);
@@ -387,47 +408,134 @@ contract PayoutForwarderV2Test is Test {
         usdt.approve(address(other), type(uint256).max);
         vm.prank(relayer);
         vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
-        other.payoutWithApproval(ORDER, payer, sink, address(usdt), AMOUNT, deadline, sig);
+        other.payoutWithApproval(ORDER, payer, sink, address(usdt), AMOUNT, validAfter, deadline, sig);
 
         vm.chainId(42220);
         vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
     }
 
     function test_approval_aUsedSignatureCannotBeSubmittedAgain() public {
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
         vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyFunded.selector, ORDER));
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
         assertEq(usdt.balanceOf(sink), AMOUNT);
     }
 
-    function test_approval_deadlineCannotBeMoreThanAnHourAhead() public {
+    function test_approval_signatureLivesAtMostAnHour() public {
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 1 hours + 1;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
-        vm.expectRevert(PayoutForwarderV2.Expired.selector);
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        uint256 validAfter = vm.getBlockTimestamp();
+        uint256 deadline = validAfter + 1 hours + 1;
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
+        vm.expectRevert(PayoutForwarderV2.SignatureWindowTooLong.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+
+        // A long-dated signature stays refused in its last hour too: the deadline alone can't bound it.
+        deadline = validAfter + 10 days;
+        sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
+        vm.warp(deadline - 30 minutes);
+        vm.expectRevert(PayoutForwarderV2.SignatureWindowTooLong.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+
+        // Exactly an hour is allowed.
+        validAfter = vm.getBlockTimestamp();
+        deadline = validAfter + 1 hours;
+        sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+        assertEq(usdt.balanceOf(sink), AMOUNT);
     }
 
-    function test_voidOrder_closesAnAbandonedOrderForGood() public {
+    function test_approval_signatureIsRefusedBeforeValidAfter() public {
         vm.prank(payer);
         usdt.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, deadline);
+        uint256 validAfter = vm.getBlockTimestamp() + 60;
+        uint256 deadline = validAfter + 600;
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
+        vm.expectRevert(PayoutForwarderV2.NotYetValid.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+
+        // The relayer can't move the window: validAfter is signed.
+        vm.warp(validAfter);
+        vm.expectRevert(PayoutForwarderV2.InvalidSignature.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter - 1, deadline);
+
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+        assertEq(usdt.balanceOf(sink), AMOUNT);
+    }
+
+    function test_approval_invertedWindowIsRefused_andAZeroWidthOneWorks() public {
+        vm.prank(payer);
+        usdt.approve(address(forwarder), type(uint256).max);
+        uint256 nowTs = vm.getBlockTimestamp();
+
+        // validAfter > deadline: NotYetValid while now <= deadline, Expired after.
+        uint256 validAfter = nowTs + 10;
+        uint256 deadline = nowTs + 5;
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
+        vm.expectRevert(PayoutForwarderV2.NotYetValid.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+        vm.warp(deadline + 1);
+        vm.expectRevert(PayoutForwarderV2.Expired.selector);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+
+        // validAfter == deadline == now is a valid one-second window.
+        nowTs = vm.getBlockTimestamp();
+        sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, nowTs, nowTs);
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, nowTs, nowTs);
+        assertEq(usdt.balanceOf(sink), AMOUNT);
+    }
+
+    function test_voidOrder_closesAnAbandonedOrderForGood_withoutReadingAsPaid() public {
+        vm.prank(payer);
+        usdt.approve(address(forwarder), type(uint256).max);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayout(payerKey, ORDER, address(usdt), sink, AMOUNT, validAfter, deadline);
+        uint256 validBefore = block.timestamp + 600;
+        (uint8 v, bytes32 r, bytes32 s) = _sign3009(ORDER, sink, AMOUNT, validBefore);
 
         vm.expectRevert(PayoutForwarderV2.NotRelayerOrOwner.selector);
         forwarder.voidOrder(ORDER);
         vm.prank(relayer);
         forwarder.voidOrder(ORDER);
 
-        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyFunded.selector, ORDER));
-        _payApproved(ORDER, payer, sink, AMOUNT, sig, deadline);
+        // The backend reads funded() as "tokens moved": a voided order must not say so.
+        assertTrue(forwarder.voided(ORDER));
+        assertFalse(forwarder.funded(ORDER));
+
+        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyVoided.selector, ORDER));
+        _payApproved(ORDER, payer, sink, AMOUNT, sig, validAfter, deadline);
+        vm.prank(relayer);
+        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyVoided.selector, ORDER));
+        forwarder.payoutWithAuthorization(ORDER, payer, sink, address(usdc), AMOUNT, validBefore, v, r, s);
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyVoided.selector, ORDER));
+        forwarder.voidOrder(ORDER);
+
         assertEq(usdt.balanceOf(payer), 1_000e6);
+        assertEq(usdc.balanceOf(payer), 1_000e6);
+    }
+
+    function test_voidOrder_cannotVoidAPaidOrder() public {
+        _pay3009(ORDER, sink, AMOUNT);
+        vm.prank(relayer);
+        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyFunded.selector, ORDER));
+        forwarder.voidOrder(ORDER);
+        assertTrue(forwarder.funded(ORDER));
+        assertFalse(forwarder.voided(ORDER));
+    }
+
+    function test_voidOrder_cannotVoidAnOrderV1Funded() public {
+        // Otherwise voided() would say "closed without a transfer" for an order V1 paid.
+        legacy.setFunded(ORDER);
+        vm.prank(relayer);
+        vm.expectRevert(abi.encodeWithSelector(PayoutForwarderV2.AlreadyFunded.selector, ORDER));
+        forwarder.voidOrder(ORDER);
+        assertFalse(forwarder.voided(ORDER));
     }
 
     function test_onlySixDecimalTokensCanBeListed() public {
@@ -446,11 +554,11 @@ contract PayoutForwarderV2Test is Test {
         forwarder.setToken(address(fee), PayoutForwarderV2.Mode.APPROVAL);
         vm.prank(payer);
         fee.approve(address(forwarder), type(uint256).max);
-        uint256 deadline = block.timestamp + 600;
-        bytes memory sig = _signPayout(payerKey, ORDER, address(fee), sink, AMOUNT, deadline);
+        (uint256 validAfter, uint256 deadline) = _window();
+        bytes memory sig = _signPayout(payerKey, ORDER, address(fee), sink, AMOUNT, validAfter, deadline);
         vm.prank(relayer);
         vm.expectRevert();
-        forwarder.payoutWithApproval(ORDER, payer, sink, address(fee), AMOUNT, deadline, sig);
+        forwarder.payoutWithApproval(ORDER, payer, sink, address(fee), AMOUNT, validAfter, deadline, sig);
         assertEq(fee.balanceOf(sink), 0);
     }
 
