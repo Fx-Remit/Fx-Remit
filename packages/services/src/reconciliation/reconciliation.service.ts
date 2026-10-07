@@ -109,7 +109,8 @@ export class ReconciliationService {
             // Same split as create-pending, saved on the row at reserve time.
             ...TransactionService.paycrestOrderPricing(tx),
             sourceToken: tx.sourceToken,
-            destinationCurrency: 'NGN',
+            // The currency the payout was reserved in; older rows without one are naira (#195).
+            destinationCurrency: tx.corridor || 'NGN',
             externalId: tx.externalId,
             recipient: {
               accountIdentifier: tx.recipientAcc,

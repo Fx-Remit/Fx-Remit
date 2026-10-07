@@ -332,6 +332,7 @@ describe('POST /api/transaction/create-pending source network (#196)', () => {
   it('defaults to Base, saves the source on the row and creates the order there', async () => {
     const { createPending, createOrder } = stub({ onChainRaw: 100_000_000n });
     await POST(requestFrom());
+    assert.equal((createPending.mock.calls[0].arguments[0] as any).corridor, 'NGN');
     assert.equal((createPending.mock.calls[0].arguments[0] as any).sourceNetwork, 'base');
     assert.equal((createOrder.mock.calls[0].arguments[0] as any).network, 'base');
   });
@@ -347,6 +348,19 @@ describe('POST /api/transaction/create-pending source network (#196)', () => {
     } finally {
       restore();
     }
+  });
+
+  it("creates the order in the row's currency on resume, whatever this request says (#195)", async () => {
+    const { createOrder } = stub({ onChainRaw: 100_000_000n });
+    mock.method(TransactionService, 'createPending', async (data: any) => ({
+      id: 'tx-1', status: 'PENDING', externalId: 'ext-1', txHash: 'pending-ext-1',
+      orderId: 1_790_000_000_000_001n, blockNumber: 1_790_000_000_000_001n,
+      amountUsd: { toString: () => '50' }, payoutFiat: { toString: () => '6450' }, updatedAt: new Date(),
+      orderBankAmount: '49.376875', orderSenderFee: '0.623125', orderRate: '129.11',
+      sourceNetwork: data.sourceNetwork, corridor: 'KES',
+    }));
+    await POST(requestFrom('base'));
+    assert.equal((createOrder.mock.calls[0].arguments[0] as any).destinationCurrency, 'KES');
   });
 
   it("creates the order on the row's network on resume, not this request's", async () => {

@@ -96,6 +96,7 @@ const TRANSACTION_API_SELECT = {
   orderFeeUsd: true,
   fundingPath: true,
   sourceNetwork: true,
+  corridor: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -143,6 +144,8 @@ export interface TransactionResponse {
   feeUsd: number | null;
   /** Rate the user confirmed (fiat per USD after the fee); null when feeUsd is null. */
   rate: number | null;
+  /** Bank payouts: the fiat currency paid out (NGN, KES, …). Null on older rows (NGN). */
+  currency: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -211,6 +214,7 @@ export class TransactionService {
       recipientAcc: tx.recipientAcc,
       recipientBankCode: tx.recipientBankCode,
       ...this.displayPricing(tx),
+      currency: tx.corridor ?? null,
       createdAt: tx.createdAt.toISOString(),
       updatedAt: tx.updatedAt.toISOString(),
     };
@@ -716,6 +720,7 @@ export class TransactionService {
         amountUsd: updated.amountUsd.toString(),
         payoutFiat: updated.payoutFiat?.toString(),
         recipientName: updated.recipientName,
+        currency: (updated.recipientBank ?? '').startsWith('crypto:') ? updated.sourceToken : updated.corridor,
       });
     }
 
@@ -1826,6 +1831,7 @@ export class TransactionService {
         amountUsd: row.amountUsd.toString(),
         payoutFiat: row.payoutFiat?.toString(),
         recipientName: row.recipientName,
+        currency: row.sourceToken,
       });
     }
     return row;
@@ -1931,6 +1937,8 @@ export class TransactionService {
     orderPricing?: { bankAmount: string; senderFee: string; rate: string; feeUsd?: string } | null;
     /** Bank payouts: network the USDC is paid from ('base' | 'celo'); null means Base. */
     sourceNetwork?: string | null;
+    /** Bank payouts: fiat currency the recipient gets (NGN, KES, …), saved as `corridor`. */
+    corridor?: string | null;
   }): Promise<TransactionApiRow> {
     const amount = new Prisma.Decimal(data.amountUsd);
     const payoutFiat = new Prisma.Decimal(data.payoutFiat);
@@ -1998,6 +2006,7 @@ export class TransactionService {
               orderRate: data.orderPricing?.rate ?? null,
               orderFeeUsd: data.orderPricing?.feeUsd ?? null,
               sourceNetwork: data.sourceNetwork ?? null,
+              corridor: data.corridor ?? null,
               txHash: `pending-${data.externalId}`,
               chainId: 0,
               // Avoid @@unique([chainId, blockNumber, logIndex]) collisions on (0,0,0)
@@ -2051,6 +2060,7 @@ export class TransactionService {
               orderRate: data.orderPricing?.rate ?? null,
               orderFeeUsd: data.orderPricing?.feeUsd ?? null,
               sourceNetwork: data.sourceNetwork ?? null,
+              corridor: data.corridor ?? null,
           status: "PENDING",
           type: "REMITTANCE",
           txHash: `pending-${data.externalId}`,

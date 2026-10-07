@@ -313,13 +313,18 @@ export class NotificationService {
     amountUsd: string | number;
     payoutFiat?: string | number | null;
     recipientName?: string | null;
+    /** What the recipient got: the bank payout's currency (NGN, KES, …) or the crypto token. */
+    currency?: string | null;
   }): Promise<void> {
     const status = input.status.toUpperCase();
     const name = input.recipientName?.trim() || 'recipient';
     const usd = Number(input.amountUsd).toFixed(2);
+    const currency = (input.currency || 'NGN').toUpperCase();
     const fiat =
       input.payoutFiat != null && Number(input.payoutFiat) > 0
-        ? Number(input.payoutFiat).toLocaleString(undefined, { maximumFractionDigits: 0 })
+        ? currency === 'NGN'
+          ? `₦${Number(input.payoutFiat).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+          : `${Number(input.payoutFiat).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`
         : null;
 
     if (status === 'COMPLETED') {
@@ -329,7 +334,7 @@ export class NotificationService {
         transactionId: input.transactionId,
         title: 'Money delivered',
         body: fiat
-          ? `₦${fiat} sent to ${name}`
+          ? `${fiat} sent to ${name}`
           : `$${usd} delivered to ${name}`,
       });
       return;

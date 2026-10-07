@@ -81,3 +81,22 @@ describe('recipientLabel', () => {
     assert.equal(recipientLabel({ ...base, recipientName: null }), null);
   });
 });
+
+describe('toTransactionDetail currency (#195)', () => {
+  it('shows a KES payout in KES', () => {
+    const d = toTransactionDetail({ ...base, currency: 'KES', payoutFiat: 6450, feeUsd: null, rate: null });
+    assert.equal(d.receivedToken, 'KES');
+    assert.equal(d.pair, 'USDC/KES');
+    assert.match(d.rate ?? '', / KES$/);
+  });
+
+  it('defaults older bank rows to NGN', () => {
+    assert.equal(toTransactionDetail({ ...base, currency: null }).receivedToken, 'NGN');
+  });
+
+  it('shows a crypto cash-out as the token itself, with no exchange rate', () => {
+    const d = toTransactionDetail({ ...base, recipientBank: 'crypto:base', recipientAcc: '0x3766aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3a51', payoutFiat: 50 });
+    assert.equal(d.receivedToken, 'USDC');
+    assert.equal(d.rate, undefined);
+  });
+});
