@@ -82,7 +82,12 @@ const RECEIVE_WITH_AUTHORIZATION_TYPES = {
 /** Chains PayoutForwarder runs on (same CREATE2 address on each). */
 export type ForwarderChainId = 8453 | 42220;
 
-
+/**
+ * Tokens the forwarder pays out with EIP-3009, per chain, with the EIP-712 version of their
+ * ReceiveWithAuthorization domain. Celo USDT has no version() to read, so it is set here and
+ * checked against the token's DOMAIN_SEPARATOR before every signature. V1 is hard-wired to USDC;
+ * any other token needs V2 (#191). Base USDT has no EIP-3009 at all.
+ */
 const FORWARDER_TOKENS: Record<ForwarderChainId, Partial<Record<string, { domainVersion: string; v1: boolean }>>> = {
   8453: { USDC: { domainVersion: '2', v1: true } },
   42220: { USDC: { domainVersion: '2', v1: true }, USDT: { domainVersion: '1', v1: false } },
