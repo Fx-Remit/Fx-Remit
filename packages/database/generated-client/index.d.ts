@@ -19,6 +19,13 @@ export type PrismaPromise<T> = $Public.PrismaPromise<T>
  */
 export type User = $Result.DefaultSelection<Prisma.$UserPayload>
 /**
+ * Model RelayerDrip
+ * Relayer ETH sent to a user's wallet so it can approve PayoutForwarderV2 once, for a token
+ * with no EIP-3009 (USDT on Base, #191). The unique key is the abuse limit: one drip per user,
+ * chain and token, ever.
+ */
+export type RelayerDrip = $Result.DefaultSelection<Prisma.$RelayerDripPayload>
+/**
  * Model Notification
  * 
  */
@@ -234,6 +241,16 @@ export class PrismaClient<
     * ```
     */
   get user(): Prisma.UserDelegate<ExtArgs, ClientOptions>;
+
+  /**
+   * `prisma.relayerDrip`: Exposes CRUD operations for the **RelayerDrip** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more RelayerDrips
+    * const relayerDrips = await prisma.relayerDrip.findMany()
+    * ```
+    */
+  get relayerDrip(): Prisma.RelayerDripDelegate<ExtArgs, ClientOptions>;
 
   /**
    * `prisma.notification`: Exposes CRUD operations for the **Notification** model.
@@ -719,6 +736,7 @@ export namespace Prisma {
 
   export const ModelName: {
     User: 'User',
+    RelayerDrip: 'RelayerDrip',
     Notification: 'Notification',
     PushSubscription: 'PushSubscription',
     SavedRecipient: 'SavedRecipient',
@@ -739,7 +757,7 @@ export namespace Prisma {
       omit: GlobalOmitOptions
     }
     meta: {
-      modelProps: "user" | "notification" | "pushSubscription" | "savedRecipient" | "savedCryptoAddress" | "transaction"
+      modelProps: "user" | "relayerDrip" | "notification" | "pushSubscription" | "savedRecipient" | "savedCryptoAddress" | "transaction"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -814,6 +832,80 @@ export namespace Prisma {
           count: {
             args: Prisma.UserCountArgs<ExtArgs>
             result: $Utils.Optional<UserCountAggregateOutputType> | number
+          }
+        }
+      }
+      RelayerDrip: {
+        payload: Prisma.$RelayerDripPayload<ExtArgs>
+        fields: Prisma.RelayerDripFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.RelayerDripFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.RelayerDripFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload>
+          }
+          findFirst: {
+            args: Prisma.RelayerDripFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.RelayerDripFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload>
+          }
+          findMany: {
+            args: Prisma.RelayerDripFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload>[]
+          }
+          create: {
+            args: Prisma.RelayerDripCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload>
+          }
+          createMany: {
+            args: Prisma.RelayerDripCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.RelayerDripCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload>[]
+          }
+          delete: {
+            args: Prisma.RelayerDripDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload>
+          }
+          update: {
+            args: Prisma.RelayerDripUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload>
+          }
+          deleteMany: {
+            args: Prisma.RelayerDripDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.RelayerDripUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateManyAndReturn: {
+            args: Prisma.RelayerDripUpdateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload>[]
+          }
+          upsert: {
+            args: Prisma.RelayerDripUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$RelayerDripPayload>
+          }
+          aggregate: {
+            args: Prisma.RelayerDripAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateRelayerDrip>
+          }
+          groupBy: {
+            args: Prisma.RelayerDripGroupByArgs<ExtArgs>
+            result: $Utils.Optional<RelayerDripGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.RelayerDripCountArgs<ExtArgs>
+            result: $Utils.Optional<RelayerDripCountAggregateOutputType> | number
           }
         }
       }
@@ -1296,6 +1388,7 @@ export namespace Prisma {
   }
   export type GlobalOmitConfig = {
     user?: UserOmit
+    relayerDrip?: RelayerDripOmit
     notification?: NotificationOmit
     pushSubscription?: PushSubscriptionOmit
     savedRecipient?: SavedRecipientOmit
@@ -1386,6 +1479,7 @@ export namespace Prisma {
     savedCryptoAddresses: number
     notifications: number
     pushSubscriptions: number
+    relayerDrips: number
   }
 
   export type UserCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -1394,6 +1488,7 @@ export namespace Prisma {
     savedCryptoAddresses?: boolean | UserCountOutputTypeCountSavedCryptoAddressesArgs
     notifications?: boolean | UserCountOutputTypeCountNotificationsArgs
     pushSubscriptions?: boolean | UserCountOutputTypeCountPushSubscriptionsArgs
+    relayerDrips?: boolean | UserCountOutputTypeCountRelayerDripsArgs
   }
 
   // Custom InputTypes
@@ -1440,6 +1535,13 @@ export namespace Prisma {
    */
   export type UserCountOutputTypeCountPushSubscriptionsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: PushSubscriptionWhereInput
+  }
+
+  /**
+   * UserCountOutputType without action
+   */
+  export type UserCountOutputTypeCountRelayerDripsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: RelayerDripWhereInput
   }
 
 
@@ -1722,6 +1824,7 @@ export namespace Prisma {
     savedCryptoAddresses?: boolean | User$savedCryptoAddressesArgs<ExtArgs>
     notifications?: boolean | User$notificationsArgs<ExtArgs>
     pushSubscriptions?: boolean | User$pushSubscriptionsArgs<ExtArgs>
+    relayerDrips?: boolean | User$relayerDripsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["user"]>
 
@@ -1780,6 +1883,7 @@ export namespace Prisma {
     savedCryptoAddresses?: boolean | User$savedCryptoAddressesArgs<ExtArgs>
     notifications?: boolean | User$notificationsArgs<ExtArgs>
     pushSubscriptions?: boolean | User$pushSubscriptionsArgs<ExtArgs>
+    relayerDrips?: boolean | User$relayerDripsArgs<ExtArgs>
     _count?: boolean | UserCountOutputTypeDefaultArgs<ExtArgs>
   }
   export type UserIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {}
@@ -1793,6 +1897,7 @@ export namespace Prisma {
       savedCryptoAddresses: Prisma.$SavedCryptoAddressPayload<ExtArgs>[]
       notifications: Prisma.$NotificationPayload<ExtArgs>[]
       pushSubscriptions: Prisma.$PushSubscriptionPayload<ExtArgs>[]
+      relayerDrips: Prisma.$RelayerDripPayload<ExtArgs>[]
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
@@ -2207,6 +2312,7 @@ export namespace Prisma {
     savedCryptoAddresses<T extends User$savedCryptoAddressesArgs<ExtArgs> = {}>(args?: Subset<T, User$savedCryptoAddressesArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$SavedCryptoAddressPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     notifications<T extends User$notificationsArgs<ExtArgs> = {}>(args?: Subset<T, User$notificationsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$NotificationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     pushSubscriptions<T extends User$pushSubscriptionsArgs<ExtArgs> = {}>(args?: Subset<T, User$pushSubscriptionsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$PushSubscriptionPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+    relayerDrips<T extends User$relayerDripsArgs<ExtArgs> = {}>(args?: Subset<T, User$relayerDripsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -2762,6 +2868,30 @@ export namespace Prisma {
   }
 
   /**
+   * User.relayerDrips
+   */
+  export type User$relayerDripsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    where?: RelayerDripWhereInput
+    orderBy?: RelayerDripOrderByWithRelationInput | RelayerDripOrderByWithRelationInput[]
+    cursor?: RelayerDripWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: RelayerDripScalarFieldEnum | RelayerDripScalarFieldEnum[]
+  }
+
+  /**
    * User without action
    */
   export type UserDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
@@ -2777,6 +2907,1145 @@ export namespace Prisma {
      * Choose, which related nodes to fetch as well
      */
     include?: UserInclude<ExtArgs> | null
+  }
+
+
+  /**
+   * Model RelayerDrip
+   */
+
+  export type AggregateRelayerDrip = {
+    _count: RelayerDripCountAggregateOutputType | null
+    _avg: RelayerDripAvgAggregateOutputType | null
+    _sum: RelayerDripSumAggregateOutputType | null
+    _min: RelayerDripMinAggregateOutputType | null
+    _max: RelayerDripMaxAggregateOutputType | null
+  }
+
+  export type RelayerDripAvgAggregateOutputType = {
+    chainId: number | null
+  }
+
+  export type RelayerDripSumAggregateOutputType = {
+    chainId: number | null
+  }
+
+  export type RelayerDripMinAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    chainId: number | null
+    token: string | null
+    wallet: string | null
+    amountWei: string | null
+    txHash: string | null
+    createdAt: Date | null
+  }
+
+  export type RelayerDripMaxAggregateOutputType = {
+    id: string | null
+    userId: string | null
+    chainId: number | null
+    token: string | null
+    wallet: string | null
+    amountWei: string | null
+    txHash: string | null
+    createdAt: Date | null
+  }
+
+  export type RelayerDripCountAggregateOutputType = {
+    id: number
+    userId: number
+    chainId: number
+    token: number
+    wallet: number
+    amountWei: number
+    txHash: number
+    createdAt: number
+    _all: number
+  }
+
+
+  export type RelayerDripAvgAggregateInputType = {
+    chainId?: true
+  }
+
+  export type RelayerDripSumAggregateInputType = {
+    chainId?: true
+  }
+
+  export type RelayerDripMinAggregateInputType = {
+    id?: true
+    userId?: true
+    chainId?: true
+    token?: true
+    wallet?: true
+    amountWei?: true
+    txHash?: true
+    createdAt?: true
+  }
+
+  export type RelayerDripMaxAggregateInputType = {
+    id?: true
+    userId?: true
+    chainId?: true
+    token?: true
+    wallet?: true
+    amountWei?: true
+    txHash?: true
+    createdAt?: true
+  }
+
+  export type RelayerDripCountAggregateInputType = {
+    id?: true
+    userId?: true
+    chainId?: true
+    token?: true
+    wallet?: true
+    amountWei?: true
+    txHash?: true
+    createdAt?: true
+    _all?: true
+  }
+
+  export type RelayerDripAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which RelayerDrip to aggregate.
+     */
+    where?: RelayerDripWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of RelayerDrips to fetch.
+     */
+    orderBy?: RelayerDripOrderByWithRelationInput | RelayerDripOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: RelayerDripWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` RelayerDrips from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` RelayerDrips.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned RelayerDrips
+    **/
+    _count?: true | RelayerDripCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: RelayerDripAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: RelayerDripSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: RelayerDripMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: RelayerDripMaxAggregateInputType
+  }
+
+  export type GetRelayerDripAggregateType<T extends RelayerDripAggregateArgs> = {
+        [P in keyof T & keyof AggregateRelayerDrip]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateRelayerDrip[P]>
+      : GetScalarType<T[P], AggregateRelayerDrip[P]>
+  }
+
+
+
+
+  export type RelayerDripGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: RelayerDripWhereInput
+    orderBy?: RelayerDripOrderByWithAggregationInput | RelayerDripOrderByWithAggregationInput[]
+    by: RelayerDripScalarFieldEnum[] | RelayerDripScalarFieldEnum
+    having?: RelayerDripScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: RelayerDripCountAggregateInputType | true
+    _avg?: RelayerDripAvgAggregateInputType
+    _sum?: RelayerDripSumAggregateInputType
+    _min?: RelayerDripMinAggregateInputType
+    _max?: RelayerDripMaxAggregateInputType
+  }
+
+  export type RelayerDripGroupByOutputType = {
+    id: string
+    userId: string
+    chainId: number
+    token: string
+    wallet: string
+    amountWei: string
+    txHash: string | null
+    createdAt: Date
+    _count: RelayerDripCountAggregateOutputType | null
+    _avg: RelayerDripAvgAggregateOutputType | null
+    _sum: RelayerDripSumAggregateOutputType | null
+    _min: RelayerDripMinAggregateOutputType | null
+    _max: RelayerDripMaxAggregateOutputType | null
+  }
+
+  type GetRelayerDripGroupByPayload<T extends RelayerDripGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<RelayerDripGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof RelayerDripGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], RelayerDripGroupByOutputType[P]>
+            : GetScalarType<T[P], RelayerDripGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type RelayerDripSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    chainId?: boolean
+    token?: boolean
+    wallet?: boolean
+    amountWei?: boolean
+    txHash?: boolean
+    createdAt?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["relayerDrip"]>
+
+  export type RelayerDripSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    chainId?: boolean
+    token?: boolean
+    wallet?: boolean
+    amountWei?: boolean
+    txHash?: boolean
+    createdAt?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["relayerDrip"]>
+
+  export type RelayerDripSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    userId?: boolean
+    chainId?: boolean
+    token?: boolean
+    wallet?: boolean
+    amountWei?: boolean
+    txHash?: boolean
+    createdAt?: boolean
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }, ExtArgs["result"]["relayerDrip"]>
+
+  export type RelayerDripSelectScalar = {
+    id?: boolean
+    userId?: boolean
+    chainId?: boolean
+    token?: boolean
+    wallet?: boolean
+    amountWei?: boolean
+    txHash?: boolean
+    createdAt?: boolean
+  }
+
+  export type RelayerDripOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "chainId" | "token" | "wallet" | "amountWei" | "txHash" | "createdAt", ExtArgs["result"]["relayerDrip"]>
+  export type RelayerDripInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+  export type RelayerDripIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+  export type RelayerDripIncludeUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    user?: boolean | UserDefaultArgs<ExtArgs>
+  }
+
+  export type $RelayerDripPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "RelayerDrip"
+    objects: {
+      user: Prisma.$UserPayload<ExtArgs>
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      userId: string
+      chainId: number
+      token: string
+      wallet: string
+      amountWei: string
+      /**
+       * Set before broadcast, so a drip that may have gone out is never sent again.
+       */
+      txHash: string | null
+      createdAt: Date
+    }, ExtArgs["result"]["relayerDrip"]>
+    composites: {}
+  }
+
+  type RelayerDripGetPayload<S extends boolean | null | undefined | RelayerDripDefaultArgs> = $Result.GetResult<Prisma.$RelayerDripPayload, S>
+
+  type RelayerDripCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> =
+    Omit<RelayerDripFindManyArgs, 'select' | 'include' | 'distinct' | 'omit'> & {
+      select?: RelayerDripCountAggregateInputType | true
+    }
+
+  export interface RelayerDripDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['RelayerDrip'], meta: { name: 'RelayerDrip' } }
+    /**
+     * Find zero or one RelayerDrip that matches the filter.
+     * @param {RelayerDripFindUniqueArgs} args - Arguments to find a RelayerDrip
+     * @example
+     * // Get one RelayerDrip
+     * const relayerDrip = await prisma.relayerDrip.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends RelayerDripFindUniqueArgs>(args: SelectSubset<T, RelayerDripFindUniqueArgs<ExtArgs>>): Prisma__RelayerDripClient<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "findUnique", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find one RelayerDrip that matches the filter or throw an error with `error.code='P2025'`
+     * if no matches were found.
+     * @param {RelayerDripFindUniqueOrThrowArgs} args - Arguments to find a RelayerDrip
+     * @example
+     * // Get one RelayerDrip
+     * const relayerDrip = await prisma.relayerDrip.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends RelayerDripFindUniqueOrThrowArgs>(args: SelectSubset<T, RelayerDripFindUniqueOrThrowArgs<ExtArgs>>): Prisma__RelayerDripClient<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first RelayerDrip that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RelayerDripFindFirstArgs} args - Arguments to find a RelayerDrip
+     * @example
+     * // Get one RelayerDrip
+     * const relayerDrip = await prisma.relayerDrip.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends RelayerDripFindFirstArgs>(args?: SelectSubset<T, RelayerDripFindFirstArgs<ExtArgs>>): Prisma__RelayerDripClient<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "findFirst", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first RelayerDrip that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RelayerDripFindFirstOrThrowArgs} args - Arguments to find a RelayerDrip
+     * @example
+     * // Get one RelayerDrip
+     * const relayerDrip = await prisma.relayerDrip.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends RelayerDripFindFirstOrThrowArgs>(args?: SelectSubset<T, RelayerDripFindFirstOrThrowArgs<ExtArgs>>): Prisma__RelayerDripClient<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "findFirstOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find zero or more RelayerDrips that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RelayerDripFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all RelayerDrips
+     * const relayerDrips = await prisma.relayerDrip.findMany()
+     * 
+     * // Get first 10 RelayerDrips
+     * const relayerDrips = await prisma.relayerDrip.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const relayerDripWithIdOnly = await prisma.relayerDrip.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends RelayerDripFindManyArgs>(args?: SelectSubset<T, RelayerDripFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "findMany", GlobalOmitOptions>>
+
+    /**
+     * Create a RelayerDrip.
+     * @param {RelayerDripCreateArgs} args - Arguments to create a RelayerDrip.
+     * @example
+     * // Create one RelayerDrip
+     * const RelayerDrip = await prisma.relayerDrip.create({
+     *   data: {
+     *     // ... data to create a RelayerDrip
+     *   }
+     * })
+     * 
+     */
+    create<T extends RelayerDripCreateArgs>(args: SelectSubset<T, RelayerDripCreateArgs<ExtArgs>>): Prisma__RelayerDripClient<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "create", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Create many RelayerDrips.
+     * @param {RelayerDripCreateManyArgs} args - Arguments to create many RelayerDrips.
+     * @example
+     * // Create many RelayerDrips
+     * const relayerDrip = await prisma.relayerDrip.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends RelayerDripCreateManyArgs>(args?: SelectSubset<T, RelayerDripCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many RelayerDrips and returns the data saved in the database.
+     * @param {RelayerDripCreateManyAndReturnArgs} args - Arguments to create many RelayerDrips.
+     * @example
+     * // Create many RelayerDrips
+     * const relayerDrip = await prisma.relayerDrip.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many RelayerDrips and only return the `id`
+     * const relayerDripWithIdOnly = await prisma.relayerDrip.createManyAndReturn({
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends RelayerDripCreateManyAndReturnArgs>(args?: SelectSubset<T, RelayerDripCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "createManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Delete a RelayerDrip.
+     * @param {RelayerDripDeleteArgs} args - Arguments to delete one RelayerDrip.
+     * @example
+     * // Delete one RelayerDrip
+     * const RelayerDrip = await prisma.relayerDrip.delete({
+     *   where: {
+     *     // ... filter to delete one RelayerDrip
+     *   }
+     * })
+     * 
+     */
+    delete<T extends RelayerDripDeleteArgs>(args: SelectSubset<T, RelayerDripDeleteArgs<ExtArgs>>): Prisma__RelayerDripClient<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "delete", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Update one RelayerDrip.
+     * @param {RelayerDripUpdateArgs} args - Arguments to update one RelayerDrip.
+     * @example
+     * // Update one RelayerDrip
+     * const relayerDrip = await prisma.relayerDrip.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends RelayerDripUpdateArgs>(args: SelectSubset<T, RelayerDripUpdateArgs<ExtArgs>>): Prisma__RelayerDripClient<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "update", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Delete zero or more RelayerDrips.
+     * @param {RelayerDripDeleteManyArgs} args - Arguments to filter RelayerDrips to delete.
+     * @example
+     * // Delete a few RelayerDrips
+     * const { count } = await prisma.relayerDrip.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends RelayerDripDeleteManyArgs>(args?: SelectSubset<T, RelayerDripDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more RelayerDrips.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RelayerDripUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many RelayerDrips
+     * const relayerDrip = await prisma.relayerDrip.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends RelayerDripUpdateManyArgs>(args: SelectSubset<T, RelayerDripUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more RelayerDrips and returns the data updated in the database.
+     * @param {RelayerDripUpdateManyAndReturnArgs} args - Arguments to update many RelayerDrips.
+     * @example
+     * // Update many RelayerDrips
+     * const relayerDrip = await prisma.relayerDrip.updateManyAndReturn({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Update zero or more RelayerDrips and only return the `id`
+     * const relayerDripWithIdOnly = await prisma.relayerDrip.updateManyAndReturn({
+     *   select: { id: true },
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    updateManyAndReturn<T extends RelayerDripUpdateManyAndReturnArgs>(args: SelectSubset<T, RelayerDripUpdateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "updateManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Create or update one RelayerDrip.
+     * @param {RelayerDripUpsertArgs} args - Arguments to update or create a RelayerDrip.
+     * @example
+     * // Update or create a RelayerDrip
+     * const relayerDrip = await prisma.relayerDrip.upsert({
+     *   create: {
+     *     // ... data to create a RelayerDrip
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the RelayerDrip we want to update
+     *   }
+     * })
+     */
+    upsert<T extends RelayerDripUpsertArgs>(args: SelectSubset<T, RelayerDripUpsertArgs<ExtArgs>>): Prisma__RelayerDripClient<$Result.GetResult<Prisma.$RelayerDripPayload<ExtArgs>, T, "upsert", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+
+    /**
+     * Count the number of RelayerDrips.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RelayerDripCountArgs} args - Arguments to filter RelayerDrips to count.
+     * @example
+     * // Count the number of RelayerDrips
+     * const count = await prisma.relayerDrip.count({
+     *   where: {
+     *     // ... the filter for the RelayerDrips we want to count
+     *   }
+     * })
+    **/
+    count<T extends RelayerDripCountArgs>(
+      args?: Subset<T, RelayerDripCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], RelayerDripCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a RelayerDrip.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RelayerDripAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends RelayerDripAggregateArgs>(args: Subset<T, RelayerDripAggregateArgs>): Prisma.PrismaPromise<GetRelayerDripAggregateType<T>>
+
+    /**
+     * Group by RelayerDrip.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {RelayerDripGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends RelayerDripGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: RelayerDripGroupByArgs['orderBy'] }
+        : { orderBy?: RelayerDripGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, RelayerDripGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetRelayerDripGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the RelayerDrip model
+   */
+  readonly fields: RelayerDripFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for RelayerDrip.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__RelayerDripClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    user<T extends UserDefaultArgs<ExtArgs> = {}>(args?: Subset<T, UserDefaultArgs<ExtArgs>>): Prisma__UserClient<$Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the RelayerDrip model
+   */
+  interface RelayerDripFieldRefs {
+    readonly id: FieldRef<"RelayerDrip", 'String'>
+    readonly userId: FieldRef<"RelayerDrip", 'String'>
+    readonly chainId: FieldRef<"RelayerDrip", 'Int'>
+    readonly token: FieldRef<"RelayerDrip", 'String'>
+    readonly wallet: FieldRef<"RelayerDrip", 'String'>
+    readonly amountWei: FieldRef<"RelayerDrip", 'String'>
+    readonly txHash: FieldRef<"RelayerDrip", 'String'>
+    readonly createdAt: FieldRef<"RelayerDrip", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * RelayerDrip findUnique
+   */
+  export type RelayerDripFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    /**
+     * Filter, which RelayerDrip to fetch.
+     */
+    where: RelayerDripWhereUniqueInput
+  }
+
+  /**
+   * RelayerDrip findUniqueOrThrow
+   */
+  export type RelayerDripFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    /**
+     * Filter, which RelayerDrip to fetch.
+     */
+    where: RelayerDripWhereUniqueInput
+  }
+
+  /**
+   * RelayerDrip findFirst
+   */
+  export type RelayerDripFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    /**
+     * Filter, which RelayerDrip to fetch.
+     */
+    where?: RelayerDripWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of RelayerDrips to fetch.
+     */
+    orderBy?: RelayerDripOrderByWithRelationInput | RelayerDripOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for RelayerDrips.
+     */
+    cursor?: RelayerDripWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` RelayerDrips from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` RelayerDrips.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of RelayerDrips.
+     */
+    distinct?: RelayerDripScalarFieldEnum | RelayerDripScalarFieldEnum[]
+  }
+
+  /**
+   * RelayerDrip findFirstOrThrow
+   */
+  export type RelayerDripFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    /**
+     * Filter, which RelayerDrip to fetch.
+     */
+    where?: RelayerDripWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of RelayerDrips to fetch.
+     */
+    orderBy?: RelayerDripOrderByWithRelationInput | RelayerDripOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for RelayerDrips.
+     */
+    cursor?: RelayerDripWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` RelayerDrips from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` RelayerDrips.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of RelayerDrips.
+     */
+    distinct?: RelayerDripScalarFieldEnum | RelayerDripScalarFieldEnum[]
+  }
+
+  /**
+   * RelayerDrip findMany
+   */
+  export type RelayerDripFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    /**
+     * Filter, which RelayerDrips to fetch.
+     */
+    where?: RelayerDripWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of RelayerDrips to fetch.
+     */
+    orderBy?: RelayerDripOrderByWithRelationInput | RelayerDripOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing RelayerDrips.
+     */
+    cursor?: RelayerDripWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` RelayerDrips from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` RelayerDrips.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of RelayerDrips.
+     */
+    distinct?: RelayerDripScalarFieldEnum | RelayerDripScalarFieldEnum[]
+  }
+
+  /**
+   * RelayerDrip create
+   */
+  export type RelayerDripCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    /**
+     * The data needed to create a RelayerDrip.
+     */
+    data: XOR<RelayerDripCreateInput, RelayerDripUncheckedCreateInput>
+  }
+
+  /**
+   * RelayerDrip createMany
+   */
+  export type RelayerDripCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many RelayerDrips.
+     */
+    data: RelayerDripCreateManyInput | RelayerDripCreateManyInput[]
+    skipDuplicates?: boolean
+  }
+
+  /**
+   * RelayerDrip createManyAndReturn
+   */
+  export type RelayerDripCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * The data used to create many RelayerDrips.
+     */
+    data: RelayerDripCreateManyInput | RelayerDripCreateManyInput[]
+    skipDuplicates?: boolean
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * RelayerDrip update
+   */
+  export type RelayerDripUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    /**
+     * The data needed to update a RelayerDrip.
+     */
+    data: XOR<RelayerDripUpdateInput, RelayerDripUncheckedUpdateInput>
+    /**
+     * Choose, which RelayerDrip to update.
+     */
+    where: RelayerDripWhereUniqueInput
+  }
+
+  /**
+   * RelayerDrip updateMany
+   */
+  export type RelayerDripUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update RelayerDrips.
+     */
+    data: XOR<RelayerDripUpdateManyMutationInput, RelayerDripUncheckedUpdateManyInput>
+    /**
+     * Filter which RelayerDrips to update
+     */
+    where?: RelayerDripWhereInput
+    /**
+     * Limit how many RelayerDrips to update.
+     */
+    limit?: number
+  }
+
+  /**
+   * RelayerDrip updateManyAndReturn
+   */
+  export type RelayerDripUpdateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelectUpdateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * The data used to update RelayerDrips.
+     */
+    data: XOR<RelayerDripUpdateManyMutationInput, RelayerDripUncheckedUpdateManyInput>
+    /**
+     * Filter which RelayerDrips to update
+     */
+    where?: RelayerDripWhereInput
+    /**
+     * Limit how many RelayerDrips to update.
+     */
+    limit?: number
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripIncludeUpdateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * RelayerDrip upsert
+   */
+  export type RelayerDripUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    /**
+     * The filter to search for the RelayerDrip to update in case it exists.
+     */
+    where: RelayerDripWhereUniqueInput
+    /**
+     * In case the RelayerDrip found by the `where` argument doesn't exist, create a new RelayerDrip with this data.
+     */
+    create: XOR<RelayerDripCreateInput, RelayerDripUncheckedCreateInput>
+    /**
+     * In case the RelayerDrip was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<RelayerDripUpdateInput, RelayerDripUncheckedUpdateInput>
+  }
+
+  /**
+   * RelayerDrip delete
+   */
+  export type RelayerDripDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
+    /**
+     * Filter which RelayerDrip to delete.
+     */
+    where: RelayerDripWhereUniqueInput
+  }
+
+  /**
+   * RelayerDrip deleteMany
+   */
+  export type RelayerDripDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which RelayerDrips to delete
+     */
+    where?: RelayerDripWhereInput
+    /**
+     * Limit how many RelayerDrips to delete.
+     */
+    limit?: number
+  }
+
+  /**
+   * RelayerDrip without action
+   */
+  export type RelayerDripDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the RelayerDrip
+     */
+    select?: RelayerDripSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the RelayerDrip
+     */
+    omit?: RelayerDripOmit<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: RelayerDripInclude<ExtArgs> | null
   }
 
 
@@ -8755,6 +10024,20 @@ export namespace Prisma {
   export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
 
 
+  export const RelayerDripScalarFieldEnum: {
+    id: 'id',
+    userId: 'userId',
+    chainId: 'chainId',
+    token: 'token',
+    wallet: 'wallet',
+    amountWei: 'amountWei',
+    txHash: 'txHash',
+    createdAt: 'createdAt'
+  };
+
+  export type RelayerDripScalarFieldEnum = (typeof RelayerDripScalarFieldEnum)[keyof typeof RelayerDripScalarFieldEnum]
+
+
   export const NotificationScalarFieldEnum: {
     id: 'id',
     userId: 'userId',
@@ -9046,6 +10329,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressListRelationFilter
     notifications?: NotificationListRelationFilter
     pushSubscriptions?: PushSubscriptionListRelationFilter
+    relayerDrips?: RelayerDripListRelationFilter
   }
 
   export type UserOrderByWithRelationInput = {
@@ -9067,6 +10351,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressOrderByRelationAggregateInput
     notifications?: NotificationOrderByRelationAggregateInput
     pushSubscriptions?: PushSubscriptionOrderByRelationAggregateInput
+    relayerDrips?: RelayerDripOrderByRelationAggregateInput
   }
 
   export type UserWhereUniqueInput = Prisma.AtLeast<{
@@ -9091,6 +10376,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressListRelationFilter
     notifications?: NotificationListRelationFilter
     pushSubscriptions?: PushSubscriptionListRelationFilter
+    relayerDrips?: RelayerDripListRelationFilter
   }, "id" | "privyDid" | "walletAddress" | "email">
 
   export type UserOrderByWithAggregationInput = {
@@ -9131,6 +10417,79 @@ export namespace Prisma {
     displayName?: StringNullableWithAggregatesFilter<"User"> | string | null
     lastLoginAt?: DateTimeNullableWithAggregatesFilter<"User"> | Date | string | null
     walletBalance?: DecimalWithAggregatesFilter<"User"> | Decimal | DecimalJsLike | number | string
+  }
+
+  export type RelayerDripWhereInput = {
+    AND?: RelayerDripWhereInput | RelayerDripWhereInput[]
+    OR?: RelayerDripWhereInput[]
+    NOT?: RelayerDripWhereInput | RelayerDripWhereInput[]
+    id?: StringFilter<"RelayerDrip"> | string
+    userId?: StringFilter<"RelayerDrip"> | string
+    chainId?: IntFilter<"RelayerDrip"> | number
+    token?: StringFilter<"RelayerDrip"> | string
+    wallet?: StringFilter<"RelayerDrip"> | string
+    amountWei?: StringFilter<"RelayerDrip"> | string
+    txHash?: StringNullableFilter<"RelayerDrip"> | string | null
+    createdAt?: DateTimeFilter<"RelayerDrip"> | Date | string
+    user?: XOR<UserScalarRelationFilter, UserWhereInput>
+  }
+
+  export type RelayerDripOrderByWithRelationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    chainId?: SortOrder
+    token?: SortOrder
+    wallet?: SortOrder
+    amountWei?: SortOrder
+    txHash?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+    user?: UserOrderByWithRelationInput
+  }
+
+  export type RelayerDripWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    userId_chainId_token?: RelayerDripUserIdChainIdTokenCompoundUniqueInput
+    AND?: RelayerDripWhereInput | RelayerDripWhereInput[]
+    OR?: RelayerDripWhereInput[]
+    NOT?: RelayerDripWhereInput | RelayerDripWhereInput[]
+    userId?: StringFilter<"RelayerDrip"> | string
+    chainId?: IntFilter<"RelayerDrip"> | number
+    token?: StringFilter<"RelayerDrip"> | string
+    wallet?: StringFilter<"RelayerDrip"> | string
+    amountWei?: StringFilter<"RelayerDrip"> | string
+    txHash?: StringNullableFilter<"RelayerDrip"> | string | null
+    createdAt?: DateTimeFilter<"RelayerDrip"> | Date | string
+    user?: XOR<UserScalarRelationFilter, UserWhereInput>
+  }, "id" | "userId_chainId_token">
+
+  export type RelayerDripOrderByWithAggregationInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    chainId?: SortOrder
+    token?: SortOrder
+    wallet?: SortOrder
+    amountWei?: SortOrder
+    txHash?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+    _count?: RelayerDripCountOrderByAggregateInput
+    _avg?: RelayerDripAvgOrderByAggregateInput
+    _max?: RelayerDripMaxOrderByAggregateInput
+    _min?: RelayerDripMinOrderByAggregateInput
+    _sum?: RelayerDripSumOrderByAggregateInput
+  }
+
+  export type RelayerDripScalarWhereWithAggregatesInput = {
+    AND?: RelayerDripScalarWhereWithAggregatesInput | RelayerDripScalarWhereWithAggregatesInput[]
+    OR?: RelayerDripScalarWhereWithAggregatesInput[]
+    NOT?: RelayerDripScalarWhereWithAggregatesInput | RelayerDripScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"RelayerDrip"> | string
+    userId?: StringWithAggregatesFilter<"RelayerDrip"> | string
+    chainId?: IntWithAggregatesFilter<"RelayerDrip"> | number
+    token?: StringWithAggregatesFilter<"RelayerDrip"> | string
+    wallet?: StringWithAggregatesFilter<"RelayerDrip"> | string
+    amountWei?: StringWithAggregatesFilter<"RelayerDrip"> | string
+    txHash?: StringNullableWithAggregatesFilter<"RelayerDrip"> | string | null
+    createdAt?: DateTimeWithAggregatesFilter<"RelayerDrip"> | Date | string
   }
 
   export type NotificationWhereInput = {
@@ -9646,6 +11005,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     notifications?: NotificationCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateInput = {
@@ -9667,6 +11027,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserUpdateInput = {
@@ -9688,6 +11049,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     notifications?: NotificationUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateInput = {
@@ -9709,6 +11071,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
     notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateManyInput = {
@@ -9757,6 +11120,82 @@ export namespace Prisma {
     displayName?: NullableStringFieldUpdateOperationsInput | string | null
     lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+  }
+
+  export type RelayerDripCreateInput = {
+    id?: string
+    chainId: number
+    token: string
+    wallet: string
+    amountWei: string
+    txHash?: string | null
+    createdAt?: Date | string
+    user: UserCreateNestedOneWithoutRelayerDripsInput
+  }
+
+  export type RelayerDripUncheckedCreateInput = {
+    id?: string
+    userId: string
+    chainId: number
+    token: string
+    wallet: string
+    amountWei: string
+    txHash?: string | null
+    createdAt?: Date | string
+  }
+
+  export type RelayerDripUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    token?: StringFieldUpdateOperationsInput | string
+    wallet?: StringFieldUpdateOperationsInput | string
+    amountWei?: StringFieldUpdateOperationsInput | string
+    txHash?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    user?: UserUpdateOneRequiredWithoutRelayerDripsNestedInput
+  }
+
+  export type RelayerDripUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    token?: StringFieldUpdateOperationsInput | string
+    wallet?: StringFieldUpdateOperationsInput | string
+    amountWei?: StringFieldUpdateOperationsInput | string
+    txHash?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type RelayerDripCreateManyInput = {
+    id?: string
+    userId: string
+    chainId: number
+    token: string
+    wallet: string
+    amountWei: string
+    txHash?: string | null
+    createdAt?: Date | string
+  }
+
+  export type RelayerDripUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    token?: StringFieldUpdateOperationsInput | string
+    wallet?: StringFieldUpdateOperationsInput | string
+    amountWei?: StringFieldUpdateOperationsInput | string
+    txHash?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type RelayerDripUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    userId?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    token?: StringFieldUpdateOperationsInput | string
+    wallet?: StringFieldUpdateOperationsInput | string
+    amountWei?: StringFieldUpdateOperationsInput | string
+    txHash?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type NotificationCreateInput = {
@@ -10432,6 +11871,12 @@ export namespace Prisma {
     none?: PushSubscriptionWhereInput
   }
 
+  export type RelayerDripListRelationFilter = {
+    every?: RelayerDripWhereInput
+    some?: RelayerDripWhereInput
+    none?: RelayerDripWhereInput
+  }
+
   export type SortOrderInput = {
     sort: SortOrder
     nulls?: NullsOrder
@@ -10454,6 +11899,10 @@ export namespace Prisma {
   }
 
   export type PushSubscriptionOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type RelayerDripOrderByRelationAggregateInput = {
     _count?: SortOrder
   }
 
@@ -10613,16 +12062,63 @@ export namespace Prisma {
     _max?: NestedDateTimeNullableFilter<$PrismaModel>
   }
 
+  export type UserScalarRelationFilter = {
+    is?: UserWhereInput
+    isNot?: UserWhereInput
+  }
+
+  export type RelayerDripUserIdChainIdTokenCompoundUniqueInput = {
+    userId: string
+    chainId: number
+    token: string
+  }
+
+  export type RelayerDripCountOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    chainId?: SortOrder
+    token?: SortOrder
+    wallet?: SortOrder
+    amountWei?: SortOrder
+    txHash?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type RelayerDripAvgOrderByAggregateInput = {
+    chainId?: SortOrder
+  }
+
+  export type RelayerDripMaxOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    chainId?: SortOrder
+    token?: SortOrder
+    wallet?: SortOrder
+    amountWei?: SortOrder
+    txHash?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type RelayerDripMinOrderByAggregateInput = {
+    id?: SortOrder
+    userId?: SortOrder
+    chainId?: SortOrder
+    token?: SortOrder
+    wallet?: SortOrder
+    amountWei?: SortOrder
+    txHash?: SortOrder
+    createdAt?: SortOrder
+  }
+
+  export type RelayerDripSumOrderByAggregateInput = {
+    chainId?: SortOrder
+  }
+
   export type EnumNotificationTypeFilter<$PrismaModel = never> = {
     equals?: $Enums.NotificationType | EnumNotificationTypeFieldRefInput<$PrismaModel>
     in?: $Enums.NotificationType[] | ListEnumNotificationTypeFieldRefInput<$PrismaModel>
     notIn?: $Enums.NotificationType[] | ListEnumNotificationTypeFieldRefInput<$PrismaModel>
     not?: NestedEnumNotificationTypeFilter<$PrismaModel> | $Enums.NotificationType
-  }
-
-  export type UserScalarRelationFilter = {
-    is?: UserWhereInput
-    isNot?: UserWhereInput
   }
 
   export type NotificationUserIdTypeTransactionIdCompoundUniqueInput = {
@@ -11052,6 +12548,13 @@ export namespace Prisma {
     connect?: PushSubscriptionWhereUniqueInput | PushSubscriptionWhereUniqueInput[]
   }
 
+  export type RelayerDripCreateNestedManyWithoutUserInput = {
+    create?: XOR<RelayerDripCreateWithoutUserInput, RelayerDripUncheckedCreateWithoutUserInput> | RelayerDripCreateWithoutUserInput[] | RelayerDripUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: RelayerDripCreateOrConnectWithoutUserInput | RelayerDripCreateOrConnectWithoutUserInput[]
+    createMany?: RelayerDripCreateManyUserInputEnvelope
+    connect?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
+  }
+
   export type TransactionUncheckedCreateNestedManyWithoutUserInput = {
     create?: XOR<TransactionCreateWithoutUserInput, TransactionUncheckedCreateWithoutUserInput> | TransactionCreateWithoutUserInput[] | TransactionUncheckedCreateWithoutUserInput[]
     connectOrCreate?: TransactionCreateOrConnectWithoutUserInput | TransactionCreateOrConnectWithoutUserInput[]
@@ -11085,6 +12588,13 @@ export namespace Prisma {
     connectOrCreate?: PushSubscriptionCreateOrConnectWithoutUserInput | PushSubscriptionCreateOrConnectWithoutUserInput[]
     createMany?: PushSubscriptionCreateManyUserInputEnvelope
     connect?: PushSubscriptionWhereUniqueInput | PushSubscriptionWhereUniqueInput[]
+  }
+
+  export type RelayerDripUncheckedCreateNestedManyWithoutUserInput = {
+    create?: XOR<RelayerDripCreateWithoutUserInput, RelayerDripUncheckedCreateWithoutUserInput> | RelayerDripCreateWithoutUserInput[] | RelayerDripUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: RelayerDripCreateOrConnectWithoutUserInput | RelayerDripCreateOrConnectWithoutUserInput[]
+    createMany?: RelayerDripCreateManyUserInputEnvelope
+    connect?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
   }
 
   export type StringFieldUpdateOperationsInput = {
@@ -11189,6 +12699,20 @@ export namespace Prisma {
     deleteMany?: PushSubscriptionScalarWhereInput | PushSubscriptionScalarWhereInput[]
   }
 
+  export type RelayerDripUpdateManyWithoutUserNestedInput = {
+    create?: XOR<RelayerDripCreateWithoutUserInput, RelayerDripUncheckedCreateWithoutUserInput> | RelayerDripCreateWithoutUserInput[] | RelayerDripUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: RelayerDripCreateOrConnectWithoutUserInput | RelayerDripCreateOrConnectWithoutUserInput[]
+    upsert?: RelayerDripUpsertWithWhereUniqueWithoutUserInput | RelayerDripUpsertWithWhereUniqueWithoutUserInput[]
+    createMany?: RelayerDripCreateManyUserInputEnvelope
+    set?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
+    disconnect?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
+    delete?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
+    connect?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
+    update?: RelayerDripUpdateWithWhereUniqueWithoutUserInput | RelayerDripUpdateWithWhereUniqueWithoutUserInput[]
+    updateMany?: RelayerDripUpdateManyWithWhereWithoutUserInput | RelayerDripUpdateManyWithWhereWithoutUserInput[]
+    deleteMany?: RelayerDripScalarWhereInput | RelayerDripScalarWhereInput[]
+  }
+
   export type TransactionUncheckedUpdateManyWithoutUserNestedInput = {
     create?: XOR<TransactionCreateWithoutUserInput, TransactionUncheckedCreateWithoutUserInput> | TransactionCreateWithoutUserInput[] | TransactionUncheckedCreateWithoutUserInput[]
     connectOrCreate?: TransactionCreateOrConnectWithoutUserInput | TransactionCreateOrConnectWithoutUserInput[]
@@ -11257,6 +12781,34 @@ export namespace Prisma {
     update?: PushSubscriptionUpdateWithWhereUniqueWithoutUserInput | PushSubscriptionUpdateWithWhereUniqueWithoutUserInput[]
     updateMany?: PushSubscriptionUpdateManyWithWhereWithoutUserInput | PushSubscriptionUpdateManyWithWhereWithoutUserInput[]
     deleteMany?: PushSubscriptionScalarWhereInput | PushSubscriptionScalarWhereInput[]
+  }
+
+  export type RelayerDripUncheckedUpdateManyWithoutUserNestedInput = {
+    create?: XOR<RelayerDripCreateWithoutUserInput, RelayerDripUncheckedCreateWithoutUserInput> | RelayerDripCreateWithoutUserInput[] | RelayerDripUncheckedCreateWithoutUserInput[]
+    connectOrCreate?: RelayerDripCreateOrConnectWithoutUserInput | RelayerDripCreateOrConnectWithoutUserInput[]
+    upsert?: RelayerDripUpsertWithWhereUniqueWithoutUserInput | RelayerDripUpsertWithWhereUniqueWithoutUserInput[]
+    createMany?: RelayerDripCreateManyUserInputEnvelope
+    set?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
+    disconnect?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
+    delete?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
+    connect?: RelayerDripWhereUniqueInput | RelayerDripWhereUniqueInput[]
+    update?: RelayerDripUpdateWithWhereUniqueWithoutUserInput | RelayerDripUpdateWithWhereUniqueWithoutUserInput[]
+    updateMany?: RelayerDripUpdateManyWithWhereWithoutUserInput | RelayerDripUpdateManyWithWhereWithoutUserInput[]
+    deleteMany?: RelayerDripScalarWhereInput | RelayerDripScalarWhereInput[]
+  }
+
+  export type UserCreateNestedOneWithoutRelayerDripsInput = {
+    create?: XOR<UserCreateWithoutRelayerDripsInput, UserUncheckedCreateWithoutRelayerDripsInput>
+    connectOrCreate?: UserCreateOrConnectWithoutRelayerDripsInput
+    connect?: UserWhereUniqueInput
+  }
+
+  export type UserUpdateOneRequiredWithoutRelayerDripsNestedInput = {
+    create?: XOR<UserCreateWithoutRelayerDripsInput, UserUncheckedCreateWithoutRelayerDripsInput>
+    connectOrCreate?: UserCreateOrConnectWithoutRelayerDripsInput
+    upsert?: UserUpsertWithoutRelayerDripsInput
+    connect?: UserWhereUniqueInput
+    update?: XOR<XOR<UserUpdateToOneWithWhereWithoutRelayerDripsInput, UserUpdateWithoutRelayerDripsInput>, UserUncheckedUpdateWithoutRelayerDripsInput>
   }
 
   export type UserCreateNestedOneWithoutNotificationsInput = {
@@ -11840,6 +13392,36 @@ export namespace Prisma {
     skipDuplicates?: boolean
   }
 
+  export type RelayerDripCreateWithoutUserInput = {
+    id?: string
+    chainId: number
+    token: string
+    wallet: string
+    amountWei: string
+    txHash?: string | null
+    createdAt?: Date | string
+  }
+
+  export type RelayerDripUncheckedCreateWithoutUserInput = {
+    id?: string
+    chainId: number
+    token: string
+    wallet: string
+    amountWei: string
+    txHash?: string | null
+    createdAt?: Date | string
+  }
+
+  export type RelayerDripCreateOrConnectWithoutUserInput = {
+    where: RelayerDripWhereUniqueInput
+    create: XOR<RelayerDripCreateWithoutUserInput, RelayerDripUncheckedCreateWithoutUserInput>
+  }
+
+  export type RelayerDripCreateManyUserInputEnvelope = {
+    data: RelayerDripCreateManyUserInput | RelayerDripCreateManyUserInput[]
+    skipDuplicates?: boolean
+  }
+
   export type TransactionUpsertWithWhereUniqueWithoutUserInput = {
     where: TransactionWhereUniqueInput
     update: XOR<TransactionUpdateWithoutUserInput, TransactionUncheckedUpdateWithoutUserInput>
@@ -12017,6 +13599,136 @@ export namespace Prisma {
     updatedAt?: DateTimeFilter<"PushSubscription"> | Date | string
   }
 
+  export type RelayerDripUpsertWithWhereUniqueWithoutUserInput = {
+    where: RelayerDripWhereUniqueInput
+    update: XOR<RelayerDripUpdateWithoutUserInput, RelayerDripUncheckedUpdateWithoutUserInput>
+    create: XOR<RelayerDripCreateWithoutUserInput, RelayerDripUncheckedCreateWithoutUserInput>
+  }
+
+  export type RelayerDripUpdateWithWhereUniqueWithoutUserInput = {
+    where: RelayerDripWhereUniqueInput
+    data: XOR<RelayerDripUpdateWithoutUserInput, RelayerDripUncheckedUpdateWithoutUserInput>
+  }
+
+  export type RelayerDripUpdateManyWithWhereWithoutUserInput = {
+    where: RelayerDripScalarWhereInput
+    data: XOR<RelayerDripUpdateManyMutationInput, RelayerDripUncheckedUpdateManyWithoutUserInput>
+  }
+
+  export type RelayerDripScalarWhereInput = {
+    AND?: RelayerDripScalarWhereInput | RelayerDripScalarWhereInput[]
+    OR?: RelayerDripScalarWhereInput[]
+    NOT?: RelayerDripScalarWhereInput | RelayerDripScalarWhereInput[]
+    id?: StringFilter<"RelayerDrip"> | string
+    userId?: StringFilter<"RelayerDrip"> | string
+    chainId?: IntFilter<"RelayerDrip"> | number
+    token?: StringFilter<"RelayerDrip"> | string
+    wallet?: StringFilter<"RelayerDrip"> | string
+    amountWei?: StringFilter<"RelayerDrip"> | string
+    txHash?: StringNullableFilter<"RelayerDrip"> | string | null
+    createdAt?: DateTimeFilter<"RelayerDrip"> | Date | string
+  }
+
+  export type UserCreateWithoutRelayerDripsInput = {
+    id?: string
+    privyDid: string
+    walletAddress?: string | null
+    fullName?: string | null
+    email?: string | null
+    avatarUrl?: string | null
+    totalSentUsd?: Decimal | DecimalJsLike | number | string
+    transactionCount?: number
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
+    transactions?: TransactionCreateNestedManyWithoutUserInput
+    savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
+    notifications?: NotificationCreateNestedManyWithoutUserInput
+    pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
+  }
+
+  export type UserUncheckedCreateWithoutRelayerDripsInput = {
+    id?: string
+    privyDid: string
+    walletAddress?: string | null
+    fullName?: string | null
+    email?: string | null
+    avatarUrl?: string | null
+    totalSentUsd?: Decimal | DecimalJsLike | number | string
+    transactionCount?: number
+    createdAt?: Date | string
+    updatedAt?: Date | string
+    displayName?: string | null
+    lastLoginAt?: Date | string | null
+    walletBalance?: Decimal | DecimalJsLike | number | string
+    transactions?: TransactionUncheckedCreateNestedManyWithoutUserInput
+    savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
+    notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
+    pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+  }
+
+  export type UserCreateOrConnectWithoutRelayerDripsInput = {
+    where: UserWhereUniqueInput
+    create: XOR<UserCreateWithoutRelayerDripsInput, UserUncheckedCreateWithoutRelayerDripsInput>
+  }
+
+  export type UserUpsertWithoutRelayerDripsInput = {
+    update: XOR<UserUpdateWithoutRelayerDripsInput, UserUncheckedUpdateWithoutRelayerDripsInput>
+    create: XOR<UserCreateWithoutRelayerDripsInput, UserUncheckedCreateWithoutRelayerDripsInput>
+    where?: UserWhereInput
+  }
+
+  export type UserUpdateToOneWithWhereWithoutRelayerDripsInput = {
+    where?: UserWhereInput
+    data: XOR<UserUpdateWithoutRelayerDripsInput, UserUncheckedUpdateWithoutRelayerDripsInput>
+  }
+
+  export type UserUpdateWithoutRelayerDripsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    privyDid?: StringFieldUpdateOperationsInput | string
+    walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactionCount?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactions?: TransactionUpdateManyWithoutUserNestedInput
+    savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
+    notifications?: NotificationUpdateManyWithoutUserNestedInput
+    pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
+  }
+
+  export type UserUncheckedUpdateWithoutRelayerDripsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    privyDid?: StringFieldUpdateOperationsInput | string
+    walletAddress?: NullableStringFieldUpdateOperationsInput | string | null
+    fullName?: NullableStringFieldUpdateOperationsInput | string | null
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    avatarUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    totalSentUsd?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactionCount?: IntFieldUpdateOperationsInput | number
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    displayName?: NullableStringFieldUpdateOperationsInput | string | null
+    lastLoginAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    walletBalance?: DecimalFieldUpdateOperationsInput | Decimal | DecimalJsLike | number | string
+    transactions?: TransactionUncheckedUpdateManyWithoutUserNestedInput
+    savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
+    savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
+    notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
+    pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+  }
+
   export type UserCreateWithoutNotificationsInput = {
     id?: string
     privyDid: string
@@ -12035,6 +13747,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
     savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutNotificationsInput = {
@@ -12055,6 +13768,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
     savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutNotificationsInput = {
@@ -12091,6 +13805,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
     savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutNotificationsInput = {
@@ -12111,6 +13826,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
     savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateWithoutPushSubscriptionsInput = {
@@ -12131,6 +13847,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
     savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     notifications?: NotificationCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutPushSubscriptionsInput = {
@@ -12151,6 +13868,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
     savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutPushSubscriptionsInput = {
@@ -12187,6 +13905,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
     savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     notifications?: NotificationUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutPushSubscriptionsInput = {
@@ -12207,6 +13926,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
     savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
     notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateWithoutSavedRecipientsInput = {
@@ -12227,6 +13947,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     notifications?: NotificationCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutSavedRecipientsInput = {
@@ -12247,6 +13968,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutSavedRecipientsInput = {
@@ -12283,6 +14005,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     notifications?: NotificationUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutSavedRecipientsInput = {
@@ -12303,6 +14026,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
     notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateWithoutSavedCryptoAddressesInput = {
@@ -12323,6 +14047,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientCreateNestedManyWithoutUserInput
     notifications?: NotificationCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutSavedCryptoAddressesInput = {
@@ -12343,6 +14068,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientUncheckedCreateNestedManyWithoutUserInput
     notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutSavedCryptoAddressesInput = {
@@ -12379,6 +14105,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientUpdateManyWithoutUserNestedInput
     notifications?: NotificationUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutSavedCryptoAddressesInput = {
@@ -12399,6 +14126,7 @@ export namespace Prisma {
     savedRecipients?: SavedRecipientUncheckedUpdateManyWithoutUserNestedInput
     notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type UserCreateWithoutTransactionsInput = {
@@ -12419,6 +14147,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressCreateNestedManyWithoutUserInput
     notifications?: NotificationCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripCreateNestedManyWithoutUserInput
   }
 
   export type UserUncheckedCreateWithoutTransactionsInput = {
@@ -12439,6 +14168,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressUncheckedCreateNestedManyWithoutUserInput
     notifications?: NotificationUncheckedCreateNestedManyWithoutUserInput
     pushSubscriptions?: PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+    relayerDrips?: RelayerDripUncheckedCreateNestedManyWithoutUserInput
   }
 
   export type UserCreateOrConnectWithoutTransactionsInput = {
@@ -12475,6 +14205,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressUpdateManyWithoutUserNestedInput
     notifications?: NotificationUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUpdateManyWithoutUserNestedInput
   }
 
   export type UserUncheckedUpdateWithoutTransactionsInput = {
@@ -12495,6 +14226,7 @@ export namespace Prisma {
     savedCryptoAddresses?: SavedCryptoAddressUncheckedUpdateManyWithoutUserNestedInput
     notifications?: NotificationUncheckedUpdateManyWithoutUserNestedInput
     pushSubscriptions?: PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+    relayerDrips?: RelayerDripUncheckedUpdateManyWithoutUserNestedInput
   }
 
   export type TransactionCreateManyUserInput = {
@@ -12572,6 +14304,16 @@ export namespace Prisma {
     userAgent?: string | null
     createdAt?: Date | string
     updatedAt?: Date | string
+  }
+
+  export type RelayerDripCreateManyUserInput = {
+    id?: string
+    chainId: number
+    token: string
+    wallet: string
+    amountWei: string
+    txHash?: string | null
+    createdAt?: Date | string
   }
 
   export type TransactionUpdateWithoutUserInput = {
@@ -12803,6 +14545,36 @@ export namespace Prisma {
     userAgent?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type RelayerDripUpdateWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    token?: StringFieldUpdateOperationsInput | string
+    wallet?: StringFieldUpdateOperationsInput | string
+    amountWei?: StringFieldUpdateOperationsInput | string
+    txHash?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type RelayerDripUncheckedUpdateWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    token?: StringFieldUpdateOperationsInput | string
+    wallet?: StringFieldUpdateOperationsInput | string
+    amountWei?: StringFieldUpdateOperationsInput | string
+    txHash?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type RelayerDripUncheckedUpdateManyWithoutUserInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    chainId?: IntFieldUpdateOperationsInput | number
+    token?: StringFieldUpdateOperationsInput | string
+    wallet?: StringFieldUpdateOperationsInput | string
+    amountWei?: StringFieldUpdateOperationsInput | string
+    txHash?: NullableStringFieldUpdateOperationsInput | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
 

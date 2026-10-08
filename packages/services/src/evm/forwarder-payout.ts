@@ -5,6 +5,8 @@ import {
   decodeFunctionData,
   domainSeparator,
   encodeAbiParameters,
+  hashTypedData,
+  maxUint256,
   encodeFunctionData,
   getAddress,
   http,
@@ -14,6 +16,7 @@ import {
   parseSignature,
   parseTransaction,
   parseUnits,
+  TransactionNotFoundError,
   TransactionReceiptNotFoundError,
   zeroAddress,
   type Address,
@@ -56,6 +59,8 @@ export const PAYOUT_FORWARDER_ABI = parseAbi([
 /** PayoutForwarderV2 (#191): token-aware, same funded() view and PayoutFunded event as V1. */
 export const PAYOUT_FORWARDER_V2_ABI = parseAbi([
   'function payoutWithAuthorization(uint256 orderId, address payer, address sink, address token, uint256 amount, uint256 validBefore, uint8 v, bytes32 r, bytes32 s)',
+  'function payoutWithApproval(uint256 orderId, address payer, address sink, address token, uint256 amount, uint256 validAfter, uint256 deadline, bytes signature)',
+  'function payoutDigest(uint256 orderId, address payer, address token, address sink, uint256 amount, uint256 validAfter, uint256 deadline) view returns (bytes32)',
   'function funded(uint256 orderId) view returns (bool)',
   'function voided(uint256 orderId) view returns (bool)',
   'event PayoutFunded(uint256 indexed orderId, address indexed payer, address indexed sink, address token, uint256 amount)',
@@ -65,6 +70,8 @@ const TOKEN_ABI = parseAbi([
   'function name() view returns (string)',
   'function DOMAIN_SEPARATOR() view returns (bytes32)',
   'function balanceOf(address) view returns (uint256)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function approve(address spender, uint256 amount) returns (bool)',
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 ]);
 
@@ -83,17 +90,25 @@ const RECEIVE_WITH_AUTHORIZATION_TYPES = {
 export type ForwarderChainId = 8453 | 42220;
 
 /**
- * Tokens the forwarder pays out with EIP-3009, per chain, with the EIP-712 version of their
- * ReceiveWithAuthorization domain. Celo USDT has no version() to read, so it is set here and
- * checked against the token's DOMAIN_SEPARATOR before every signature. V1 is hard-wired to USDC;
- * any other token needs V2 (#191). Base USDT has no EIP-3009 at all.
+ * How the forwarder pulls each token it pays out, per chain:
+ * - 'eip3009': the payer signs the token's ReceiveWithAuthorization. `domainVersion` is that EIP-712
+ *   domain's version (Celo USDT has no version() to read), checked against the token's
+ *   DOMAIN_SEPARATOR before every signature.
+ * - 'approval': no EIP-3009 (USDT on Base). The wallet approves V2 once, then signs V2's Payout
+ *   typed data for every payout.
+ * V1 is hard-wired to USDC; any other token needs V2 (#191).
  */
-const FORWARDER_TOKENS: Record<ForwarderChainId, Partial<Record<string, { domainVersion: string; v1: boolean }>>> = {
-  8453: { USDC: { domainVersion: '2', v1: true } },
-  42220: { USDC: { domainVersion: '2', v1: true }, USDT: { domainVersion: '1', v1: false } },
+type TokenRule = { mode: 'eip3009'; domainVersion: string; v1: boolean } | { mode: 'approval'; v1: false };
+
+const FORWARDER_TOKENS: Record<ForwarderChainId, Partial<Record<string, TokenRule>>> = {
+  8453: { USDC: { mode: 'eip3009', domainVersion: '2', v1: true }, USDT: { mode: 'approval', v1: false } },
+  42220: {
+    USDC: { mode: 'eip3009', domainVersion: '2', v1: true },
+    USDT: { mode: 'eip3009', domainVersion: '1', v1: false },
+  },
 };
 
-type ForwarderToken = { symbol: string; address: Address; decimals: number; domainVersion: string; v1: boolean };
+type ForwarderToken = { symbol: string; address: Address; decimals: number } & TokenRule;
 
 /** The token a forwarder payout of `symbol` uses on this chain; null when the forwarder can't pay it there. */
 function forwarderToken(chainId: ForwarderChainId, symbol: string): ForwarderToken | null {
@@ -104,13 +119,25 @@ function forwarderToken(chainId: ForwarderChainId, symbol: string): ForwarderTok
 }
 
 /** Every forwarder token on every chain (ops: the Privy policy needs a rule per token). */
-export function forwarderTokenList(): Array<{ chainId: ForwarderChainId; symbol: string; address: Address; v1: boolean }> {
+export function forwarderTokenList(): Array<{
+  chainId: ForwarderChainId;
+  symbol: string;
+  address: Address;
+  v1: boolean;
+  mode: TokenRule['mode'];
+}> {
   return (Object.keys(FORWARDER_TOKENS).map(Number) as ForwarderChainId[]).flatMap((chainId) =>
     Object.keys(FORWARDER_TOKENS[chainId]).flatMap((symbol) => {
       const token = forwarderToken(chainId, symbol);
-      return token ? [{ chainId, symbol: token.symbol, address: token.address, v1: token.v1 }] : [];
+      return token ? [{ chainId, symbol: token.symbol, address: token.address, v1: token.v1, mode: token.mode }] : [];
     }),
   );
+}
+
+/** Whether a crypto cash-out of `token` on `network` needs the wallet's one-time approval of V2 first. */
+export function forwarderTokenNeedsApproval(network: string, token: string): boolean {
+  const chainId = forwarderChainForNetwork(network);
+  return chainId !== null && forwarderToken(chainId, token)?.mode === 'approval';
 }
 
 function forwarderTokenAt(chainId: ForwarderChainId, address: Address): ForwarderToken | null {
@@ -334,6 +361,13 @@ export type ForwarderPublicClient = {
   readContract(
     args:
       | { address: Address; abi: typeof TOKEN_ABI; functionName: 'name' | 'DOMAIN_SEPARATOR' | 'balanceOf'; args?: readonly [Address] }
+      | { address: Address; abi: typeof TOKEN_ABI; functionName: 'allowance'; args: readonly [Address, Address] }
+      | {
+          address: Address;
+          abi: typeof PAYOUT_FORWARDER_V2_ABI;
+          functionName: 'payoutDigest';
+          args: readonly [bigint, Address, Address, Address, bigint, bigint, bigint];
+        }
       | { address: Address; abi: typeof PAYOUT_FORWARDER_ABI; functionName: 'funded'; args: readonly [bigint] }
       | { address: Address; abi: typeof PAYOUT_FORWARDER_V2_ABI; functionName: 'voided'; args: readonly [bigint] },
   ): Promise<unknown>;
@@ -341,10 +375,13 @@ export type ForwarderPublicClient = {
   getTransactionCount(args: { address: Address; blockTag: 'latest' | 'pending' }): Promise<number>;
   getTransactionReceipt(args: { hash: Hex }): Promise<TransactionReceipt>;
   sendRawTransaction(args: { serializedTransaction: Hex }): Promise<Hex>;
-  /** Used by the relayer gas check only. */
+  /** Used by the relayer gas check and the approval gas drip. */
   getBalance?(args: { address: Address }): Promise<bigint>;
   getGasPrice?(): Promise<bigint>;
   estimateFeesPerGas?(): Promise<{ maxFeePerGas?: bigint }>;
+  /** Used by the approval gas drip only. */
+  estimateGas?(args: { account: Address; to: Address; data: Hex }): Promise<bigint>;
+  getTransaction?(args: { hash: Hex }): Promise<unknown>;
 };
 
 const publicClients = new Map<string, ForwarderPublicClient>();
@@ -409,12 +446,12 @@ export const forwarderDeps = {
     }
   },
 
-  async signRelayerTx(to: Address, data: Hex, chainId: ForwarderChainId = 8453): Promise<Hex> {
+  async signRelayerTx(to: Address, data: Hex, chainId: ForwarderChainId = 8453, value?: bigint): Promise<Hex> {
     const account = privateKeyToAccount(process.env.RELAYER_PRIVATE_KEY!.trim() as Hex);
     const chain = FORWARDER_CHAINS[chainId].chain;
     const wallet = createWalletClient({ account, chain, transport: http(rpcUrl(chainId)) });
     // Casts: viem's generic request types don't resolve under the app's tsconfig.
-    const request = await wallet.prepareTransactionRequest({ account, chain, to, data } as unknown as Parameters<
+    const request = await wallet.prepareTransactionRequest({ account, chain, to, data, value } as unknown as Parameters<
       typeof wallet.prepareTransactionRequest
     >[0]);
     return wallet.signTransaction(request as unknown as Parameters<typeof wallet.signTransaction>[0]);
@@ -430,6 +467,17 @@ export const forwarderDeps = {
       return await this.publicClient(chainId).getTransactionReceipt({ hash });
     } catch (err) {
       if (err instanceof TransactionReceiptNotFoundError) return null;
+      throw err;
+    }
+  },
+
+  /** Whether the node knows this tx at all (pending or mined). Only "not found" is false; RPC errors throw. */
+  async isTxKnown(hash: Hex, chainId: ForwarderChainId = 8453): Promise<boolean> {
+    try {
+      await this.publicClient(chainId).getTransaction!({ hash });
+      return true;
+    } catch (err) {
+      if (err instanceof TransactionNotFoundError) return false;
       throw err;
     }
   },
@@ -643,7 +691,7 @@ export async function broadcastForwarderPayout(opts: {
 /** EIP-712 ReceiveWithAuthorization for one order: from payer, to the forwarder, nonce bound to (orderId, sink). */
 async function authorizationTypedData(ctx: FundingContext, validBefore: bigint) {
   const token = forwarderTokenAt(ctx.chainId, ctx.token);
-  if (!token) throw new Error('not a forwarder token');
+  if (!token || token.mode !== 'eip3009') throw new Error('not an EIP-3009 forwarder token');
   const client = forwarderDeps.publicClient(ctx.chainId);
   const [name, onChain] = (await Promise.all([
     client.readContract({ address: ctx.token, abi: TOKEN_ABI, functionName: 'name' }),
@@ -694,6 +742,98 @@ function encodePayoutCall(ctx: FundingContext, validBefore: bigint, signature: H
     abi: PAYOUT_FORWARDER_ABI,
     functionName: 'payout',
     args: [ctx.orderId, ctx.payer, ctx.sink, ctx.amount, validBefore, recovery, r, s],
+  });
+}
+
+/** The window a payer signature covers. EIP-3009 signs only validBefore; V2's Payout signs both. */
+type SignatureWindow = { validAfter: bigint; validBefore: bigint };
+
+/** A Payout signature starts this far in the past, so a server clock ahead of the chain can't make it "not yet valid". */
+const PAYOUT_CLOCK_SKEW_S = 60n;
+/** V2 refuses a Payout signature valid for longer than this (MAX_SIGNATURE_WINDOW). */
+const MAX_PAYOUT_WINDOW_S = 3600n;
+
+function newSignatureWindow(now: number): SignatureWindow {
+  return {
+    validAfter: BigInt(Math.floor(now / 1000)) - PAYOUT_CLOCK_SKEW_S,
+    validBefore: BigInt(Math.floor((now + AUTHORIZATION_TTL_MS) / 1000)),
+  };
+}
+
+const PAYOUT_TYPES = {
+  Payout: [
+    { name: 'orderId', type: 'uint256' },
+    { name: 'payer', type: 'address' },
+    { name: 'token', type: 'address' },
+    { name: 'sink', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'validAfter', type: 'uint256' },
+    { name: 'deadline', type: 'uint256' },
+  ],
+} as const;
+
+/**
+ * V2's EIP-712 Payout for an approval-mode token (USDT on Base). The contract computes the same
+ * digest (payoutDigest): never sign one it wouldn't accept.
+ */
+async function payoutTypedData(ctx: FundingContext, window: SignatureWindow) {
+  if (forwarderVersion(ctx.forwarder) !== 2) throw new Error('approval-mode tokens need PayoutForwarderV2');
+  const domain = { name: 'FX Remit PayoutForwarder', version: '2', chainId: ctx.chainId, verifyingContract: ctx.forwarder };
+  const message = {
+    orderId: ctx.orderId,
+    payer: ctx.payer,
+    token: ctx.token,
+    sink: ctx.sink,
+    amount: ctx.amount,
+    validAfter: window.validAfter,
+    deadline: window.validBefore,
+  };
+  const onChain = (await forwarderDeps.publicClient(ctx.chainId).readContract({
+    address: ctx.forwarder,
+    abi: PAYOUT_FORWARDER_V2_ABI,
+    functionName: 'payoutDigest',
+    args: [ctx.orderId, ctx.payer, ctx.token, ctx.sink, ctx.amount, window.validAfter, window.validBefore],
+  })) as Hex;
+  if (hashTypedData({ domain, types: PAYOUT_TYPES, primaryType: 'Payout', message }).toLowerCase() !== onChain.toLowerCase()) {
+    void reportAlert({
+      alert: 'FORWARDER_PAYOUT_DIGEST_MISMATCH',
+      severity: 'high',
+      chainId: ctx.chainId,
+      message: 'PayoutForwarderV2 computes a different Payout digest; approval-mode payouts stop until fixed',
+    });
+    throw new Error('Payout digest mismatch');
+  }
+  return {
+    domain,
+    types: PAYOUT_TYPES,
+    primary_type: 'Payout',
+    message: {
+      orderId: ctx.orderId.toString(),
+      payer: ctx.payer,
+      token: ctx.token,
+      sink: ctx.sink,
+      amount: ctx.amount.toString(),
+      validAfter: window.validAfter.toString(),
+      deadline: window.validBefore.toString(),
+    },
+  };
+}
+
+/** What the payer signs for this order: the token's ReceiveWithAuthorization, or V2's Payout for approval-mode tokens. */
+async function payerTypedData(ctx: FundingContext, window: SignatureWindow) {
+  return forwarderTokenAt(ctx.chainId, ctx.token)?.mode === 'approval'
+    ? payoutTypedData(ctx, window)
+    : authorizationTypedData(ctx, window.validBefore);
+}
+
+/** The relayer's call for a payer signature: payout / payoutWithAuthorization, or payoutWithApproval. */
+function encodeForwarderCall(ctx: FundingContext, window: SignatureWindow, signature: Hex): Hex {
+  if (forwarderTokenAt(ctx.chainId, ctx.token)?.mode !== 'approval') return encodePayoutCall(ctx, window.validBefore, signature);
+  if (forwarderVersion(ctx.forwarder) !== 2) throw new Error('approval-mode tokens need PayoutForwarderV2');
+  return encodeFunctionData({
+    abi: PAYOUT_FORWARDER_V2_ABI,
+    functionName: 'payoutWithApproval',
+    args: [ctx.orderId, ctx.payer, ctx.sink, ctx.token, ctx.amount, window.validAfter, window.validBefore, signature],
   });
 }
 
@@ -823,8 +963,16 @@ function decodeSavedFunding(row: SavedFundingRow) {
   try {
     if (forwarderVersion(forwarder) === 2) {
       const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_V2_ABI, data: tx.data });
-      if (call.functionName !== 'payoutWithAuthorization') throw inconsistent();
-      [orderId, payer, sink, token, amount, validBefore] = call.args as readonly [bigint, Address, Address, Address, bigint, bigint, ...unknown[]];
+      if (call.functionName === 'payoutWithAuthorization') {
+        [orderId, payer, sink, token, amount, validBefore] = call.args as readonly [bigint, Address, Address, Address, bigint, bigint, ...unknown[]];
+        if (forwarderTokenAt(chainId, getAddress(token))?.mode !== 'eip3009') throw inconsistent();
+      } else if (call.functionName === 'payoutWithApproval') {
+        // The deadline plays validBefore's part: past it (plus grace) the saved tx can never land.
+        [orderId, payer, sink, token, amount, , validBefore] = call.args as readonly [bigint, Address, Address, Address, bigint, bigint, bigint, Hex];
+        if (forwarderTokenAt(chainId, getAddress(token))?.mode !== 'approval') throw inconsistent();
+      } else {
+        throw inconsistent();
+      }
       token = getAddress(token);
     } else {
       const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_ABI, data: tx.data });
@@ -1269,15 +1417,181 @@ export async function prepareCryptoAuthorization(opts: { userId: string; walletA
     throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't send this payout. Tap Send to try again.");
   }
   assertForwarderPays(forwarder, terms);
-  const validBefore = BigInt(Math.floor((forwarderDeps.now() + AUTHORIZATION_TTL_MS) / 1000));
-  const typed = await authorizationTypedData(
-    { userId: opts.userId, orderId: opts.orderId, paycrestOrderId: '', forwarder, ...terms },
-    validBefore,
-  );
+  const window = newSignatureWindow(forwarderDeps.now());
+  const typed = await payerTypedData({ userId: opts.userId, orderId: opts.orderId, paycrestOrderId: '', forwarder, ...terms }, window);
   return {
-    validBefore: validBefore.toString(),
+    validBefore: window.validBefore.toString(),
+    /** Signed only by V2's Payout (approval-mode tokens); the client posts it back with the signature. */
+    validAfter: window.validAfter.toString(),
     typedData: { domain: typed.domain, types: typed.types, primaryType: typed.primary_type, message: typed.message },
   };
+}
+
+/** The approval gas drip never sends more than this (RELAYER_APPROVAL_DRIP_MAX_WEI; default 0.00005 ETH). */
+function dripMaxWei(): bigint {
+  const raw = process.env.RELAYER_APPROVAL_DRIP_MAX_WEI?.trim();
+  return raw && /^\d{1,30}$/.test(raw) ? BigInt(raw) : 50_000_000_000_000n;
+}
+/** ...and never less than this (0.000005 ETH), so an L1 fee bump can't strand the approve. */
+const DRIP_MIN_WEI = 5_000_000_000_000n;
+/** approve() gas when the node can't estimate it. */
+const APPROVE_GAS_FALLBACK = 80_000n;
+/** A drip recorded this long ago without a tx hash never went out (well past the relayer lock wait). */
+const STALE_DRIP_MS = 2 * 60_000;
+/** A signed drip this old that the node has never heard of was never broadcast, or was dropped. */
+const DEAD_DRIP_MS = 10 * 60_000;
+
+/** At most this many drips across all users per 24h (RELAYER_DRIPS_PER_DAY, default 100). */
+function dripsPerDay(): number {
+  const n = Number(process.env.RELAYER_DRIPS_PER_DAY?.trim());
+  return Number.isInteger(n) && n > 0 ? n : 100;
+}
+
+/**
+ * A drip that can never land, so the user isn't left waiting on it forever:
+ * - recorded but never signed for STALE_DRIP_MS (the request died before broadcast);
+ * - signed, but after DEAD_DRIP_MS neither mined nor known to the node (the broadcast failed or
+ *   the tx was dropped). We never keep its raw bytes, so it can't come back from us; a second drip
+ *   is the worst case, and that is capped.
+ */
+async function dripIsDead(row: { txHash: string | null; createdAt: Date }, chainId: ForwarderChainId): Promise<boolean> {
+  const age = forwarderDeps.now() - row.createdAt.getTime();
+  if (!row.txHash) return age > STALE_DRIP_MS;
+  if (age <= DEAD_DRIP_MS || (await forwarderDeps.getReceipt(row.txHash as Hex, chainId))) return false;
+  return !(await forwarderDeps.isTxKnown(row.txHash as Hex, chainId));
+}
+
+export type ApprovalStep =
+  | { status: 'approved' }
+  | { status: 'approve'; tx: { chainId: number; to: Address; data: Hex } }
+  | { status: 'funding'; dripTxHash: Hex | null };
+
+/**
+ * The one-time approval an approval-mode token (USDT on Base) needs before its first cash-out.
+ * Approving moves nothing by itself: every payout still needs the wallet's Payout signature.
+ * - 'approved': the wallet already allows V2 enough;
+ * - 'approve': the client sends `tx` (approve V2, unlimited) from the user's wallet, then polls;
+ * - 'funding': the relayer sent the wallet the gas for that approve; poll until it lands.
+ * The relayer sends gas at most once per user and token, ever (relayer_drips), and only for a
+ * reserved cash-out in that token that is waiting.
+ */
+export async function prepareForwarderApproval(opts: { userId: string; walletAddress: string; orderId: bigint }): Promise<ApprovalStep> {
+  const remittance = await loadCryptoRemittance(opts);
+  if (!remittance.txHash.startsWith('pending-') || !['PENDING', 'PROCESSING'].includes(remittance.status)) {
+    throw new InstantSendWalletError('NOT_PENDING', 'This cash-out is not awaiting a send');
+  }
+  const terms = cryptoPayoutTerms(remittance, opts.walletAddress);
+  if (terms.tokenInfo.mode !== 'approval') return { status: 'approved' };
+  const forwarder = forwarderForClaim(remittance);
+  if (!forwarder || !isPayoutForwarderConfigured(terms.chainId)) {
+    throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't send this payout. Tap Send to try again.");
+  }
+  assertForwarderPays(forwarder, terms);
+
+  const client = forwarderDeps.publicClient(terms.chainId);
+  const allowance = (await client.readContract({
+    address: terms.token,
+    abi: TOKEN_ABI,
+    functionName: 'allowance',
+    args: [terms.payer, forwarder],
+  })) as bigint;
+  if (allowance >= terms.amount) return { status: 'approved' };
+
+  // Unlimited and once: the allowance alone can't move anything, every payout needs a fresh signature.
+  const tx = {
+    chainId: terms.chainId,
+    to: terms.token,
+    data: encodeFunctionData({ abi: TOKEN_ABI, functionName: 'approve', args: [forwarder, maxUint256] }),
+  };
+  const [balance, gas, fees, gasPrice] = await Promise.all([
+    client.getBalance!({ address: terms.payer }),
+    client.estimateGas!({ account: terms.payer, to: tx.to, data: tx.data }).catch(() => APPROVE_GAS_FALLBACK),
+    client.estimateFeesPerGas ? client.estimateFeesPerGas().catch(() => null) : Promise.resolve(null),
+    client.getGasPrice!(),
+  ]);
+  // Sized like the relayer gas check: maxFeePerGas when above the price, doubled on Base for the L1 fee.
+  const feePerGas = fees?.maxFeePerGas && fees.maxFeePerGas > gasPrice ? fees.maxFeePerGas : gasPrice;
+  const needed = gas * feePerGas * (terms.chainId === 8453 ? 2n : 1n);
+  if (balance >= needed) return { status: 'approve', tx };
+  return dripApprovalGas(opts.userId, terms, needed);
+}
+
+async function dripApprovalGas(userId: string, terms: CryptoTerms, needed: bigint): Promise<ApprovalStep> {
+  const key = { userId_chainId_token: { userId, chainId: terms.chainId, token: terms.tokenInfo.symbol } };
+  const topUp = () =>
+    new InstantSendWalletError('APPROVAL_GAS_NEEDED', `Add a little ETH on Base to approve ${terms.tokenInfo.symbol} for cash-outs`);
+  let existing = await prisma.relayerDrip.findUnique({ where: key });
+  if (existing && (await dripIsDead(existing, terms.chainId))) {
+    // It never went out: clear it, only if nobody changed it meanwhile, and drip again.
+    await prisma.relayerDrip.deleteMany({ where: { id: existing.id, txHash: existing.txHash } });
+    existing = await prisma.relayerDrip.findUnique({ where: key });
+  }
+  if (existing) {
+    // Never twice. Being sent or still landing: wait for it. Landed and the gas is gone: the user tops up.
+    if (!existing.txHash) return { status: 'funding', dripTxHash: null };
+    if (!(await forwarderDeps.getReceipt(existing.txHash as Hex, terms.chainId))) {
+      return { status: 'funding', dripTxHash: existing.txHash as Hex };
+    }
+    throw topUp();
+  }
+  // Bounds what many accounts together can draw from the relayer.
+  const lastDay = await prisma.relayerDrip.count({ where: { createdAt: { gte: new Date(forwarderDeps.now() - 24 * 3600_000) } } });
+  if (lastDay >= dripsPerDay()) {
+    void reportAlert({
+      alert: 'RELAYER_DRIP_CEILING',
+      severity: 'high',
+      chainId: terms.chainId,
+      drips: lastDay,
+      message: `${lastDay} approval gas drips in 24h hit RELAYER_DRIPS_PER_DAY; new users must bring their own ETH until it resets or is raised`,
+    });
+    throw topUp();
+  }
+  // Twice the estimate, so a fee bump before the approve lands doesn't strand it.
+  const amount = needed * 2n > DRIP_MIN_WEI ? needed * 2n : DRIP_MIN_WEI;
+  if (amount > dripMaxWei()) {
+    throw new InstantSendWalletError('GAS_TOO_HIGH', 'Network fees are high right now. Try again in a few minutes.');
+  }
+  let dripId: string;
+  try {
+    dripId = (
+      await prisma.relayerDrip.create({
+        data: { userId, chainId: terms.chainId, token: terms.tokenInfo.symbol, wallet: terms.payer, amountWei: amount.toString() },
+      })
+    ).id;
+  } catch (err) {
+    // Another request is sending this user's drip right now.
+    if ((err as { code?: unknown } | null)?.code === 'P2002') return { status: 'funding', dripTxHash: null };
+    throw err;
+  }
+  const sent: { hash: Hex | null; lost: boolean } = { hash: null, lost: false };
+  try {
+    await forwarderDeps.withRelayerLock(async () => {
+      const raw = await forwarderDeps.signRelayerTx(terms.payer, '0x', terms.chainId, amount);
+      const hash = keccak256(raw);
+      // Saved before broadcast, and only on our own still-unsigned row: a drip that may be out is
+      // never sent again, and if cleanup cleared our row meanwhile we send nothing.
+      const saved = await prisma.relayerDrip.updateMany({ where: { id: dripId, txHash: null }, data: { txHash: hash } });
+      if (saved.count !== 1) {
+        sent.lost = true;
+        return;
+      }
+      sent.hash = hash;
+      await forwarderDeps.sendRaw(raw, terms.chainId);
+    }, terms.chainId);
+  } catch (err) {
+    console.error('[ForwarderApproval] gas drip failed', {
+      userId,
+      sent: sent.hash !== null,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    if (sent.hash === null) {
+      // Nothing went out: free our slot (only if still unsigned) so the next attempt can drip.
+      await prisma.relayerDrip.deleteMany({ where: { id: dripId, txHash: null } }).catch(() => {});
+      throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't get your wallet ready. Try again.");
+    }
+    // It may be out: keep the row; the next poll checks its receipt.
+  }
+  return { status: 'funding', dripTxHash: sent.hash };
 }
 
 /**
@@ -1292,7 +1606,8 @@ export async function broadcastForwarderCryptoTransfer(opts: {
   userId: string;
   walletAddress: string;
   orderId: bigint;
-  userAuthorization?: { signature: Hex; validBefore: string };
+  /** validAfter: only V2's Payout (approval-mode tokens) signs it; prepareCryptoAuthorization hands it out. */
+  userAuthorization?: { signature: Hex; validBefore: string; validAfter?: string };
 }): Promise<{ txHash: string; alreadyBroadcast: boolean }> {
   const remittance = await loadCryptoRemittance(opts);
   if (TransactionService.isOnChainTxHash(remittance.txHash)) {
@@ -1328,7 +1643,7 @@ export async function broadcastForwarderCryptoTransfer(opts: {
 
   // Who authorizes: the user (any address, explicit wallet prompt) or the server (trusted address only).
   const now = forwarderDeps.now();
-  let userValidBefore: bigint | null = null;
+  let userWindow: SignatureWindow | null = null;
   let walletId: string | null = null;
   if (opts.userAuthorization) {
     const raw = opts.userAuthorization.validBefore;
@@ -1336,7 +1651,21 @@ export async function broadcastForwarderCryptoTransfer(opts: {
     if (!(ms > now + 30_000 && ms <= now + AUTHORIZATION_TTL_MS + USER_AUTHORIZATION_SLACK_MS)) {
       throw new InstantSendWalletError('AUTHORIZATION_EXPIRED', 'This authorization expired. Tap Send to try again.');
     }
-    userValidBefore = BigInt(raw);
+    const validBefore = BigInt(raw);
+    let validAfter = 0n;
+    if (terms.tokenInfo.mode === 'approval') {
+      // V2 refuses a Payout window over an hour or one that starts after it ends.
+      const after = opts.userAuthorization.validAfter ?? '';
+      if (!/^\d{1,12}$/.test(after) || BigInt(after) > validBefore || validBefore - BigInt(after) > MAX_PAYOUT_WINDOW_S) {
+        throw new InstantSendWalletError('AUTHORIZATION_EXPIRED', 'This authorization expired. Tap Send to try again.');
+      }
+      // It must already be valid, or the claim would only be burned on a revert.
+      if (BigInt(after) > BigInt(Math.floor(now / 1000)) + PAYOUT_CLOCK_SKEW_S) {
+        throw new InstantSendWalletError('AUTHORIZATION_EXPIRED', 'This authorization is not valid yet. Tap Send to try again.');
+      }
+      validAfter = BigInt(after);
+    }
+    userWindow = { validAfter, validBefore };
   } else {
     // A silent send has no user prompt, so it keeps the tighter crypto cap. The Privy rule allows
     // up to $10k to the forwarder for any sink, so this cap is ours to hold. Over it, the user signs.
@@ -1370,6 +1699,18 @@ export async function broadcastForwarderCryptoTransfer(opts: {
   if (balance < terms.amount) {
     throw new InstantSendWalletError('INSUFFICIENT_USDC', `Not enough ${terms.tokenInfo.symbol} in the wallet for this cash-out`);
   }
+  if (terms.tokenInfo.mode === 'approval') {
+    // Before claiming: the client runs prepareForwarderApproval and tries again.
+    const allowance = (await forwarderDeps.publicClient(terms.chainId).readContract({
+      address: terms.token,
+      abi: TOKEN_ABI,
+      functionName: 'allowance',
+      args: [terms.payer, forwarder],
+    })) as bigint;
+    if (allowance < terms.amount) {
+      throw new InstantSendWalletError('APPROVAL_REQUIRED', `Approve ${terms.tokenInfo.symbol} for cash-outs once to continue`);
+    }
+  }
 
   const claimed = await TransactionService.claimBroadcastSlot({
     userId: opts.userId,
@@ -1398,13 +1739,13 @@ export async function broadcastForwarderCryptoTransfer(opts: {
   };
 
   const result = await relayClaimedPayout(ctx, async () => {
-    if (userValidBefore !== null) {
+    if (userWindow !== null) {
       // The dry run proves the signature covers exactly this order, destination and amount.
-      return encodePayoutCall(ctx, userValidBefore, opts.userAuthorization!.signature);
+      return encodeForwarderCall(ctx, userWindow, opts.userAuthorization!.signature);
     }
-    const validBefore = BigInt(Math.floor((now + AUTHORIZATION_TTL_MS) / 1000));
-    const signature = await forwarderDeps.signAuthorization(walletId!, await authorizationTypedData(ctx, validBefore));
-    return encodePayoutCall(ctx, validBefore, signature);
+    const window = newSignatureWindow(now);
+    const signature = await forwarderDeps.signAuthorization(walletId!, await payerTypedData(ctx, window));
+    return encodeForwarderCall(ctx, window, signature);
   });
   await markCryptoDestinationConfirmed(opts.userId, remittance);
   return result;

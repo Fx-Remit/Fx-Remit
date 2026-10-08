@@ -26,8 +26,28 @@ model User {
   savedCryptoAddresses SavedCryptoAddress[]
   notifications       Notification[]
   pushSubscriptions   PushSubscription[]
+  relayerDrips        RelayerDrip[]
 
   @@map("users")
+}
+
+/// Relayer ETH sent to a user's wallet so it can approve PayoutForwarderV2 once, for a token
+/// with no EIP-3009 (USDT on Base, #191). The unique key is the abuse limit: one drip per user,
+/// chain and token, ever.
+model RelayerDrip {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  chainId   Int      @map("chain_id")
+  token     String
+  wallet    String
+  amountWei String   @map("amount_wei")
+  /// Set before broadcast, so a drip that may have gone out is never sent again.
+  txHash    String?  @map("tx_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chainId, token])
+  @@map("relayer_drips")
 }
 
 enum NotificationType {
