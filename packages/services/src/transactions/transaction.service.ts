@@ -1603,6 +1603,7 @@ export class TransactionService {
     pendingTxHash: string;
     /** Bank payouts record their funding path on the first claim; retries must reuse it. */
     fundingPath?: 'direct' | 'forwarder';
+    fundingContract?: string;
   }): Promise<boolean> {
     const claimHash = this.broadcastClaimHashFromPending(params.pendingTxHash);
     if (!claimHash) return false;
@@ -1614,13 +1615,17 @@ export class TransactionService {
         userId: params.userId,
         type: 'REMITTANCE',
         txHash: params.pendingTxHash,
-        ...(params.fundingPath
-          ? { OR: [{ fundingPath: null }, { fundingPath: params.fundingPath }] }
-          : {}),
+        AND: [
+          ...(params.fundingPath ? [{ OR: [{ fundingPath: null }, { fundingPath: params.fundingPath }] }] : []),
+          ...(params.fundingContract
+            ? [{ OR: [{ fundingContract: null }, { fundingContract: params.fundingContract }] }]
+            : []),
+        ],
       },
       data: {
         txHash: claimHash,
         ...(params.fundingPath ? { fundingPath: params.fundingPath } : {}),
+        ...(params.fundingContract ? { fundingContract: params.fundingContract } : {}),
         updatedAt: new Date(),
       },
     });
@@ -1694,7 +1699,7 @@ export class TransactionService {
     userId: string;
     orderId: bigint;
     paycrestOrderId: string;
-    /** Forwarder release before anything was sent: unpin the path so the order isn't stranded if the forwarder is later disabled. */
+    /** Forwarder release before anything was sent: unpin the path (and contract) so the order isn't stranded if the forwarder is later disabled. */
     resetFundingPath?: boolean;
   }): Promise<boolean> {
     const claimHash = `broadcasting-${params.paycrestOrderId}`;
@@ -1712,7 +1717,7 @@ export class TransactionService {
       },
       data: {
         txHash: pendingHash,
-        ...(params.resetFundingPath ? { fundingPath: null } : {}),
+        ...(params.resetFundingPath ? { fundingPath: null, fundingContract: null } : {}),
         updatedAt: new Date(),
       },
     });

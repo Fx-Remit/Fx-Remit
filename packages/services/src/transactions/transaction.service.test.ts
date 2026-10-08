@@ -1941,3 +1941,40 @@ describe('TransactionService.reservedOnNetwork (#196)', () => {
     assert.deepEqual(where.status, { in: ['PENDING', 'PROCESSING'] });
   });
 });
+
+describe('TransactionService forwarder contract pin (#191)', () => {
+  it('claims only a row unpinned or pinned to the same contract, and pins it', async () => {
+    const updateMany = mock.fn(async () => ({ count: 1 }));
+    prisma.transaction.updateMany = updateMany as any;
+    const V2 = '0x6575f142Ab3a557DF60F5a9B4d5cf0BD5f3732D5';
+    assert.equal(
+      await TransactionService.claimBroadcastSlot({
+        userId: 'u1',
+        orderId: 1n,
+        pendingTxHash: 'pending-pc-1',
+        fundingPath: 'forwarder',
+        fundingContract: V2,
+      }),
+      true,
+    );
+    const args = (updateMany.mock.calls[0] as any).arguments[0];
+    assert.deepEqual(args.where.AND, [
+      { OR: [{ fundingPath: null }, { fundingPath: 'forwarder' }] },
+      { OR: [{ fundingContract: null }, { fundingContract: V2 }] },
+    ]);
+    assert.equal(args.data.fundingContract, V2);
+    assert.equal(args.data.txHash, 'broadcasting-pc-1');
+  });
+
+  it('unpins the contract with the path only on a release before anything was sent', async () => {
+    const updateMany = mock.fn(async () => ({ count: 1 }));
+    prisma.transaction.updateMany = updateMany as any;
+    await TransactionService.releaseBroadcastClaim({ userId: 'u1', orderId: 1n, paycrestOrderId: 'pc-1', resetFundingPath: true });
+    await TransactionService.releaseBroadcastClaim({ userId: 'u1', orderId: 1n, paycrestOrderId: 'pc-1' });
+    const [reset, keep] = (updateMany.mock.calls as any[]).map((c) => c.arguments[0]);
+    assert.equal(reset.where.fundingTxHash, null);
+    assert.equal(reset.data.fundingContract, null);
+    assert.equal(reset.data.fundingPath, null);
+    assert.equal('fundingContract' in keep.data, false);
+  });
+});

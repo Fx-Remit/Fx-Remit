@@ -3,7 +3,7 @@ import { DEPOSIT_TOKENS } from '../deposits/deposit.tokens.js';
 import { PAYCREST_SETTLEMENT, bankSettlementFor } from '../paycrest/payout.service.js';
 import { CRYPTO_CASH_OUT_CHAIN_ID } from '../transactions/transaction.service.js';
 import { RpcClient } from './rpc.client.js';
-import { payoutForwarderAddress } from './forwarder-payout.js';
+import { knownForwarderAddresses } from './forwarder-payout.js';
 
 const TRANSFER_ABI = parseAbi(['event Transfer(address indexed from, address indexed to, uint256 value)']);
 
@@ -73,11 +73,11 @@ export async function verifySettlementHash(opts: {
   const wallet = getAddress(opts.walletAddress);
   const token = expected.token.toLowerCase();
   const to = expected.to ? getAddress(expected.to) : null;
-  // Through PayoutForwarder the money moves in two linked legs of the same amount:
-  // wallet → forwarder, then forwarder → destination.
-  const forwarder = payoutForwarderAddress();
-  let walletToForwarder = false;
-  let forwarderToDestination = false;
+  // Through a forwarder (V1 or V2) the money moves in two linked legs of the same amount:
+  // wallet → forwarder, then that same forwarder → destination.
+  const forwarders = new Set<string>(knownForwarderAddresses());
+  const walletToForwarder = new Set<string>();
+  const forwarderToDestination = new Set<string>();
   type RawLog = { address: string; data: Hex; topics: [Hex, ...Hex[]] | [] };
   type Decoded = { eventName: string; args: { from: string; to: string; value: bigint } };
   for (const log of receipt.logs as unknown as RawLog[]) {
@@ -88,11 +88,11 @@ export async function verifySettlementHash(opts: {
       const from = getAddress(ev.args.from);
       const dest = getAddress(ev.args.to);
       if (from === wallet && (!to || dest === to)) return 'VERIFIED';
-      if (forwarder && from === wallet && dest === forwarder) walletToForwarder = true;
-      if (forwarder && to && from === forwarder && dest === to) forwarderToDestination = true;
+      if (from === wallet && forwarders.has(dest)) walletToForwarder.add(dest);
+      if (to && forwarders.has(from) && dest === to) forwarderToDestination.add(from);
     } catch {
       // Not a Transfer (e.g. Approval, AuthorizationUsed).
     }
   }
-  return walletToForwarder && forwarderToDestination ? 'VERIFIED' : 'MISMATCH';
+  return [...walletToForwarder].some((f) => forwarderToDestination.has(f)) ? 'VERIFIED' : 'MISMATCH';
 }

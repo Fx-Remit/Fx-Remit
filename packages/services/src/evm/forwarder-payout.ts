@@ -52,6 +52,14 @@ export const PAYOUT_FORWARDER_ABI = parseAbi([
   'event PayoutFunded(uint256 indexed orderId, address indexed payer, address indexed sink, address token, uint256 amount)',
 ]);
 
+/** PayoutForwarderV2 (#191): token-aware, same funded() view and PayoutFunded event as V1. */
+export const PAYOUT_FORWARDER_V2_ABI = parseAbi([
+  'function payoutWithAuthorization(uint256 orderId, address payer, address sink, address token, uint256 amount, uint256 validBefore, uint8 v, bytes32 r, bytes32 s)',
+  'function funded(uint256 orderId) view returns (bool)',
+  'function voided(uint256 orderId) view returns (bool)',
+  'event PayoutFunded(uint256 indexed orderId, address indexed payer, address indexed sink, address token, uint256 amount)',
+]);
+
 const USDC_ABI = parseAbi([
   'function name() view returns (string)',
   'function version() view returns (string)',
@@ -108,15 +116,54 @@ function enabledForwarderChains(): Set<number> {
   return new Set(raw.split(',').map((s) => Number(s.trim())).filter(Number.isFinite));
 }
 
+/** V1 PayoutForwarder (USDC only). Still read once V2 takes over: funded checks, and the orders it started. */
 export function payoutForwarderAddress(): Address | null {
   const raw = process.env.PAYOUT_FORWARDER_ADDRESS?.trim();
   return raw && isAddress(raw) ? getAddress(raw) : null;
 }
 
+/** PayoutForwarderV2 (PAYOUT_FORWARDER_V2_ADDRESS). Once set, new forwarder claims are pinned to it. */
+export function payoutForwarderV2Address(): Address | null {
+  const raw = process.env.PAYOUT_FORWARDER_V2_ADDRESS?.trim();
+  return raw && isAddress(raw) ? getAddress(raw) : null;
+}
+
+/** The forwarder a new claim is pinned to: V2 once configured, otherwise V1. */
+export function activeForwarderAddress(): Address | null {
+  return payoutForwarderV2Address() ?? payoutForwarderAddress();
+}
+
+/** Every forwarder we run. V1 and V2 keep separate books, so funded checks read all of them. */
+export function knownForwarderAddresses(): Address[] {
+  return [payoutForwarderAddress(), payoutForwarderV2Address()].filter((a): a is Address => a !== null);
+}
+
+function forwarderVersion(forwarder: Address): 1 | 2 | null {
+  if (forwarder === payoutForwarderV2Address()) return 2;
+  if (forwarder === payoutForwarderAddress()) return 1;
+  return null;
+}
+
+/**
+ * The forwarder to claim an order on: the contract it is already pinned to, otherwise the active
+ * one. Null when the pinned contract isn't configured here (fail closed, never switch).
+ */
+function forwarderForClaim(row: { fundingContract?: string | null }): Address | null {
+  if (!row.fundingContract) return activeForwarderAddress();
+  if (!isAddress(row.fundingContract)) return null;
+  const pinned = getAddress(row.fundingContract);
+  return forwarderVersion(pinned) ? pinned : null;
+}
+
+/** The forwarder a saved relayer tx was sent to: the row's pinned contract, or V1 for rows from before pinning. */
+function forwarderOfSavedTx(row: { fundingContract?: string | null }): Address | null {
+  return row.fundingContract ? forwarderForClaim(row) : payoutForwarderAddress();
+}
+
 export function isPayoutForwarderConfigured(chainId: ForwarderChainId = 8453): boolean {
   return Boolean(
     enabledForwarderChains().has(chainId) &&
-      payoutForwarderAddress() &&
+      activeForwarderAddress() &&
       process.env.RELAYER_PRIVATE_KEY?.trim() &&
       // A dedicated RPC per chain: load-balanced public endpoints give stale nonces and receipts.
       rpcUrl(chainId) &&
@@ -244,7 +291,8 @@ export type ForwarderPublicClient = {
   readContract(
     args:
       | { address: Address; abi: typeof USDC_ABI; functionName: 'name' | 'version' | 'balanceOf'; args?: readonly [Address] }
-      | { address: Address; abi: typeof PAYOUT_FORWARDER_ABI; functionName: 'funded'; args: readonly [bigint] },
+      | { address: Address; abi: typeof PAYOUT_FORWARDER_ABI; functionName: 'funded'; args: readonly [bigint] }
+      | { address: Address; abi: typeof PAYOUT_FORWARDER_V2_ABI; functionName: 'voided'; args: readonly [bigint] },
   ): Promise<unknown>;
   call(args: { account: Address; to: Address; data: Hex }): Promise<unknown>;
   getTransactionCount(args: { address: Address; blockTag: 'latest' | 'pending' }): Promise<number>;
@@ -343,12 +391,22 @@ export const forwarderDeps = {
     }
   },
 
-  /** On-chain truth: has PayoutForwarder already funded this order? */
+  /** On-chain truth: has this forwarder (V1 or V2, same view) already funded this order? */
   async isFunded(forwarder: Address, orderId: bigint, chainId: ForwarderChainId = 8453): Promise<boolean> {
     return (await this.publicClient(chainId).readContract({
       address: forwarder,
       abi: PAYOUT_FORWARDER_ABI,
       functionName: 'funded',
+      args: [orderId],
+    })) as boolean;
+  },
+
+  /** V2 only: did ops close this order with voidOrder (no tokens moved, never fundable)? */
+  async isVoided(forwarder: Address, orderId: bigint, chainId: ForwarderChainId = 8453): Promise<boolean> {
+    return (await this.publicClient(chainId).readContract({
+      address: forwarder,
+      abi: PAYOUT_FORWARDER_V2_ABI,
+      functionName: 'voided',
       args: [orderId],
     })) as boolean;
   },
@@ -402,7 +460,8 @@ export async function broadcastForwarderPayout(opts: {
     return { txHash: remittance.txHash, alreadyBroadcast: true };
   }
 
-  const forwarder = payoutForwarderAddress();
+  // The contract this order is pinned to, or the active one for an order not yet claimed (#191).
+  const forwarder = forwarderForClaim(remittance);
   if (!forwarder || !isPayoutForwarderConfigured()) {
     if (TransactionService.isBroadcastClaimHash(remittance.txHash)) {
       // A send may be in flight; never tell the client "nothing moved".
@@ -416,7 +475,7 @@ export async function broadcastForwarderPayout(opts: {
   }
   if (TransactionService.isBroadcastClaimHash(remittance.txHash)) {
     if (remittance.fundingTxHash && remittance.fundingTxRaw) {
-      return resumeStoredFunding(remittance, forwarder);
+      return resumeStoredFunding(remittance);
     }
     throw new InstantSendWalletError('BROADCAST_IN_PROGRESS', 'Broadcast already in progress for this order');
   }
@@ -507,6 +566,7 @@ export async function broadcastForwarderPayout(opts: {
     orderId: opts.orderId,
     pendingTxHash,
     fundingPath: 'forwarder',
+    fundingContract: forwarder,
   });
   if (!claimed) {
     const again = await TransactionService.findPendingRemittanceForBroadcast({ userId: opts.userId, orderId: opts.orderId });
@@ -562,6 +622,15 @@ function encodePayoutCall(ctx: FundingContext, validBefore: bigint, signature: H
   const { v, yParity, r, s } = parseSignature(signature);
   // Signers may return v (27/28) or yParity (0/1).
   const recovery = v !== undefined ? Number(v) : Number(yParity) + 27;
+  const version = forwarderVersion(ctx.forwarder);
+  if (version === 2) {
+    return encodeFunctionData({
+      abi: PAYOUT_FORWARDER_V2_ABI,
+      functionName: 'payoutWithAuthorization',
+      args: [ctx.orderId, ctx.payer, ctx.sink, ctx.usdc, ctx.amount, validBefore, recovery, r, s],
+    });
+  }
+  if (version !== 1) throw new Error('forwarder is not configured');
   return encodeFunctionData({
     abi: PAYOUT_FORWARDER_ABI,
     functionName: 'payout',
@@ -658,15 +727,15 @@ async function relayClaimedPayout(
 
 /** A claim with a saved relayer tx: find out what happened to it, resend it, or retire it. */
 type SavedFundingRow = Pick<Remittance, 'userId' | 'orderId' | 'txHash' | 'fundingTxHash' | 'fundingTxRaw'> &
-  Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc' | 'sourceNetwork'>>;
+  Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc' | 'sourceNetwork' | 'fundingContract'>>;
 
 /** Chain a row pays from (crypto network, or a bank payout's source network). Null if unknown. */
 function chainOfRow(row: { recipientBank?: string | null; sourceNetwork?: string | null }): ForwarderChainId | null {
   return forwarderChainForNetwork(TransactionService.payoutNetworkOf(row));
 }
 
-/** Decode and sanity-check the relayer tx saved on a claimed row. */
-function decodeSavedFunding(row: SavedFundingRow, forwarder: Address) {
+/** Decode and sanity-check the relayer tx saved on a claimed row, against the contract the row is pinned to. */
+function decodeSavedFunding(row: SavedFundingRow) {
   const hash = row.fundingTxHash as Hex;
   const raw = row.fundingTxRaw as Hex;
   const paycrestOrderId = TransactionService.paycrestOrderIdFromTxHash(row.txHash);
@@ -676,14 +745,38 @@ function decodeSavedFunding(row: SavedFundingRow, forwarder: Address) {
     });
     return new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
   };
+  // Never the current env: a V1 order stays on V1 after V2 is switched on.
+  const forwarder = forwarderOfSavedTx(row);
+  if (!forwarder) {
+    console.error('[ForwarderPayout] the contract this order is pinned to is not configured; claim kept', {
+      orderId: row.orderId.toString(),
+      fundingContract: row.fundingContract ?? null,
+    });
+    throw new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
+  }
   if (!paycrestOrderId || keccak256(raw) !== hash) throw inconsistent();
   const tx = parseTransaction(raw);
   if (!tx.data) throw inconsistent();
   const chainId = tx.chainId ?? 8453;
   if (!isForwarderChainId(chainId)) throw inconsistent();
-  const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_ABI, data: tx.data });
-  const [orderId, payer, sink, amount, validBefore] = call.args as readonly [bigint, Address, Address, bigint, bigint, ...unknown[]];
-  if (!tx.to || getAddress(tx.to) !== forwarder || orderId !== row.orderId) throw inconsistent();
+  if (!tx.to || getAddress(tx.to) !== forwarder) throw inconsistent();
+  let orderId: bigint, payer: Address, sink: Address, amount: bigint, validBefore: bigint;
+  try {
+    if (forwarderVersion(forwarder) === 2) {
+      const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_V2_ABI, data: tx.data });
+      if (call.functionName !== 'payoutWithAuthorization') throw inconsistent();
+      let token: Address;
+      [orderId, payer, sink, token, amount, validBefore] = call.args as readonly [bigint, Address, Address, Address, bigint, bigint, ...unknown[]];
+      if (getAddress(token) !== usdcOn(chainId)) throw inconsistent();
+    } else {
+      const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_ABI, data: tx.data });
+      [orderId, payer, sink, amount, validBefore] = call.args as readonly [bigint, Address, Address, bigint, bigint, ...unknown[]];
+    }
+  } catch (err) {
+    if (err instanceof InstantSendWalletError) throw err;
+    throw inconsistent();
+  }
+  if (orderId !== row.orderId) throw inconsistent();
   const ctx: FundingContext = {
     userId: row.userId,
     orderId,
@@ -703,8 +796,8 @@ function authorizationExpired(validBefore: bigint): boolean {
   return forwarderDeps.now() > Number(validBefore) * 1000 + EXPIRY_GRACE_MS;
 }
 
-async function resumeStoredFunding(remittance: Remittance, forwarder: Address) {
-  const { ctx, hash, raw, validBefore } = decodeSavedFunding(remittance, forwarder);
+async function resumeStoredFunding(remittance: Remittance) {
+  const { ctx, hash, raw, validBefore } = decodeSavedFunding(remittance);
   try {
     if (!(await forwarderDeps.getReceipt(hash, ctx.chainId))) {
       // No receipt. Once the user's authorization has expired (plus a grace period),
@@ -745,8 +838,7 @@ export type ForwarderRecoveryOutcome =
  * Anything funded without a matching tx is kept and alerted for ops.
  */
 export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; limit?: number; orderId?: bigint } = {}) {
-  const forwarder = payoutForwarderAddress();
-  if (!forwarder || !isPayoutForwarderConfigured()) {
+  if (!isPayoutForwarderConfigured()) {
     return { skipped: 'forwarder not configured' as const, results: [] as { orderId: string; outcome: ForwarderRecoveryOutcome }[] };
   }
   const cutoff = new Date(forwarderDeps.now() - (opts.olderThanMs ?? STUCK_CLAIM_AGE_MS));
@@ -768,6 +860,7 @@ export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; 
       recipientBank: true,
       recipientAcc: true,
       sourceNetwork: true,
+      fundingContract: true,
     },
     orderBy: { updatedAt: 'asc' },
     take: opts.limit ?? 50,
@@ -783,13 +876,13 @@ export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; 
       continue;
     }
     try {
-      outcome = await recoverOneClaim(row, forwarder);
+      outcome = await recoverOneClaim(row);
     } catch (err) {
       const errCode = err instanceof InstantSendWalletError ? err.code : null;
       outcome =
         errCode === 'PAYOUT_DROPPED' || errCode === 'PAYOUT_REVERTED'
           ? 'retired'
-          : errCode === 'BROADCAST_UNCERTAIN'
+          : errCode === 'BROADCAST_UNCERTAIN' || errCode === 'ORDER_VOIDED'
             ? 'kept-for-ops'
             : errCode === 'BROADCAST_IN_PROGRESS'
               ? 'waiting'
@@ -817,13 +910,15 @@ function savedTxChain(row: SavedFundingRow): ForwarderChainId | null {
   }
 }
 
-async function recoverOneClaim(row: SavedFundingRow, forwarder: Address): Promise<ForwarderRecoveryOutcome> {
+async function recoverOneClaim(row: SavedFundingRow): Promise<ForwarderRecoveryOutcome> {
   if (!row.fundingTxHash || !row.fundingTxRaw) {
     // Claimed, but the request died before a tx was saved, so nothing was broadcast.
     const paycrestOrderId = TransactionService.paycrestOrderIdFromTxHash(row.txHash);
     if (!paycrestOrderId) return 'error';
     const chainId = chainOfRow(row);
-    if (chainId === null) return 'waiting';
+    // Pinned to a contract this deploy can't read: never release on a partial check.
+    const forwarder = forwarderForClaim(row);
+    if (chainId === null || !forwarder) return 'waiting';
     await assertNotFundedOnChain({
       userId: row.userId,
       orderId: row.orderId,
@@ -844,7 +939,7 @@ async function recoverOneClaim(row: SavedFundingRow, forwarder: Address): Promis
     return released ? 'released' : 'waiting';
   }
 
-  const { ctx, hash, raw, validBefore } = decodeSavedFunding(row, forwarder);
+  const { ctx, hash, raw, validBefore } = decodeSavedFunding(row);
   let receipt: TransactionReceipt | null;
   try {
     receipt = await forwarderDeps.getReceipt(hash, ctx.chainId);
@@ -892,18 +987,35 @@ function uncertain(ctx: FundingContext, hash: Hex, err?: unknown) {
 }
 
 /**
- * Keep the claim (and say "may have been submitted") when the contract reports the order
+ * Where an order stands across every forwarder we run on this chain. V1 and V2 keep separate
+ * books (#191): 'funded' if either funded it, 'voided' if V2 closed it, otherwise 'open'.
+ * RPC errors throw.
+ */
+async function orderStateOnChain(orderId: bigint, chainId: ForwarderChainId): Promise<'funded' | 'voided' | 'open'> {
+  const v1 = payoutForwarderAddress();
+  const v2 = payoutForwarderV2Address();
+  const [fundedV1, fundedV2, voided] = await Promise.all([
+    v1 ? forwarderDeps.isFunded(v1, orderId, chainId) : false,
+    v2 ? forwarderDeps.isFunded(v2, orderId, chainId) : false,
+    v2 ? forwarderDeps.isVoided(v2, orderId, chainId) : false,
+  ]);
+  if (fundedV1 || fundedV2) return 'funded';
+  return voided ? 'voided' : 'open';
+}
+
+/**
+ * Keep the claim (and say "may have been submitted") when any forwarder reports the order
  * funded, or when that can't be read. Releasing then would let the reserve be restored
- * after USDC already left.
+ * after USDC already left. A voided order is kept for ops too: it can never be funded.
  */
 async function assertNotFundedOnChain(ctx: FundingContext): Promise<void> {
-  let funded: boolean;
+  let state: Awaited<ReturnType<typeof orderStateOnChain>>;
   try {
-    funded = await forwarderDeps.isFunded(ctx.forwarder, ctx.orderId, ctx.chainId);
+    state = await orderStateOnChain(ctx.orderId, ctx.chainId);
   } catch (err) {
     throw uncertain(ctx, '0x' as Hex, err);
   }
-  if (funded) {
+  if (state === 'funded') {
     void reportAlert({
       alert: 'FORWARDER_ORDER_FUNDED_BY_OTHER_TX',
       severity: 'high',
@@ -911,6 +1023,15 @@ async function assertNotFundedOnChain(ctx: FundingContext): Promise<void> {
       message: 'Order is funded on-chain without a matching saved tx; claim kept for ops to attach the funding tx',
     });
     throw uncertain(ctx, '0x' as Hex);
+  }
+  if (state === 'voided') {
+    void reportAlert({
+      alert: 'FORWARDER_ORDER_VOIDED',
+      severity: 'high',
+      orderId: ctx.orderId.toString(),
+      message: 'Order was voided on PayoutForwarderV2; claim kept for ops to cancel the reserve',
+    });
+    throw new InstantSendWalletError('ORDER_VOIDED', 'This payout was closed. Contact support if it is not refunded.');
   }
 }
 
@@ -920,7 +1041,8 @@ async function assertNotFundedOnChain(ctx: FundingContext): Promise<void> {
  * stays held: releasing it would let the reserve be restored after USDC already left.
  */
 async function discardIfUnfunded(ctx: FundingContext, hash: Hex, codeIfDiscarded: 'PAYOUT_DROPPED' | 'PAYOUT_REVERTED'): Promise<never> {
-  if (await forwarderDeps.isFunded(ctx.forwarder, ctx.orderId, ctx.chainId)) {
+  // Funded on any forwarder (V1 or V2) means tokens left: keep the claim. Voided still means unfunded.
+  if ((await orderStateOnChain(ctx.orderId, ctx.chainId)) === 'funded') {
     void reportAlert({
       alert: 'FORWARDER_ORDER_FUNDED_BY_OTHER_TX',
       severity: 'high',
@@ -1061,7 +1183,8 @@ export async function prepareCryptoAuthorization(opts: { userId: string; walletA
     throw new InstantSendWalletError('NOT_PENDING', 'This cash-out is not awaiting a send');
   }
   const terms = cryptoPayoutTerms(remittance, opts.walletAddress);
-  const forwarder = payoutForwarderAddress();
+  // The user signs for the contract the broadcast will use: the pinned one, or the active one.
+  const forwarder = forwarderForClaim(remittance);
   if (!forwarder || !isPayoutForwarderConfigured(terms.chainId)) {
     throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't send this payout. Tap Send to try again.");
   }
@@ -1095,7 +1218,7 @@ export async function broadcastForwarderCryptoTransfer(opts: {
     return { txHash: remittance.txHash, alreadyBroadcast: true };
   }
   const terms = cryptoPayoutTerms(remittance, opts.walletAddress);
-  const forwarder = payoutForwarderAddress();
+  const forwarder = forwarderForClaim(remittance);
   if (!forwarder || !isPayoutForwarderConfigured(terms.chainId)) {
     if (TransactionService.isBroadcastClaimHash(remittance.txHash)) {
       throw new InstantSendWalletError('BROADCAST_UNCERTAIN', 'Payment may have been submitted — check history before trying again.');
@@ -1107,7 +1230,7 @@ export async function broadcastForwarderCryptoTransfer(opts: {
   }
   if (TransactionService.isBroadcastClaimHash(remittance.txHash)) {
     if (remittance.fundingTxHash && remittance.fundingTxRaw) {
-      const result = await resumeStoredFunding(remittance, forwarder);
+      const result = await resumeStoredFunding(remittance);
       await markCryptoDestinationConfirmed(opts.userId, remittance);
       return result;
     }
@@ -1171,6 +1294,7 @@ export async function broadcastForwarderCryptoTransfer(opts: {
     orderId: opts.orderId,
     pendingTxHash: remittance.txHash,
     fundingPath: 'forwarder',
+    fundingContract: forwarder,
   });
   if (!claimed) {
     const again = await TransactionService.findRemittanceForBroadcast({ userId: opts.userId, orderId: opts.orderId });
