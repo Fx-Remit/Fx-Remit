@@ -3,6 +3,7 @@ import {
   createWalletClient,
   decodeEventLog,
   decodeFunctionData,
+  domainSeparator,
   encodeAbiParameters,
   encodeFunctionData,
   getAddress,
@@ -60,9 +61,9 @@ export const PAYOUT_FORWARDER_V2_ABI = parseAbi([
   'event PayoutFunded(uint256 indexed orderId, address indexed payer, address indexed sink, address token, uint256 amount)',
 ]);
 
-const USDC_ABI = parseAbi([
+const TOKEN_ABI = parseAbi([
   'function name() view returns (string)',
-  'function version() view returns (string)',
+  'function DOMAIN_SEPARATOR() view returns (bytes32)',
   'function balanceOf(address) view returns (uint256)',
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 ]);
@@ -81,10 +82,48 @@ const RECEIVE_WITH_AUTHORIZATION_TYPES = {
 /** Chains PayoutForwarder runs on (same CREATE2 address on each). */
 export type ForwarderChainId = 8453 | 42220;
 
+/**
+ * Tokens the forwarder pays out with EIP-3009, per chain, with the EIP-712 version of their
+ * ReceiveWithAuthorization domain. Celo USDT has no version() to read, so it is set here and
+ * checked against the token's DOMAIN_SEPARATOR before every signature. V1 is hard-wired to USDC;
+ * any other token needs V2 (#191). Base USDT has no EIP-3009 at all.
+ */
+const FORWARDER_TOKENS: Record<ForwarderChainId, Partial<Record<string, { domainVersion: string; v1: boolean }>>> = {
+  8453: { USDC: { domainVersion: '2', v1: true } },
+  42220: { USDC: { domainVersion: '2', v1: true }, USDT: { domainVersion: '1', v1: false } },
+};
+
+type ForwarderToken = { symbol: string; address: Address; decimals: number; domainVersion: string; v1: boolean };
+
+/** The token a forwarder payout of `symbol` uses on this chain; null when the forwarder can't pay it there. */
+function forwarderToken(chainId: ForwarderChainId, symbol: string): ForwarderToken | null {
+  const sym = symbol.toUpperCase();
+  const rule = FORWARDER_TOKENS[chainId]?.[sym];
+  const meta = DEPOSIT_TOKENS[chainId]?.find((t) => t.symbol.toUpperCase() === sym);
+  return rule && meta ? { symbol: sym, address: getAddress(meta.address), decimals: meta.decimals, ...rule } : null;
+}
+
+/** Every forwarder token on every chain (ops: the Privy policy needs a rule per token). */
+export function forwarderTokenList(): Array<{ chainId: ForwarderChainId; symbol: string; address: Address; v1: boolean }> {
+  return (Object.keys(FORWARDER_TOKENS).map(Number) as ForwarderChainId[]).flatMap((chainId) =>
+    Object.keys(FORWARDER_TOKENS[chainId]).flatMap((symbol) => {
+      const token = forwarderToken(chainId, symbol);
+      return token ? [{ chainId, symbol: token.symbol, address: token.address, v1: token.v1 }] : [];
+    }),
+  );
+}
+
+function forwarderTokenAt(chainId: ForwarderChainId, address: Address): ForwarderToken | null {
+  const symbol = Object.keys(FORWARDER_TOKENS[chainId] ?? {}).find(
+    (sym) => forwarderToken(chainId, sym)?.address === getAddress(address),
+  );
+  return symbol ? forwarderToken(chainId, symbol) : null;
+}
+
 function usdcOn(chainId: ForwarderChainId): Address {
-  const usdc = DEPOSIT_TOKENS[chainId]?.find((t) => t.symbol === 'USDC');
+  const usdc = forwarderToken(chainId, 'USDC');
   if (!usdc) throw new Error(`No USDC configured for chain ${chainId}`);
-  return getAddress(usdc.address);
+  return usdc.address;
 }
 
 const FORWARDER_CHAINS: Record<ForwarderChainId, { chain: typeof base | typeof celo; rpcEnv: string }> = {
@@ -188,19 +227,23 @@ export function isPayoutForwarderEnabledFor(user: { id: string; privyDid: string
 }
 
 /**
- * How a crypto cash-out on `network` is funded for this user:
- * - 'forwarder' when the forwarder is on for them and configured on that chain;
- * - 'direct' (legacy wallet send) only while the forwarder is off for them;
- * - 'unavailable' when it's on but that chain isn't configured, or the network isn't supported.
+ * How a crypto cash-out of `token` on `network` is funded for this user:
+ * - 'forwarder' when the forwarder is on for them, configured on that chain, and can pay the token;
+ * - 'direct' (legacy wallet send) only for USDC, only while the forwarder is off for them;
+ * - 'unavailable' otherwise. USDT has no direct path and needs V2 (#191).
  */
 export function cryptoFundingPathFor(
   user: { id: string; privyDid: string },
   network: string,
+  token = 'USDC',
 ): 'forwarder' | 'direct' | 'unavailable' {
   const chainId = forwarderChainForNetwork(network);
   if (chainId === null) return 'unavailable';
-  if (!isPayoutForwarderEnabledFor(user)) return 'direct';
-  return isPayoutForwarderConfigured(chainId) ? 'forwarder' : 'unavailable';
+  const paid = forwarderToken(chainId, token);
+  if (!paid) return 'unavailable';
+  if (!isPayoutForwarderEnabledFor(user)) return paid.v1 ? 'direct' : 'unavailable';
+  if (!isPayoutForwarderConfigured(chainId)) return 'unavailable';
+  return paid.v1 || payoutForwarderV2Address() ? 'forwarder' : 'unavailable';
 }
 
 /**
@@ -290,7 +333,7 @@ export function forwarderAuthorizationNonce(orderId: bigint, sink: Address): Hex
 export type ForwarderPublicClient = {
   readContract(
     args:
-      | { address: Address; abi: typeof USDC_ABI; functionName: 'name' | 'version' | 'balanceOf'; args?: readonly [Address] }
+      | { address: Address; abi: typeof TOKEN_ABI; functionName: 'name' | 'DOMAIN_SEPARATOR' | 'balanceOf'; args?: readonly [Address] }
       | { address: Address; abi: typeof PAYOUT_FORWARDER_ABI; functionName: 'funded'; args: readonly [bigint] }
       | { address: Address; abi: typeof PAYOUT_FORWARDER_V2_ABI; functionName: 'voided'; args: readonly [bigint] },
   ): Promise<unknown>;
@@ -423,7 +466,8 @@ type FundingContext = {
   /** Claim key: the Paycrest order id for bank payouts, the app key for crypto cash-outs. */
   paycrestOrderId: string;
   chainId: ForwarderChainId;
-  usdc: Address;
+  /** Token paid out (USDC, or USDT on Celo through V2). */
+  token: Address;
   forwarder: Address;
   payer: Address;
   sink: Address;
@@ -553,7 +597,7 @@ export async function broadcastForwarderPayout(opts: {
   const client = forwarderDeps.publicClient(chainId);
   const balance = (await client.readContract({
     address: usdc,
-    abi: USDC_ABI,
+    abi: TOKEN_ABI,
     functionName: 'balanceOf',
     args: [payer],
   })) as bigint;
@@ -580,7 +624,7 @@ export async function broadcastForwarderPayout(opts: {
     orderId: opts.orderId,
     paycrestOrderId,
     chainId,
-    usdc,
+    token: usdc,
     forwarder,
     payer,
     sink,
@@ -598,13 +642,27 @@ export async function broadcastForwarderPayout(opts: {
 
 /** EIP-712 ReceiveWithAuthorization for one order: from payer, to the forwarder, nonce bound to (orderId, sink). */
 async function authorizationTypedData(ctx: FundingContext, validBefore: bigint) {
+  const token = forwarderTokenAt(ctx.chainId, ctx.token);
+  if (!token) throw new Error('not a forwarder token');
   const client = forwarderDeps.publicClient(ctx.chainId);
-  const [name, version] = (await Promise.all([
-    client.readContract({ address: ctx.usdc, abi: USDC_ABI, functionName: 'name' }),
-    client.readContract({ address: ctx.usdc, abi: USDC_ABI, functionName: 'version' }),
-  ])) as [string, string];
+  const [name, onChain] = (await Promise.all([
+    client.readContract({ address: ctx.token, abi: TOKEN_ABI, functionName: 'name' }),
+    client.readContract({ address: ctx.token, abi: TOKEN_ABI, functionName: 'DOMAIN_SEPARATOR' }),
+  ])) as [string, Hex];
+  const domain = { name, version: token.domainVersion, chainId: ctx.chainId, verifyingContract: ctx.token };
+  // Never sign for a domain the token wouldn't verify: the signature would be useless and every retry would fail.
+  if (domainSeparator({ domain }).toLowerCase() !== onChain.toLowerCase()) {
+    void reportAlert({
+      alert: 'FORWARDER_TOKEN_DOMAIN_MISMATCH',
+      severity: 'high',
+      chainId: ctx.chainId,
+      token: ctx.token,
+      message: `${token.symbol} on chain ${ctx.chainId} no longer matches its EIP-712 domain (version ${token.domainVersion}); payouts in it stop until fixed`,
+    });
+    throw new Error(`${token.symbol} EIP-712 domain mismatch on chain ${ctx.chainId}`);
+  }
   return {
-    domain: { name, version, chainId: ctx.chainId, verifyingContract: ctx.usdc },
+    domain,
     types: RECEIVE_WITH_AUTHORIZATION_TYPES,
     primary_type: 'ReceiveWithAuthorization',
     message: {
@@ -627,10 +685,11 @@ function encodePayoutCall(ctx: FundingContext, validBefore: bigint, signature: H
     return encodeFunctionData({
       abi: PAYOUT_FORWARDER_V2_ABI,
       functionName: 'payoutWithAuthorization',
-      args: [ctx.orderId, ctx.payer, ctx.sink, ctx.usdc, ctx.amount, validBefore, recovery, r, s],
+      args: [ctx.orderId, ctx.payer, ctx.sink, ctx.token, ctx.amount, validBefore, recovery, r, s],
     });
   }
   if (version !== 1) throw new Error('forwarder is not configured');
+  if (ctx.token !== usdcOn(ctx.chainId)) throw new Error('V1 pays USDC only');
   return encodeFunctionData({
     abi: PAYOUT_FORWARDER_ABI,
     functionName: 'payout',
@@ -727,7 +786,7 @@ async function relayClaimedPayout(
 
 /** A claim with a saved relayer tx: find out what happened to it, resend it, or retire it. */
 type SavedFundingRow = Pick<Remittance, 'userId' | 'orderId' | 'txHash' | 'fundingTxHash' | 'fundingTxRaw'> &
-  Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc' | 'sourceNetwork' | 'fundingContract'>>;
+  Partial<Pick<Remittance, 'recipientBank' | 'recipientAcc' | 'sourceNetwork' | 'fundingContract' | 'sourceToken'>>;
 
 /** Chain a row pays from (crypto network, or a bank payout's source network). Null if unknown. */
 function chainOfRow(row: { recipientBank?: string | null; sourceNetwork?: string | null }): ForwarderChainId | null {
@@ -760,29 +819,34 @@ function decodeSavedFunding(row: SavedFundingRow) {
   const chainId = tx.chainId ?? 8453;
   if (!isForwarderChainId(chainId)) throw inconsistent();
   if (!tx.to || getAddress(tx.to) !== forwarder) throw inconsistent();
-  let orderId: bigint, payer: Address, sink: Address, amount: bigint, validBefore: bigint;
+  let orderId: bigint, payer: Address, sink: Address, token: Address, amount: bigint, validBefore: bigint;
   try {
     if (forwarderVersion(forwarder) === 2) {
       const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_V2_ABI, data: tx.data });
       if (call.functionName !== 'payoutWithAuthorization') throw inconsistent();
-      let token: Address;
       [orderId, payer, sink, token, amount, validBefore] = call.args as readonly [bigint, Address, Address, Address, bigint, bigint, ...unknown[]];
-      if (getAddress(token) !== usdcOn(chainId)) throw inconsistent();
+      token = getAddress(token);
     } else {
       const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_ABI, data: tx.data });
       [orderId, payer, sink, amount, validBefore] = call.args as readonly [bigint, Address, Address, bigint, bigint, ...unknown[]];
+      token = usdcOn(chainId);
     }
   } catch (err) {
     if (err instanceof InstantSendWalletError) throw err;
     throw inconsistent();
   }
+  // The token must be one the forwarder pays and, for a crypto cash-out, the one the row reserved
+  // (a bank row's sourceToken can differ: Paycrest settlement remaps it to USDC).
+  const paid = forwarderTokenAt(chainId, token);
+  const isCrypto = (row.recipientBank ?? '').startsWith('crypto:');
+  if (!paid || (isCrypto && row.sourceToken && paid.symbol !== row.sourceToken.toUpperCase())) throw inconsistent();
   if (orderId !== row.orderId) throw inconsistent();
   const ctx: FundingContext = {
     userId: row.userId,
     orderId,
     paycrestOrderId,
     chainId,
-    usdc: usdcOn(chainId),
+    token,
     forwarder,
     payer: getAddress(payer),
     sink: getAddress(sink),
@@ -861,6 +925,7 @@ export async function recoverStuckForwarderClaims(opts: { olderThanMs?: number; 
       recipientAcc: true,
       sourceNetwork: true,
       fundingContract: true,
+      sourceToken: true,
     },
     orderBy: { updatedAt: 'asc' },
     take: opts.limit ?? 50,
@@ -924,7 +989,7 @@ async function recoverOneClaim(row: SavedFundingRow): Promise<ForwarderRecoveryO
       orderId: row.orderId,
       paycrestOrderId,
       chainId,
-      usdc: usdcOn(chainId),
+      token: usdcOn(chainId),
       forwarder,
       payer: zeroAddress,
       sink: zeroAddress,
@@ -1131,9 +1196,16 @@ async function markCryptoDestinationConfirmed(
 
 /** Allowed slack between the authorization the client signed and the TTL we hand out. */
 const USER_AUTHORIZATION_SLACK_MS = 2 * 60_000;
-const USDC_DECIMALS = 6;
-
-type CryptoTerms = { network: string; chainId: ForwarderChainId; usdc: Address; payer: Address; sink: Address; amount: bigint };
+type CryptoTerms = {
+  network: string;
+  chainId: ForwarderChainId;
+  token: Address;
+  /** The token as the forwarder knows it (symbol, decimals, whether V1 can pay it). */
+  tokenInfo: ForwarderToken;
+  payer: Address;
+  sink: Address;
+  amount: bigint;
+};
 
 /** Everything about a crypto cash-out comes from the reserved row; the client sends only the orderId. */
 function cryptoPayoutTerms(remittance: Remittance, walletAddress: string): CryptoTerms {
@@ -1143,8 +1215,9 @@ function cryptoPayoutTerms(remittance: Remittance, walletAddress: string): Crypt
   if (chainId === null) {
     throw new InstantSendWalletError('NOT_CRYPTO_CASH_OUT', 'This cash-out network is not supported');
   }
-  if ((remittance.sourceToken || '').toUpperCase() !== 'USDC') {
-    throw new InstantSendWalletError('UNSUPPORTED_TOKEN', 'Only USDC cash-outs are supported right now');
+  const tokenInfo = forwarderToken(chainId, remittance.sourceToken || '');
+  if (!tokenInfo) {
+    throw new InstantSendWalletError('UNSUPPORTED_TOKEN', `${remittance.sourceToken} can't be cashed out on ${network} right now`);
   }
   const destination = (remittance.recipientAcc || '').trim();
   if (!isAddress(destination)) {
@@ -1156,12 +1229,19 @@ function cryptoPayoutTerms(remittance: Remittance, walletAddress: string): Crypt
     // The contract rejects sink == payer; nothing would move.
     throw new InstantSendWalletError('SINK_IS_PAYER', "You can't cash out to your own FX Remit wallet");
   }
-  const amount = parseUnits(remittance.amountUsd.toString(), USDC_DECIMALS);
+  const amount = parseUnits(remittance.amountUsd.toString(), tokenInfo.decimals);
   if (amount <= 0n || amount > INSTANT_SEND_MAX_USDC_RAW) {
     // The forwarder itself refuses anything over $10k.
     throw new InstantSendWalletError('AMOUNT_CAP', 'Transfer amount is outside the payout limit');
   }
-  return { network, chainId, usdc: usdcOn(chainId), payer, sink, amount };
+  return { network, chainId, token: tokenInfo.address, tokenInfo, payer, sink, amount };
+}
+
+/** V1 is hard-wired to USDC: an order for any other token needs V2 (#191). */
+function assertForwarderPays(forwarder: Address, terms: CryptoTerms): void {
+  if (forwarderVersion(forwarder) === 1 && !terms.tokenInfo.v1) {
+    throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', `${terms.tokenInfo.symbol} cash-outs are unavailable right now`);
+  }
 }
 
 /** Load a crypto remittance that can still be funded through the forwarder on its chain. */
@@ -1188,6 +1268,7 @@ export async function prepareCryptoAuthorization(opts: { userId: string; walletA
   if (!forwarder || !isPayoutForwarderConfigured(terms.chainId)) {
     throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't send this payout. Tap Send to try again.");
   }
+  assertForwarderPays(forwarder, terms);
   const validBefore = BigInt(Math.floor((forwarderDeps.now() + AUTHORIZATION_TTL_MS) / 1000));
   const typed = await authorizationTypedData(
     { userId: opts.userId, orderId: opts.orderId, paycrestOrderId: '', forwarder, ...terms },
@@ -1228,6 +1309,7 @@ export async function broadcastForwarderCryptoTransfer(opts: {
   if (remittance.fundingPath === 'direct') {
     throw new InstantSendWalletError('FUNDING_PATH_MISMATCH', 'This cash-out already started on the direct path');
   }
+  if (!TransactionService.isBroadcastClaimHash(remittance.txHash)) assertForwarderPays(forwarder, terms);
   if (TransactionService.isBroadcastClaimHash(remittance.txHash)) {
     if (remittance.fundingTxHash && remittance.fundingTxRaw) {
       const result = await resumeStoredFunding(remittance);
@@ -1258,7 +1340,7 @@ export async function broadcastForwarderCryptoTransfer(opts: {
   } else {
     // A silent send has no user prompt, so it keeps the tighter crypto cap. The Privy rule allows
     // up to $10k to the forwarder for any sink, so this cap is ours to hold. Over it, the user signs.
-    if (terms.amount > BigInt(CRYPTO_INSTANT_SEND_MAX_USD) * 10n ** BigInt(USDC_DECIMALS)) {
+    if (terms.amount > BigInt(CRYPTO_INSTANT_SEND_MAX_USD) * 10n ** BigInt(terms.tokenInfo.decimals)) {
       throw new InstantSendWalletError('AMOUNT_CAP', 'Confirm this send in your wallet');
     }
     const destination = terms.sink.toLowerCase();
@@ -1280,13 +1362,13 @@ export async function broadcastForwarderCryptoTransfer(opts: {
   }
 
   const balance = (await forwarderDeps.publicClient(terms.chainId).readContract({
-    address: terms.usdc,
-    abi: USDC_ABI,
+    address: terms.token,
+    abi: TOKEN_ABI,
     functionName: 'balanceOf',
     args: [terms.payer],
   })) as bigint;
   if (balance < terms.amount) {
-    throw new InstantSendWalletError('INSUFFICIENT_USDC', 'Not enough USDC in the wallet for this cash-out');
+    throw new InstantSendWalletError('INSUFFICIENT_USDC', `Not enough ${terms.tokenInfo.symbol} in the wallet for this cash-out`);
   }
 
   const claimed = await TransactionService.claimBroadcastSlot({
@@ -1308,7 +1390,7 @@ export async function broadcastForwarderCryptoTransfer(opts: {
     orderId: opts.orderId,
     paycrestOrderId: claimKey,
     chainId: terms.chainId,
-    usdc: terms.usdc,
+    token: terms.token,
     forwarder,
     payer: terms.payer,
     sink: terms.sink,
@@ -1328,9 +1410,9 @@ export async function broadcastForwarderCryptoTransfer(opts: {
   return result;
 }
 
-/** The receipt shows PayoutFunded for this order plus both USDC legs of `amount`. */
+/** The receipt shows PayoutFunded for this order plus both legs of `amount` in the order's token. */
 export function fundingReceiptMatches(receipt: TransactionReceipt, ctx: FundingContext): boolean {
-  const usdc = ctx.usdc.toLowerCase();
+  const token = ctx.token.toLowerCase();
   let funded = false;
   let pulled = false;
   let forwarded = false;
@@ -1346,13 +1428,13 @@ export function fundingReceiptMatches(receipt: TransactionReceipt, ctx: FundingC
           ev.args.orderId === ctx.orderId &&
           getAddress(ev.args.payer) === ctx.payer &&
           getAddress(ev.args.sink) === ctx.sink &&
-          ev.args.token.toLowerCase() === usdc &&
+          ev.args.token.toLowerCase() === token &&
           ev.args.amount === ctx.amount
         ) {
           funded = true;
         }
-      } else if (address === usdc) {
-        const ev = decodeEventLog({ abi: USDC_ABI, data: log.data, topics: log.topics }) as unknown as Decoded;
+      } else if (address === token) {
+        const ev = decodeEventLog({ abi: TOKEN_ABI, data: log.data, topics: log.topics }) as unknown as Decoded;
         if (ev.eventName !== 'Transfer' || ev.args.value !== ctx.amount) continue;
         const from = getAddress(ev.args.from);
         const to = getAddress(ev.args.to);

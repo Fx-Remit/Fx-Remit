@@ -9,6 +9,7 @@ import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   decodeFunctionData,
+  domainSeparator,
   encodeAbiParameters,
   encodeEventTopics,
   encodeFunctionData,
@@ -149,6 +150,9 @@ function fakeChain(
     async readContract(args) {
       if (args.functionName === 'balanceOf') return opts.balance ?? AMOUNT;
       if (args.functionName === 'name') return 'USD Coin';
+      if (args.functionName === 'DOMAIN_SEPARATOR') {
+        return domainSeparator({ domain: { name: 'USD Coin', version: '2', chainId: 8453, verifyingContract: args.address } });
+      }
       return '2';
     },
     async call() {

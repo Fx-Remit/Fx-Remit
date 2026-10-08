@@ -9,6 +9,7 @@ process.env.PAYOUT_FORWARDER_CHAINS = '8453';
 import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { PrivyClient } from '@privy-io/server-auth';
+import { domainSeparator, type Address } from 'viem';
 import { prisma } from '@fx-remit/database';
 import { forwarderDeps, TransactionService } from '@fx-remit/services';
 import { POST } from './route';
@@ -35,7 +36,12 @@ function stub(row: Record<string, unknown> | null) {
     row ? { type: 'REMITTANCE', userId: 'user-1', sourceToken: 'USDC', amountUsd: { toString: () => '5' }, ...row } : null,
   );
   mock.method(forwarderDeps, 'publicClient', () => ({
-    readContract: async (a: { functionName: string }) => (a.functionName === 'name' ? 'USD Coin' : '2'),
+    readContract: async (a: { functionName: string; address: Address }) =>
+      a.functionName === 'name'
+        ? 'USD Coin'
+        : a.functionName === 'DOMAIN_SEPARATOR'
+          ? domainSeparator({ domain: { name: 'USD Coin', version: '2', chainId: 8453, verifyingContract: a.address } })
+          : '2',
   }) as any);
   return find;
 }

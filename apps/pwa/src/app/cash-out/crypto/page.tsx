@@ -46,8 +46,14 @@ type CryptoReserveSession = {
   txHash?: string;
 };
 
-/** Networks crypto cash-out offers: PayoutForwarder runs on Base and Celo (#190). */
-const CASH_OUT_NETWORKS = ['base', 'celo'] as const;
+/**
+ * Networks each token can cash out on through PayoutForwarder (Base and Celo, #190). USDT needs
+ * PayoutForwarderV2: Celo now, Base once its approval flow lands (#191).
+ */
+const CASH_OUT_NETWORKS: Record<string, readonly ('base' | 'celo')[]> = {
+  USDC: ['base', 'celo'],
+  USDT: ['celo'],
+};
 
 /** Server codes meaning the send may already be on-chain: never send again. */
 const MAYBE_SENT_CODES = new Set(['BROADCAST_IN_PROGRESS', 'BROADCAST_UNCERTAIN']);
@@ -88,8 +94,10 @@ function CryptoCashOutContent() {
   const searchParams = useSearchParams();
   const token = (searchParams.get('token') || 'USDC').toUpperCase();
 
-  /** Crypto cash-out moves USDC through PayoutForwarder; USDT follows with Forwarder V2 (#191). */
-  const tokenUnsupported = token !== 'USDC';
+  const cashOutNetworks = CASH_OUT_NETWORKS[token] ?? [];
+  /** A token with no cash-out network yet can't be cashed out. */
+  const tokenUnsupported = cashOutNetworks.length === 0;
+  const offersNetwork = (n: string): n is 'base' | 'celo' => (cashOutNetworks as readonly string[]).includes(n);
   const [walletAddress, setWalletAddress] = useState('');
   /** null = not yet manually chosen; falls back to whichever chain actually holds the token. */
   const [manualNetwork, setManualNetwork] = useState<'base' | 'celo' | 'arbitrum' | null>(null);
@@ -201,11 +209,12 @@ function CryptoCashOutContent() {
 
   // Derived, not stored: falls back to whichever chain has the highest
   // balance for this token, only once a manual pick overrides it.
-  const autoNetwork: 'base' | 'celo' | 'arbitrum' = CASH_OUT_NETWORKS.reduce<'base' | 'celo'>(
+  const autoNetwork: 'base' | 'celo' | 'arbitrum' = cashOutNetworks.reduce<'base' | 'celo'>(
     (best, key) => ((balanceByNetwork[key] ?? 0) > (balanceByNetwork[best] ?? 0) ? key : best),
-    'base',
+    cashOutNetworks[0] ?? 'base',
   );
-  const network = manualNetwork ?? autoNetwork;
+  // A manual pick only counts while this token can cash out there.
+  const network = manualNetwork && offersNetwork(manualNetwork) ? manualNetwork : autoNetwork;
 
   // Real on-chain holding on the network this send would actually execute
   // on — this is what actually bounds the send (a real eth_sendTransaction
@@ -262,8 +271,8 @@ function CryptoCashOutContent() {
 
   const selectSavedAddress = (row: SavedAddressRow) => {
     setWalletAddress(row.address);
-    // Same address works on any EVM network; only switch to one cash-out supports.
-    if (row.network === 'base' || row.network === 'celo') {
+    // Same address works on any EVM network; only switch to one this token can cash out on.
+    if (offersNetwork(row.network)) {
       setManualNetwork(row.network);
     }
   };
@@ -304,9 +313,7 @@ function CryptoCashOutContent() {
 
     try {
       if (tokenUnsupported) {
-        throw new Error(
-          'Only USDC can be cashed out right now. USDT is coming soon.',
-        );
+        throw new Error(`${token} can't be cashed out yet.`);
       }
 
       const accessToken = await getAccessToken();
@@ -416,6 +423,7 @@ function CryptoCashOutContent() {
       const transfer = pendingData.transfer as {
         chainId: number;
         network: 'base' | 'celo' | 'arbitrum';
+        token: string;
         tokenAddress: `0x${string}`;
         decimals: number;
         destinationAddress: string;
@@ -530,7 +538,7 @@ function CryptoCashOutContent() {
               address: wallet.address,
               uiOptions: {
                 title: 'Confirm cash-out',
-                description: `Send ${reservedUsd} USDC to ${shortDestination} on ${NETWORK_DATA[transfer.network]?.name}. FX Remit pays the network fee.`,
+                description: `Send ${reservedUsd} ${transfer.token} to ${shortDestination} on ${NETWORK_DATA[transfer.network]?.name}. FX Remit pays the network fee.`,
                 buttonText: 'Confirm',
               },
             }));
@@ -646,7 +654,7 @@ function CryptoCashOutContent() {
   const networks = [
     { id: 'celo' as const, name: 'Celo network' },
     { id: 'base' as const, name: 'Base network' },
-  ];
+  ].filter((n) => offersNetwork(n.id));
 
   const selectedNetwork = networks.find((n) => n.id === network)?.name || 'Choose network';
 
@@ -676,7 +684,7 @@ function CryptoCashOutContent() {
               <AlertCircle size={20} className="text-red-500 flex-shrink-0" />
               <p className="text-red-600 text-[13px] font-medium leading-tight">
                 {tokenUnsupported
-                  ? 'Only USDC can be cashed out right now. USDT is coming soon.'
+                  ? `${token} can't be cashed out yet.`
                   : spendable.syncIncomplete && !error
                     ? 'Balance sync incomplete — cash-out is paused until sync finishes.'
                     : error}
