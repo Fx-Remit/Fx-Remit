@@ -58,6 +58,8 @@ const CASH_OUT_NETWORKS: Record<string, readonly ('base' | 'celo')[]> = {
 /** How long to wait for the one-time approval (and the gas FX Remit sends for it) to land. */
 const APPROVAL_POLL_MS = 2_000;
 const APPROVAL_TIMEOUT_MS = 90_000;
+/** An approve sent this recently is treated as still landing; after that, the next attempt may send one again. */
+const APPROVE_PENDING_MS = 10 * 60_000;
 
 /** Server codes meaning the send may already be on-chain: never send again. */
 const MAYBE_SENT_CODES = new Set(['BROADCAST_IN_PROGRESS', 'BROADCAST_UNCERTAIN']);
@@ -512,7 +514,15 @@ function CryptoCashOutContent() {
        * (FX Remit sends the gas for it if needed). Each cash-out still needs its own signature.
        */
       const ensureApproval = async () => {
+        // An approve sent in the last few minutes may still be landing: wait for it, don't pay for a second.
+        const sentKey = `fx-remit:approve:${transfer.chainId}:${transfer.tokenAddress}:${wallet.address}`.toLowerCase();
         let approveSent = false;
+        try {
+          const at = Number(localStorage.getItem(sentKey));
+          approveSent = Number.isFinite(at) && Date.now() - at < APPROVE_PENDING_MS;
+        } catch {
+          // Storage unavailable: worst case a second approve.
+        }
         const deadline = Date.now() + APPROVAL_TIMEOUT_MS;
         while (Date.now() < deadline) {
           const res = await fetch('/api/transaction/forwarder-approval', {
@@ -532,6 +542,11 @@ function CryptoCashOutContent() {
               params: [{ from: wallet.address, to: step.tx.to, data: step.tx.data }],
             });
             approveSent = true;
+            try {
+              localStorage.setItem(sentKey, String(Date.now()));
+            } catch {
+              // Storage unavailable.
+            }
           }
           await new Promise((resolve) => setTimeout(resolve, APPROVAL_POLL_MS));
         }

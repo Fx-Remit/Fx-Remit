@@ -69,9 +69,9 @@ const PAYOUT_TYPES = {
 const drips = {
   findUnique: prisma.relayerDrip.findUnique,
   create: prisma.relayerDrip.create,
-  update: prisma.relayerDrip.update,
-  delete: prisma.relayerDrip.delete,
+  updateMany: prisma.relayerDrip.updateMany,
   deleteMany: prisma.relayerDrip.deleteMany,
+  count: prisma.relayerDrip.count,
 };
 afterEach(() => {
   mock.restoreAll();
@@ -142,6 +142,8 @@ function harness(
     /** The contract computes a different Payout digest than we do. */
     badDigest?: boolean;
     dryRunFails?: boolean;
+    /** Whether the node knows a drip tx (pending or mined). */
+    txKnown?: boolean;
   } = {},
 ): Harness {
   const h: Harness = {
@@ -234,6 +236,7 @@ function harness(
     h.sent.push(raw);
   });
   mock.method(forwarderDeps, 'getReceipt', async (hash: Hex) => h.receipts.get(hash) ?? null);
+  mock.method(forwarderDeps, 'isTxKnown', async () => opts.txKnown ?? true);
 
   mock.method(TransactionService, 'findRemittanceForBroadcast', async () => opts.row ?? usdtRow());
   mock.method(TransactionService, 'claimBroadcastSlot', h.claim);
@@ -298,6 +301,7 @@ describe('Base USDT through PayoutForwarderV2: payouts (#191)', () => {
       undefined, // validAfter missing
       String(NOW_S + 601n), // starts after it ends
       String(NOW_S + 600n - 3601n), // longer than an hour
+      String(NOW_S + 61n), // not valid yet (beyond the clock-skew allowance)
     ];
     for (const validAfter of windows) {
       const h = harness({ trusted: false });
@@ -349,23 +353,22 @@ describe('Base USDT through PayoutForwarderV2: payouts (#191)', () => {
 });
 
 describe('prepareForwarderApproval: the one-time approval and its gas (#191)', () => {
-  const stubDrips = (existing: unknown = null) => {
+  const stubDrips = (existing: unknown = null, opts: { lastDay?: number } = {}) => {
+    let current = existing;
     const calls = {
       create: mock.fn(async () => ({ id: 'drip-1' })),
-      update: mock.fn(async () => ({})),
-      delete: mock.fn(async () => ({})),
-      deleteMany: mock.fn(async () => ({ count: 1 })),
+      updateMany: mock.fn(async () => ({ count: 1 })),
+      deleteMany: mock.fn(async () => {
+        current = null;
+        return { count: 1 };
+      }),
+      count: mock.fn(async () => opts.lastDay ?? 0),
     };
-    let current = existing;
     prisma.relayerDrip.findUnique = mock.fn(async () => current) as any;
     prisma.relayerDrip.create = calls.create as any;
-    prisma.relayerDrip.update = calls.update as any;
-    prisma.relayerDrip.delete = calls.delete as any;
-    prisma.relayerDrip.deleteMany = mock.fn(async () => {
-      current = null;
-      return { count: 1 };
-    }) as any;
-    calls.deleteMany = prisma.relayerDrip.deleteMany as any;
+    prisma.relayerDrip.updateMany = calls.updateMany as any;
+    prisma.relayerDrip.deleteMany = calls.deleteMany as any;
+    prisma.relayerDrip.count = calls.count as any;
     return calls;
   };
 
@@ -397,9 +400,11 @@ describe('prepareForwarderApproval: the one-time approval and its gas (#191)', (
   it('sends the gas once when the wallet has none: recorded and hashed before broadcast', async () => {
     const h = harness({ allowance: 0n, ethBalance: 0n });
     const drips = stubDrips();
-    drips.update.mock.mockImplementation(async (args: any) => {
+    drips.updateMany.mock.mockImplementation(async (args: any) => {
+      // Only our own still-unsigned row.
+      assert.deepEqual(args.where, { id: 'drip-1', txHash: null });
       h.events.push(`saved:${args.data.txHash}`);
-      return {};
+      return { count: 1 };
     });
     const step = await approval();
     assert.equal(step.status, 'funding');
@@ -439,7 +444,7 @@ describe('prepareForwarderApproval: the one-time approval and its gas (#191)', (
     });
     const drips = stubDrips();
     await assert.rejects(approval(), code('FORWARDER_UNAVAILABLE'));
-    assert.equal(drips.delete.mock.callCount(), 1);
+    assert.deepEqual((drips.deleteMany.mock.calls[0].arguments as any[])[0], { where: { id: 'drip-1', txHash: null } });
   });
 
   it('keeps the record when the drip may be out (broadcast result unknown)', async () => {
@@ -450,7 +455,7 @@ describe('prepareForwarderApproval: the one-time approval and its gas (#191)', (
     const drips = stubDrips();
     const step = await approval();
     assert.deepEqual(step, { status: 'funding', dripTxHash: h.relayed[0].hash });
-    assert.equal(drips.delete.mock.callCount(), 0);
+    assert.equal(drips.deleteMany.mock.callCount(), 0);
   });
 
   it('clears a stale drip that was recorded but never signed, then drips', async () => {
@@ -460,6 +465,41 @@ describe('prepareForwarderApproval: the one-time approval and its gas (#191)', (
     assert.equal(step.status, 'funding');
     assert.deepEqual((drips.deleteMany.mock.calls[0].arguments as any[])[0], { where: { id: 'drip-0', txHash: null } });
     assert.equal(h.relayed.length, 1);
+  });
+
+  it('clears a drip that never went out (old, unmined, unknown to the node) and drips once more', async () => {
+    const dead = `0x${'aa'.repeat(32)}` as Hex;
+    const h = harness({ allowance: 0n, ethBalance: 0n, txKnown: false });
+    const drips = stubDrips({ id: 'drip-0', txHash: dead, createdAt: new Date(NOW - 11 * 60_000) });
+    const step = await approval();
+    assert.deepEqual((drips.deleteMany.mock.calls[0].arguments as any[])[0], { where: { id: 'drip-0', txHash: dead } });
+    assert.equal(h.relayed.length, 1);
+    assert.deepEqual(step, { status: 'funding', dripTxHash: h.relayed[0].hash });
+  });
+
+  it('keeps waiting on an old drip the node still has pending', async () => {
+    const pending = `0x${'bb'.repeat(32)}` as Hex;
+    const h = harness({ allowance: 0n, ethBalance: 0n, txKnown: true });
+    const drips = stubDrips({ id: 'drip-0', txHash: pending, createdAt: new Date(NOW - 11 * 60_000) });
+    assert.deepEqual(await approval(), { status: 'funding', dripTxHash: pending });
+    assert.equal(drips.deleteMany.mock.callCount(), 0);
+    assert.equal(h.relayed.length, 0);
+  });
+
+  it('sends nothing when cleanup took its row before it could save the hash', async () => {
+    const h = harness({ allowance: 0n, ethBalance: 0n });
+    const drips = stubDrips();
+    drips.updateMany.mock.mockImplementation(async () => ({ count: 0 }));
+    assert.deepEqual(await approval(), { status: 'funding', dripTxHash: null });
+    assert.equal(h.sent.length, 0);
+  });
+
+  it('stops dripping at the daily ceiling across all users and asks the user to bring gas', async () => {
+    const h = harness({ allowance: 0n, ethBalance: 0n });
+    const drips = stubDrips(null, { lastDay: 100 });
+    await assert.rejects(approval(), code('APPROVAL_GAS_NEEDED'));
+    assert.equal(drips.create.mock.callCount(), 0);
+    assert.equal(h.relayed.length, 0);
   });
 
   it('refuses to drip more than the cap when fees spike', async () => {

@@ -16,6 +16,7 @@ import {
   parseSignature,
   parseTransaction,
   parseUnits,
+  TransactionNotFoundError,
   TransactionReceiptNotFoundError,
   zeroAddress,
   type Address,
@@ -380,6 +381,7 @@ export type ForwarderPublicClient = {
   estimateFeesPerGas?(): Promise<{ maxFeePerGas?: bigint }>;
   /** Used by the approval gas drip only. */
   estimateGas?(args: { account: Address; to: Address; data: Hex }): Promise<bigint>;
+  getTransaction?(args: { hash: Hex }): Promise<unknown>;
 };
 
 const publicClients = new Map<string, ForwarderPublicClient>();
@@ -465,6 +467,17 @@ export const forwarderDeps = {
       return await this.publicClient(chainId).getTransactionReceipt({ hash });
     } catch (err) {
       if (err instanceof TransactionReceiptNotFoundError) return null;
+      throw err;
+    }
+  },
+
+  /** Whether the node knows this tx at all (pending or mined). Only "not found" is false; RPC errors throw. */
+  async isTxKnown(hash: Hex, chainId: ForwarderChainId = 8453): Promise<boolean> {
+    try {
+      await this.publicClient(chainId).getTransaction!({ hash });
+      return true;
+    } catch (err) {
+      if (err instanceof TransactionNotFoundError) return false;
       throw err;
     }
   },
@@ -1425,6 +1438,28 @@ const DRIP_MIN_WEI = 5_000_000_000_000n;
 const APPROVE_GAS_FALLBACK = 80_000n;
 /** A drip recorded this long ago without a tx hash never went out (well past the relayer lock wait). */
 const STALE_DRIP_MS = 2 * 60_000;
+/** A signed drip this old that the node has never heard of was never broadcast, or was dropped. */
+const DEAD_DRIP_MS = 10 * 60_000;
+
+/** At most this many drips across all users per 24h (RELAYER_DRIPS_PER_DAY, default 100). */
+function dripsPerDay(): number {
+  const n = Number(process.env.RELAYER_DRIPS_PER_DAY?.trim());
+  return Number.isInteger(n) && n > 0 ? n : 100;
+}
+
+/**
+ * A drip that can never land, so the user isn't left waiting on it forever:
+ * - recorded but never signed for STALE_DRIP_MS (the request died before broadcast);
+ * - signed, but after DEAD_DRIP_MS neither mined nor known to the node (the broadcast failed or
+ *   the tx was dropped). We never keep its raw bytes, so it can't come back from us; a second drip
+ *   is the worst case, and that is capped.
+ */
+async function dripIsDead(row: { txHash: string | null; createdAt: Date }, chainId: ForwarderChainId): Promise<boolean> {
+  const age = forwarderDeps.now() - row.createdAt.getTime();
+  if (!row.txHash) return age > STALE_DRIP_MS;
+  if (age <= DEAD_DRIP_MS || (await forwarderDeps.getReceipt(row.txHash as Hex, chainId))) return false;
+  return !(await forwarderDeps.isTxKnown(row.txHash as Hex, chainId));
+}
 
 export type ApprovalStep =
   | { status: 'approved' }
@@ -1483,23 +1518,33 @@ export async function prepareForwarderApproval(opts: { userId: string; walletAdd
 
 async function dripApprovalGas(userId: string, terms: CryptoTerms, needed: bigint): Promise<ApprovalStep> {
   const key = { userId_chainId_token: { userId, chainId: terms.chainId, token: terms.tokenInfo.symbol } };
+  const topUp = () =>
+    new InstantSendWalletError('APPROVAL_GAS_NEEDED', `Add a little ETH on Base to approve ${terms.tokenInfo.symbol} for cash-outs`);
   let existing = await prisma.relayerDrip.findUnique({ where: key });
-  if (existing && !existing.txHash && forwarderDeps.now() - existing.createdAt.getTime() > STALE_DRIP_MS) {
-    // Recorded but never signed (the request died first): the hash is saved before broadcast, so
-    // nothing went out. Clear it, only if still unsigned, and drip again.
-    await prisma.relayerDrip.deleteMany({ where: { id: existing.id, txHash: null } });
+  if (existing && (await dripIsDead(existing, terms.chainId))) {
+    // It never went out: clear it, only if nobody changed it meanwhile, and drip again.
+    await prisma.relayerDrip.deleteMany({ where: { id: existing.id, txHash: existing.txHash } });
     existing = await prisma.relayerDrip.findUnique({ where: key });
   }
   if (existing) {
-    // Never twice. Still landing: wait for it. Landed and the gas is gone: the user tops up.
-    if (existing.txHash && !(await forwarderDeps.getReceipt(existing.txHash as Hex, terms.chainId))) {
+    // Never twice. Being sent or still landing: wait for it. Landed and the gas is gone: the user tops up.
+    if (!existing.txHash) return { status: 'funding', dripTxHash: null };
+    if (!(await forwarderDeps.getReceipt(existing.txHash as Hex, terms.chainId))) {
       return { status: 'funding', dripTxHash: existing.txHash as Hex };
     }
-    if (!existing.txHash) return { status: 'funding', dripTxHash: null };
-    throw new InstantSendWalletError(
-      'APPROVAL_GAS_NEEDED',
-      `Add a little ETH on Base to approve ${terms.tokenInfo.symbol} for cash-outs`,
-    );
+    throw topUp();
+  }
+  // Bounds what many accounts together can draw from the relayer.
+  const lastDay = await prisma.relayerDrip.count({ where: { createdAt: { gte: new Date(forwarderDeps.now() - 24 * 3600_000) } } });
+  if (lastDay >= dripsPerDay()) {
+    void reportAlert({
+      alert: 'RELAYER_DRIP_CEILING',
+      severity: 'high',
+      chainId: terms.chainId,
+      drips: lastDay,
+      message: `${lastDay} approval gas drips in 24h hit RELAYER_DRIPS_PER_DAY; new users must bring their own ETH until it resets or is raised`,
+    });
+    throw topUp();
   }
   // Twice the estimate, so a fee bump before the approve lands doesn't strand it.
   const amount = needed * 2n > DRIP_MIN_WEI ? needed * 2n : DRIP_MIN_WEI;
@@ -1518,13 +1563,18 @@ async function dripApprovalGas(userId: string, terms: CryptoTerms, needed: bigin
     if ((err as { code?: unknown } | null)?.code === 'P2002') return { status: 'funding', dripTxHash: null };
     throw err;
   }
-  const sent: { hash: Hex | null } = { hash: null };
+  const sent: { hash: Hex | null; lost: boolean } = { hash: null, lost: false };
   try {
     await forwarderDeps.withRelayerLock(async () => {
       const raw = await forwarderDeps.signRelayerTx(terms.payer, '0x', terms.chainId, amount);
       const hash = keccak256(raw);
-      // Saved before broadcast: a drip that may be out is never sent again.
-      await prisma.relayerDrip.update({ where: { id: dripId }, data: { txHash: hash } });
+      // Saved before broadcast, and only on our own still-unsigned row: a drip that may be out is
+      // never sent again, and if cleanup cleared our row meanwhile we send nothing.
+      const saved = await prisma.relayerDrip.updateMany({ where: { id: dripId, txHash: null }, data: { txHash: hash } });
+      if (saved.count !== 1) {
+        sent.lost = true;
+        return;
+      }
       sent.hash = hash;
       await forwarderDeps.sendRaw(raw, terms.chainId);
     }, terms.chainId);
@@ -1535,8 +1585,8 @@ async function dripApprovalGas(userId: string, terms: CryptoTerms, needed: bigin
       message: err instanceof Error ? err.message : String(err),
     });
     if (sent.hash === null) {
-      // Nothing went out: free the slot so the next attempt can drip.
-      await prisma.relayerDrip.delete({ where: { id: dripId } }).catch(() => {});
+      // Nothing went out: free our slot (only if still unsigned) so the next attempt can drip.
+      await prisma.relayerDrip.deleteMany({ where: { id: dripId, txHash: null } }).catch(() => {});
       throw new InstantSendWalletError('FORWARDER_UNAVAILABLE', "Couldn't get your wallet ready. Try again.");
     }
     // It may be out: keep the row; the next poll checks its receipt.
@@ -1608,6 +1658,10 @@ export async function broadcastForwarderCryptoTransfer(opts: {
       const after = opts.userAuthorization.validAfter ?? '';
       if (!/^\d{1,12}$/.test(after) || BigInt(after) > validBefore || validBefore - BigInt(after) > MAX_PAYOUT_WINDOW_S) {
         throw new InstantSendWalletError('AUTHORIZATION_EXPIRED', 'This authorization expired. Tap Send to try again.');
+      }
+      // It must already be valid, or the claim would only be burned on a revert.
+      if (BigInt(after) > BigInt(Math.floor(now / 1000)) + PAYOUT_CLOCK_SKEW_S) {
+        throw new InstantSendWalletError('AUTHORIZATION_EXPIRED', 'This authorization is not valid yet. Tap Send to try again.');
       }
       validAfter = BigInt(after);
     }
