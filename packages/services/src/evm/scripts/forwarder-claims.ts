@@ -28,7 +28,7 @@ async function main() {
         fundingPath: 'forwarder',
         ...(orderId !== undefined ? { orderId } : {}),
       },
-      select: { orderId: true, status: true, amountUsd: true, fundingTxHash: true, updatedAt: true },
+      select: { orderId: true, status: true, amountUsd: true, fundingTxHash: true, fundingContract: true, updatedAt: true },
       orderBy: { updatedAt: 'asc' },
     });
     if (!rows.length) {
@@ -37,7 +37,7 @@ async function main() {
     }
     for (const r of rows) {
       console.log(
-        `${r.orderId}  ${r.status}  $${r.amountUsd.toString()}  saved tx: ${r.fundingTxHash ?? 'none'}  since ${r.updatedAt.toISOString()}`,
+        `${r.orderId}  ${r.status}  $${r.amountUsd.toString()}  contract: ${r.fundingContract ?? 'V1 (unpinned)'}  saved tx: ${r.fundingTxHash ?? 'none'}  since ${r.updatedAt.toISOString()}`,
       );
     }
     console.log('\nRun with --recover (optionally an orderId) to settle them.');

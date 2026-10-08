@@ -210,6 +210,7 @@ exports.Prisma.TransactionScalarFieldEnum = {
   fundingPath: 'fundingPath',
   fundingTxHash: 'fundingTxHash',
   fundingTxRaw: 'fundingTxRaw',
+  fundingContract: 'fundingContract',
   orderBankAmount: 'orderBankAmount',
   orderSenderFee: 'orderSenderFee',
   orderRate: 'orderRate',

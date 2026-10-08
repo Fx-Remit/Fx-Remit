@@ -34,6 +34,7 @@ import {
   forwarderAuthorizationNonce,
   forwarderDeps,
   PAYOUT_FORWARDER_ABI,
+  PAYOUT_FORWARDER_V2_ABI,
   prepareCryptoAuthorization,
   recoverStuckForwarderClaims,
   type ForwarderPublicClient,
@@ -165,6 +166,7 @@ function harness(opts: { row?: unknown; trusted?: boolean; dryRunFails?: boolean
   mock.method(forwarderDeps, 'now', () => NOW);
   mock.method(forwarderDeps, 'sleep', async () => {});
   mock.method(forwarderDeps, 'isFunded', async () => false);
+  mock.method(forwarderDeps, 'isVoided', async () => false);
   mock.method(forwarderDeps, 'withRelayerLock', async (fn: () => Promise<unknown>) => fn());
   mock.method(forwarderDeps, 'resolveWallet', async () => ({ walletId: 'wallet-1', delegated: true }));
   mock.method(forwarderDeps, 'signAuthorization', async (_w: string, td: Record<string, any>) => {
@@ -347,6 +349,36 @@ describe('prepareCryptoAuthorization', () => {
   it('refuses rows that are no longer pending', async () => {
     harness({ row: cryptoRow({ txHash: `broadcasting-${KEY}` }) });
     await assert.rejects(prepareCryptoAuthorization({ userId: 'u1', walletAddress: PAYER, orderId: ORDER }), code('NOT_PENDING'));
+  });
+});
+
+describe('crypto cash-outs through PayoutForwarderV2 (#191)', () => {
+  const V2 = getAddress('0x6575f142Ab3a557DF60F5a9B4d5cf0BD5f3732D5');
+  const validBefore = String(Math.floor(NOW / 1000) + 600);
+  afterEach(() => {
+    delete process.env.PAYOUT_FORWARDER_V2_ADDRESS;
+  });
+
+  it('has the user sign for V2, pins V2 at claim and relays payoutWithAuthorization', async () => {
+    process.env.PAYOUT_FORWARDER_V2_ADDRESS = V2;
+    harness({ trusted: false });
+    const prepared = await prepareCryptoAuthorization({ userId: 'u1', walletAddress: PAYER, orderId: ORDER });
+    assert.equal(prepared.typedData.message.to, V2);
+
+    mock.restoreAll();
+    const h = harness({ trusted: false, dryRunFails: true });
+    await assert.rejects(send({ signature: SIGNATURE, validBefore }), code('PAYOUT_NOT_AUTHORIZED'));
+    assert.equal((h.claim.mock.calls[0].arguments[0] as { fundingContract?: string }).fundingContract, V2);
+    const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_V2_ABI, data: h.dryRuns[0] });
+    assert.equal(call.functionName, 'payoutWithAuthorization');
+    assert.deepEqual(call.args.slice(0, 5), [ORDER, PAYER, DEST, CELO_USDC, AMOUNT]);
+  });
+
+  it('keeps a crypto cash-out pinned to V1 on V1', async () => {
+    process.env.PAYOUT_FORWARDER_V2_ADDRESS = V2;
+    harness({ trusted: false, row: cryptoRow({ fundingPath: 'forwarder', fundingContract: FORWARDER }) });
+    const prepared = await prepareCryptoAuthorization({ userId: 'u1', walletAddress: PAYER, orderId: ORDER });
+    assert.equal(prepared.typedData.message.to, FORWARDER);
   });
 });
 
