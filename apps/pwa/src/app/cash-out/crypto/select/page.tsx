@@ -11,11 +11,10 @@ const TOKENS = [
     available: true,
   },
   {
-    // Needs Forwarder V2 (#191) before it can cash out through the contract.
     symbol: 'USDT',
-    name: 'Tether USD · coming soon',
+    name: 'Tether USD',
     icon: '/usdt.svg',
-    available: false,
+    available: true,
   },
 ];
 
