@@ -287,7 +287,8 @@ describe('broadcastForwarderCryptoTransfer: user-signed, any address', () => {
 
 describe('broadcastForwarderCryptoTransfer: terms come only from the reserved row', () => {
   const cases: [string, Record<string, unknown>, string][] = [
-    ['USDT on Base (no EIP-3009)', { sourceToken: 'USDT', recipientBank: 'crypto:base' }, 'UNSUPPORTED_TOKEN'],
+    ['a token the forwarder does not pay', { sourceToken: 'DAI' }, 'UNSUPPORTED_TOKEN'],
+    ['Base USDT while only V1 (USDC-only) is configured', { sourceToken: 'USDT', recipientBank: 'crypto:base' }, 'FORWARDER_UNAVAILABLE'],
     ['USDT while only V1 (USDC-only) is configured', { sourceToken: 'USDT' }, 'FORWARDER_UNAVAILABLE'],
     ['arbitrum', { recipientBank: 'crypto:arbitrum' }, 'NOT_CRYPTO_CASH_OUT'],
     ['own wallet', { recipientAcc: PAYER }, 'SINK_IS_PAYER'],
@@ -491,11 +492,12 @@ describe('cryptoFundingPathFor', () => {
     });
   });
 
-  it('sends USDT only through V2, on Celo only, never on the direct path (#191)', () => {
+  it('sends USDT only through V2, never on the direct path (#191)', () => {
     const V2 = '0x6575f142Ab3a557DF60F5a9B4d5cf0BD5f3732D5';
     withEnv({ PAYOUT_FORWARDER_ENABLED: 'true', PAYOUT_FORWARDER_V2_ADDRESS: V2 }, () => {
       assert.equal(cryptoFundingPathFor(user, 'celo', 'USDT'), 'forwarder');
-      assert.equal(cryptoFundingPathFor(user, 'base', 'USDT'), 'unavailable');
+      assert.equal(cryptoFundingPathFor(user, 'base', 'USDT'), 'forwarder');
+      assert.equal(cryptoFundingPathFor(user, 'arbitrum', 'USDT'), 'unavailable');
     });
     withEnv({ PAYOUT_FORWARDER_ENABLED: 'true', PAYOUT_FORWARDER_V2_ADDRESS: undefined }, () => {
       assert.equal(cryptoFundingPathFor(user, 'celo', 'USDT'), 'unavailable');

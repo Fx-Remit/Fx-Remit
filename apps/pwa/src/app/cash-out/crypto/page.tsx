@@ -48,12 +48,16 @@ type CryptoReserveSession = {
 
 /**
  * Networks each token can cash out on through PayoutForwarder (Base and Celo, #190). USDT needs
- * PayoutForwarderV2: Celo now, Base once its approval flow lands (#191).
+ * PayoutForwarderV2; on Base the wallet approves it once first (#191).
  */
 const CASH_OUT_NETWORKS: Record<string, readonly ('base' | 'celo')[]> = {
   USDC: ['base', 'celo'],
-  USDT: ['celo'],
+  USDT: ['base', 'celo'],
 };
+
+/** How long to wait for the one-time approval (and the gas FX Remit sends for it) to land. */
+const APPROVAL_POLL_MS = 2_000;
+const APPROVAL_TIMEOUT_MS = 90_000;
 
 /** Server codes meaning the send may already be on-chain: never send again. */
 const MAYBE_SENT_CODES = new Set(['BROADCAST_IN_PROGRESS', 'BROADCAST_UNCERTAIN']);
@@ -427,6 +431,8 @@ function CryptoCashOutContent() {
         tokenAddress: `0x${string}`;
         decimals: number;
         destinationAddress: string;
+        /** USDT on Base: approve PayoutForwarderV2 once before the first cash-out. */
+        approval?: boolean;
       };
 
       if (!orderId || !transfer || !externalId) {
@@ -501,8 +507,40 @@ function CryptoCashOutContent() {
 
       let txHash: string | null = null;
 
+      /**
+       * USDT on Base has no gasless authorization: the wallet approves PayoutForwarderV2 once
+       * (FX Remit sends the gas for it if needed). Each cash-out still needs its own signature.
+       */
+      const ensureApproval = async () => {
+        let approveSent = false;
+        const deadline = Date.now() + APPROVAL_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+          const res = await fetch('/api/transaction/forwarder-approval', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({ orderId }),
+          });
+          const step = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(typeof step.error === 'string' ? step.error : `Couldn't get ${transfer.token} ready. Try again.`);
+          }
+          if (step.status === 'approved') return;
+          if (step.status === 'approve' && !approveSent) {
+            await ensureChain(wallet, provider, transfer.network);
+            await provider.request({
+              method: 'eth_sendTransaction',
+              params: [{ from: wallet.address, to: step.tx.to, data: step.tx.data }],
+            });
+            approveSent = true;
+          }
+          await new Promise((resolve) => setTimeout(resolve, APPROVAL_POLL_MS));
+        }
+        throw new Error(`${transfer.token} approval is taking longer than usual. Try again in a minute.`);
+      };
+
       if (funding === 'forwarder') {
         // Through PayoutForwarder: FX Remit pays the network fee and the send shows on our contract.
+        if (transfer.approval) await ensureApproval();
         if (isTrustedDestination && canServerBroadcast) {
           const silent = await postBroadcast({ orderId });
           if (silent.txHash) {
@@ -551,7 +589,12 @@ function CryptoCashOutContent() {
             })) as string;
           }
 
-          const signed = await postBroadcast({ orderId, signature, validBefore: prep.validBefore });
+          const signed = await postBroadcast({
+            orderId,
+            signature,
+            validBefore: prep.validBefore,
+            ...(typeof prep.validAfter === 'string' ? { validAfter: prep.validAfter } : {}),
+          });
           if (signed.txHash) {
             txHash = signed.txHash;
           } else if (MAYBE_SENT_CODES.has(signed.data.code)) {

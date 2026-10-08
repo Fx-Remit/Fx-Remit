@@ -9,6 +9,7 @@ import {
   DEPOSIT_TOKENS,
   withUniqueOrderId,
   cryptoFundingPathFor,
+  forwarderTokenNeedsApproval,
 } from '@fx-remit/services';
 import { z } from 'zod';
 import { isAddress } from 'viem';
@@ -256,6 +257,8 @@ export async function POST(req: Request) {
         tokenAddress: transferMeta.address,
         decimals: transferMeta.decimals,
         destinationAddress: destFromRow,
+        /** USDT on Base (#191): the wallet approves PayoutForwarderV2 once, via /api/transaction/forwarder-approval. */
+        approval: rowFunding === 'forwarder' && forwarderTokenNeedsApproval(resolvedNetwork, transferMeta.symbol),
       },
     });
   } catch (error) {
