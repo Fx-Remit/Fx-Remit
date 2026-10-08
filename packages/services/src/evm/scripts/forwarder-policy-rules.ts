@@ -37,6 +37,8 @@ const valueOf = (rule: Rule, match: (c: Condition) => boolean) => rule.condition
 const sameAddress = (value: unknown, address: Address) =>
   typeof value === 'string' && isAddress(value) && getAddress(value) === address;
 
+/** Privy's limit on a rule name. */
+const MAX_RULE_NAME = 50;
 /** $10,000 in 6-decimal units, the same cap the V1 rules use. */
 const MAX_AMOUNT_HEX = '0x2540be400';
 const PAYOUT_TYPED_DATA = {
@@ -59,7 +61,7 @@ const isMessage = (field: string) => (c: Condition) =>
 /** V2 Payout signatures for an approval-mode token: domain = V2 on that chain, that token, at most $10k. */
 function payoutRule(token: { chainId: number; symbol: string; address: Address }, v2: Address): Rule {
   return {
-    name: `${token.symbol} payout signature for forwarder V2, chain ${token.chainId}, max $10k`,
+    name: `${token.symbol} payout sig to V2, chain ${token.chainId}, max $10k`,
     method: 'eth_signTypedData_v4',
     action: 'ALLOW',
     conditions: [
@@ -116,6 +118,10 @@ async function main() {
       ),
     });
   }
+
+  // Privy refuses rule names over 50 characters: fail the dry run, not halfway through --apply.
+  const tooLong = planned.filter((r) => r.name.length > MAX_RULE_NAME);
+  if (tooLong.length) throw new Error(`Rule names over ${MAX_RULE_NAME} characters: ${tooLong.map((r) => r.name).join('; ')}`);
 
   console.log(`Policy "${policy.name}" (${policyId}): ${policy.rules.length} rules.`);
   if (!planned.length) {
