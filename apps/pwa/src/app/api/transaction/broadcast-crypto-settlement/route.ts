@@ -20,9 +20,11 @@ const privy = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
 const bodySchema = z
   .object({
     orderId: z.union([z.string(), z.number()]).transform((v) => String(v)),
-    /** User-signed ReceiveWithAuthorization (new addresses), from /api/transaction/crypto-authorization. */
+    /** User-signed authorization (new addresses), from /api/transaction/crypto-authorization. */
     signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, 'Invalid signature').optional(),
     validBefore: z.string().regex(/^\d{1,12}$/, 'Invalid validBefore').optional(),
+    /** Only V2's Payout signs it (USDT on Base, #191). */
+    validAfter: z.string().regex(/^\d{1,12}$/, 'Invalid validAfter').optional(),
   })
   .refine((b) => !b.signature === !b.validBefore, 'signature and validBefore must be sent together');
 
@@ -115,7 +117,11 @@ export async function POST(req: Request) {
               walletAddress: user.walletAddress,
               orderId,
               userAuthorization: parsed.data.signature
-                ? { signature: parsed.data.signature as `0x${string}`, validBefore: parsed.data.validBefore! }
+                ? {
+                    signature: parsed.data.signature as `0x${string}`,
+                    validBefore: parsed.data.validBefore!,
+                    validAfter: parsed.data.validAfter,
+                  }
                 : undefined,
             })
           : await broadcastCryptoTransfer({

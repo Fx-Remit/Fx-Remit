@@ -183,14 +183,19 @@ describe('POST /api/transaction/create-crypto-pending scope (#190)', () => {
     assert.equal(createPending.mock.callCount(), 0);
   });
 
-  it('cashes out USDC only, for now', async () => {
+  it('refuses USDT, before reserving, wherever PayoutForwarderV2 cannot pay it (#191)', async () => {
     stubBeforeCreate();
     const createPending = mock.method(TransactionService, 'createPending', async () => {
       throw new Error('should not reserve');
     });
-    const res = await POST(requestWith({ token: 'USDT' }));
-    assert.equal(res.status, 422);
-    assert.match((await res.json()).error, /Only USDC/);
+    // Base USDT waits for the approval flow; Celo USDT needs V2 switched on (no legacy direct send).
+    for (const network of ['base', 'celo']) {
+      const res = await POST(requestWith({ token: 'USDT', network }));
+      assert.equal(res.status, 503);
+      const body = await res.json();
+      assert.equal(body.code, 'NETWORK_UNAVAILABLE');
+      assert.match(body.error, /USDT cash-out/);
+    }
     assert.equal(createPending.mock.callCount(), 0);
   });
 

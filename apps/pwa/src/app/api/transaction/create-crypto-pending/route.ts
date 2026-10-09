@@ -9,6 +9,7 @@ import {
   DEPOSIT_TOKENS,
   withUniqueOrderId,
   cryptoFundingPathFor,
+  forwarderTokenNeedsApproval,
 } from '@fx-remit/services';
 import { z } from 'zod';
 import { isAddress } from 'viem';
@@ -147,11 +148,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // PayoutForwarder moves USDC only; USDT follows with Forwarder V2 (#191).
-    if (tokenMeta.symbol.toUpperCase() !== 'USDC') {
-      return NextResponse.json({ error: 'Only USDC can be cashed out right now' }, { status: 422 });
-    }
-
     const user = await prisma.user.findUnique({
       where: { privyDid: claims.userId },
       select: { id: true, walletAddress: true },
@@ -165,10 +161,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "You can't cash out to your own FX Remit wallet" }, { status: 422 });
     }
 
-    const funding = cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, network);
+    // USDC through either forwarder; USDT only through PayoutForwarderV2, on Celo for now (#191).
+    const funding = cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, network, tokenMeta.symbol);
     if (funding === 'unavailable') {
       return NextResponse.json(
-        { error: `Cash-out on ${network} is unavailable right now`, code: 'NETWORK_UNAVAILABLE' },
+        { error: `${tokenMeta.symbol} cash-out on ${network} is unavailable right now`, code: 'NETWORK_UNAVAILABLE' },
         { status: 503 },
       );
     }
@@ -237,13 +234,13 @@ export async function POST(req: Request) {
     const rowFunding =
       tx.fundingPath === 'forwarder' || tx.fundingPath === 'direct'
         ? tx.fundingPath
-        : resolvedNetwork === network
+        : resolvedNetwork === network && transferMeta.symbol === tokenMeta.symbol
           ? funding
-          : cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, resolvedNetwork);
+          : cryptoFundingPathFor({ id: user.id, privyDid: claims.userId }, resolvedNetwork, transferMeta.symbol);
     if (rowFunding === 'unavailable') {
       // Nothing was sent; the client cancels this reserve.
       return NextResponse.json(
-        { error: `Cash-out on ${resolvedNetwork} is unavailable right now`, code: 'NETWORK_UNAVAILABLE' },
+        { error: `${transferMeta.symbol} cash-out on ${resolvedNetwork} is unavailable right now`, code: 'NETWORK_UNAVAILABLE' },
         { status: 503 },
       );
     }
@@ -260,6 +257,8 @@ export async function POST(req: Request) {
         tokenAddress: transferMeta.address,
         decimals: transferMeta.decimals,
         destinationAddress: destFromRow,
+        /** USDT on Base (#191): the wallet approves PayoutForwarderV2 once, via /api/transaction/forwarder-approval. */
+        approval: rowFunding === 'forwarder' && forwarderTokenNeedsApproval(resolvedNetwork, transferMeta.symbol),
       },
     });
   } catch (error) {

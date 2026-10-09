@@ -136,6 +136,17 @@ exports.Prisma.UserScalarFieldEnum = {
   walletBalance: 'walletBalance'
 };
 
+exports.Prisma.RelayerDripScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  chainId: 'chainId',
+  token: 'token',
+  wallet: 'wallet',
+  amountWei: 'amountWei',
+  txHash: 'txHash',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.NotificationScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -210,6 +221,7 @@ exports.Prisma.TransactionScalarFieldEnum = {
   fundingPath: 'fundingPath',
   fundingTxHash: 'fundingTxHash',
   fundingTxRaw: 'fundingTxRaw',
+  fundingContract: 'fundingContract',
   orderBankAmount: 'orderBankAmount',
   orderSenderFee: 'orderSenderFee',
   orderRate: 'orderRate',
@@ -260,6 +272,7 @@ exports.TransactionType = exports.$Enums.TransactionType = {
 
 exports.Prisma.ModelName = {
   User: 'User',
+  RelayerDrip: 'RelayerDrip',
   Notification: 'Notification',
   PushSubscription: 'PushSubscription',
   SavedRecipient: 'SavedRecipient',

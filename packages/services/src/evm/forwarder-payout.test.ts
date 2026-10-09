@@ -5,9 +5,11 @@ process.env.PAYOUT_FORWARDER_ADDRESS = '0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F
 process.env.RELAYER_PRIVATE_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 process.env.BASE_RPC_URL ??= 'http://127.0.0.1:8545';
 
-import { describe, it, mock, afterEach } from 'node:test';
+import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  decodeFunctionData,
+  domainSeparator,
   encodeAbiParameters,
   encodeEventTopics,
   encodeFunctionData,
@@ -28,6 +30,7 @@ import {
   forwarderDeps,
   isPayoutForwarderEnabledFor,
   PAYOUT_FORWARDER_ABI,
+  PAYOUT_FORWARDER_V2_ABI,
   recoverStuckForwarderClaims,
   type ForwarderPublicClient,
 } from './forwarder-payout.js';
@@ -86,16 +89,19 @@ function log(address: Address, topics: Hex[], data: Hex) {
   return { address, topics, data } as never;
 }
 
-function receipt(opts: { status?: 'success' | 'reverted'; amount?: bigint; sink?: Address } = {}): TransactionReceipt {
+function receipt(
+  opts: { status?: 'success' | 'reverted'; amount?: bigint; sink?: Address; forwarder?: Address } = {},
+): TransactionReceipt {
   const amount = opts.amount ?? AMOUNT;
   const sink = opts.sink ?? SINK;
+  const forwarder = opts.forwarder ?? FORWARDER;
   return {
     status: opts.status ?? 'success',
     logs: [
-      log(USDC, encodeEventTopics({ abi: TRANSFER_ABI, eventName: 'Transfer', args: { from: PAYER, to: FORWARDER } }) as Hex[], encodeAbiParameters([{ type: 'uint256' }], [amount])),
-      log(USDC, encodeEventTopics({ abi: TRANSFER_ABI, eventName: 'Transfer', args: { from: FORWARDER, to: sink } }) as Hex[], encodeAbiParameters([{ type: 'uint256' }], [amount])),
+      log(USDC, encodeEventTopics({ abi: TRANSFER_ABI, eventName: 'Transfer', args: { from: PAYER, to: forwarder } }) as Hex[], encodeAbiParameters([{ type: 'uint256' }], [amount])),
+      log(USDC, encodeEventTopics({ abi: TRANSFER_ABI, eventName: 'Transfer', args: { from: forwarder, to: sink } }) as Hex[], encodeAbiParameters([{ type: 'uint256' }], [amount])),
       log(
-        FORWARDER,
+        forwarder,
         encodeEventTopics({ abi: PAYOUT_FORWARDER_ABI, eventName: 'PayoutFunded', args: { orderId: ORDER, payer: PAYER, sink } }) as Hex[],
         encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [USDC, amount]),
       ),
@@ -128,13 +134,25 @@ type Fake = {
   receipts: Map<string, TransactionReceipt>;
 };
 
-function fakeChain(opts: { balance?: bigint; nonceLatest?: number; dryRunFails?: boolean; funded?: boolean } = {}): Fake {
+function fakeChain(
+  opts: {
+    balance?: bigint;
+    nonceLatest?: number;
+    dryRunFails?: boolean;
+    /** true/false for every forwarder, or per forwarder (V1 and V2 keep separate books). */
+    funded?: boolean | ((forwarder: Address) => boolean);
+    voided?: boolean;
+  } = {},
+): Fake {
   const calls = { sent: [] as Hex[], dryRuns: 0 };
   const receipts = new Map<string, TransactionReceipt>();
   const client: ForwarderPublicClient = {
     async readContract(args) {
       if (args.functionName === 'balanceOf') return opts.balance ?? AMOUNT;
       if (args.functionName === 'name') return 'USD Coin';
+      if (args.functionName === 'DOMAIN_SEPARATOR') {
+        return domainSeparator({ domain: { name: 'USD Coin', version: '2', chainId: 8453, verifyingContract: args.address } });
+      }
       return '2';
     },
     async call() {
@@ -161,7 +179,10 @@ function fakeChain(opts: { balance?: bigint; nonceLatest?: number; dryRunFails?:
     calls.sent.push(raw);
   });
   mock.method(forwarderDeps, 'withRelayerLock', async (fn: () => Promise<unknown>) => fn());
-  mock.method(forwarderDeps, 'isFunded', async () => opts.funded ?? false);
+  mock.method(forwarderDeps, 'isFunded', async (forwarder: Address) =>
+    typeof opts.funded === 'function' ? opts.funded(getAddress(forwarder)) : (opts.funded ?? false),
+  );
+  mock.method(forwarderDeps, 'isVoided', async () => opts.voided ?? false);
   mock.method(forwarderDeps, 'sleep', async () => {});
   let t = NOW;
   mock.method(forwarderDeps, 'now', () => (t += 5_000));
@@ -767,5 +788,214 @@ describe('broadcastForwarderPayout payout permission (#192)', () => {
     mock.method(TransactionService, 'findPendingRemittanceForBroadcast', async () => remittance());
     await assert.rejects(run(), code('BROADCAST_IN_PROGRESS'));
     assert.equal(claim.mock.callCount(), 1);
+  });
+});
+
+describe('PayoutForwarderV2 (#191)', () => {
+  const V2 = getAddress('0x6575f142Ab3a557DF60F5a9B4d5cf0BD5f3732D5');
+  const UNKNOWN = getAddress('0x9999999999999999999999999999999999999999');
+  const originalFindMany = prisma.transaction.findMany;
+  beforeEach(() => {
+    process.env.PAYOUT_FORWARDER_V2_ADDRESS = V2;
+  });
+  afterEach(() => {
+    delete process.env.PAYOUT_FORWARDER_V2_ADDRESS;
+    prisma.transaction.findMany = originalFindMany;
+  });
+
+  /** A real signed relayer tx calling V2's payoutWithAuthorization for this order. */
+  async function signedV2Tx(nonce = 7, validBefore = BigInt(Math.floor(NOW / 1000) + 600)): Promise<Hex> {
+    const data = encodeFunctionData({
+      abi: PAYOUT_FORWARDER_V2_ABI,
+      functionName: 'payoutWithAuthorization',
+      args: [ORDER, PAYER, SINK, USDC, AMOUNT, validBefore, 27, `0x${'11'.repeat(32)}`, `0x${'22'.repeat(32)}`],
+    });
+    return RELAYER.signTransaction({
+      chainId: 8453,
+      type: 'eip1559',
+      to: V2,
+      data,
+      nonce,
+      gas: 200_000n,
+      maxFeePerGas: 10_000_000n,
+      maxPriorityFeePerGas: 1_000_000n,
+    });
+  }
+
+  const saved = (raw: Hex, overrides: Record<string, unknown> = {}) =>
+    remittance({
+      txHash: `broadcasting-${PAYCREST_ID}`,
+      fundingPath: 'forwarder',
+      fundingTxHash: keccak256(raw),
+      fundingTxRaw: raw,
+      ...overrides,
+    });
+
+  it('pins a new order to V2, has the wallet authorize V2, and sends payoutWithAuthorization', async () => {
+    const chain = fakeChain();
+    stubOrder();
+    const claim = mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    let typedData: any;
+    mock.method(forwarderDeps, 'signAuthorization', async (_w: string, td: unknown) => {
+      typedData = td;
+      return SIGNATURE;
+    });
+    const raw = await signedV2Tx();
+    let sent: { to: Address; data: Hex } | undefined;
+    mock.method(forwarderDeps, 'signRelayerTx', async (to: Address, data: Hex) => {
+      sent = { to, data };
+      return raw;
+    });
+    mock.method(TransactionService, 'saveFundingTx', async () => true);
+    mock.method(forwarderDeps, 'sendRaw', async () => {
+      chain.receipts.set(keccak256(raw), receipt({ forwarder: V2 }));
+    });
+    const attach = mock.method(TransactionService, 'attachOnChainHash', async () => ({}) as never);
+
+    const result = await run();
+
+    assert.equal(result.txHash, keccak256(raw));
+    assert.equal((claim.mock.calls[0].arguments[0] as { fundingContract?: string }).fundingContract, V2);
+    assert.equal(getAddress(typedData.message.to), V2);
+    assert.equal(typedData.message.nonce, forwarderAuthorizationNonce(ORDER, SINK));
+    assert.equal(sent!.to, V2);
+    const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_V2_ABI, data: sent!.data });
+    assert.equal(call.functionName, 'payoutWithAuthorization');
+    assert.deepEqual(call.args.slice(0, 5), [ORDER, PAYER, SINK, USDC, AMOUNT]);
+    assert.equal(attach.mock.callCount(), 1);
+  });
+
+  it('keeps an order pinned to V1 on V1 after V2 is switched on', async () => {
+    fakeChain();
+    stubOrder(remittance({ fundingPath: 'forwarder', fundingContract: FORWARDER }));
+    const claim = mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    let typedData: any;
+    mock.method(forwarderDeps, 'signAuthorization', async (_w: string, td: unknown) => {
+      typedData = td;
+      return SIGNATURE;
+    });
+    let sent: { to: Address; data: Hex } | undefined;
+    mock.method(forwarderDeps, 'signRelayerTx', async (to: Address, data: Hex) => {
+      sent = { to, data };
+      throw new Error('stop after building calldata');
+    });
+    mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+
+    await assert.rejects(run, code('FORWARDER_UNAVAILABLE'));
+    assert.equal((claim.mock.calls[0].arguments[0] as { fundingContract?: string }).fundingContract, FORWARDER);
+    assert.equal(getAddress(typedData.message.to), FORWARDER);
+    assert.equal(sent!.to, FORWARDER);
+    assert.equal(decodeFunctionData({ abi: PAYOUT_FORWARDER_ABI, data: sent!.data }).functionName, 'payout');
+  });
+
+  it('never claims an order pinned to a contract this deploy does not know', async () => {
+    fakeChain();
+    stubOrder(remittance({ fundingContract: UNKNOWN }));
+    const claim = mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    await assert.rejects(run, code('FORWARDER_UNAVAILABLE'));
+    assert.equal(claim.mock.callCount(), 0);
+  });
+
+  it('checks V1 as well: keeps the claim and signs nothing when V1 already funded the order', async () => {
+    const chain = fakeChain({ funded: (forwarder) => forwarder === FORWARDER });
+    stubOrder();
+    mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    const release = mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    const sign = mock.method(forwarderDeps, 'signAuthorization', async () => SIGNATURE);
+
+    await assert.rejects(run, code('BROADCAST_UNCERTAIN'));
+    assert.equal(sign.mock.callCount(), 0);
+    assert.equal(release.mock.callCount(), 0);
+    assert.equal(chain.calls.sent.length, 0);
+  });
+
+  it('keeps a voided order for ops, signing and sending nothing', async () => {
+    const chain = fakeChain({ voided: true });
+    stubOrder();
+    mock.method(TransactionService, 'claimBroadcastSlot', async () => true);
+    const release = mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    const sign = mock.method(forwarderDeps, 'signAuthorization', async () => SIGNATURE);
+
+    await assert.rejects(run, code('ORDER_VOIDED'));
+    assert.equal(sign.mock.callCount(), 0);
+    assert.equal(release.mock.callCount(), 0);
+    assert.equal(chain.calls.sent.length, 0);
+  });
+
+  it('never retires a saved V2 tx while V1 reports the order funded', async () => {
+    fakeChain({ funded: (forwarder) => forwarder === FORWARDER });
+    const raw = await signedV2Tx(7, BigInt(Math.floor(NOW / 1000) - 3600));
+    stubOrder(saved(raw, { fundingContract: V2 }));
+    const discard = mock.method(TransactionService, 'discardFundingTx', async () => true);
+    await assert.rejects(run, code('BROADCAST_UNCERTAIN'));
+    assert.equal(discard.mock.callCount(), 0);
+  });
+
+  it('resumes a saved V2 tx against the contract on the row and attaches it', async () => {
+    const chain = fakeChain();
+    const raw = await signedV2Tx();
+    stubOrder(saved(raw, { fundingContract: V2 }));
+    chain.receipts.set(keccak256(raw), receipt({ forwarder: V2 }));
+    const sign = mock.method(forwarderDeps, 'signAuthorization', async () => SIGNATURE);
+    const attach = mock.method(TransactionService, 'attachOnChainHash', async () => ({}) as never);
+
+    const result = await run();
+    assert.equal(result.txHash, keccak256(raw));
+    assert.equal(sign.mock.callCount(), 0);
+    assert.equal(attach.mock.callCount(), 1);
+  });
+
+  it('reads a saved tx from before pinning as V1, even with V2 active', async () => {
+    const chain = fakeChain();
+    const raw = await signedPayoutTx();
+    stubOrder(saved(raw, { fundingContract: null }));
+    chain.receipts.set(keccak256(raw), receipt());
+    const attach = mock.method(TransactionService, 'attachOnChainHash', async () => ({}) as never);
+
+    assert.equal((await run()).txHash, keccak256(raw));
+    assert.equal(attach.mock.callCount(), 1);
+  });
+
+  it('keeps the claim when the saved tx went to a different contract than the row is pinned to', async () => {
+    fakeChain();
+    const raw = await signedPayoutTx(); // to V1
+    stubOrder(saved(raw, { fundingContract: V2 }));
+    const attach = mock.method(TransactionService, 'attachOnChainHash', async () => ({}) as never);
+    await assert.rejects(run, code('BROADCAST_UNCERTAIN'));
+    assert.equal(attach.mock.callCount(), 0);
+  });
+
+  it('keeps the claim when the pinned contract is no longer configured', async () => {
+    fakeChain();
+    const raw = await signedV2Tx();
+    stubOrder(saved(raw, { fundingContract: V2 }));
+    delete process.env.PAYOUT_FORWARDER_V2_ADDRESS;
+    const attach = mock.method(TransactionService, 'attachOnChainHash', async () => ({}) as never);
+    await assert.rejects(run, code('BROADCAST_UNCERTAIN'));
+    assert.equal(attach.mock.callCount(), 0);
+  });
+
+  it('recovery attaches a saved V2 tx and keeps a voided claim with nothing saved for ops', async () => {
+    const chain = fakeChain();
+    const raw = await signedV2Tx();
+    chain.receipts.set(keccak256(raw), receipt({ forwarder: V2 }));
+    prisma.transaction.findMany = mock.fn(async () => [
+      { userId: 'u1', orderId: ORDER, txHash: `broadcasting-${PAYCREST_ID}`, fundingTxHash: keccak256(raw), fundingTxRaw: raw, fundingContract: V2 },
+    ]) as any;
+    mock.method(TransactionService, 'attachOnChainHash', async () => ({}) as never);
+    let res = await recoverStuckForwarderClaims();
+    assert.ok(!('skipped' in res));
+    assert.equal(res.results[0]?.outcome, 'attached');
+
+    mock.restoreAll();
+    fakeChain({ voided: true });
+    prisma.transaction.findMany = mock.fn(async () => [
+      { userId: 'u1', orderId: ORDER, txHash: `broadcasting-${PAYCREST_ID}`, fundingTxHash: null, fundingTxRaw: null, fundingContract: V2 },
+    ]) as any;
+    const release = mock.method(TransactionService, 'releaseBroadcastClaim', async () => true);
+    res = await recoverStuckForwarderClaims();
+    assert.ok(!('skipped' in res));
+    assert.equal(res.results[0]?.outcome, 'kept-for-ops');
+    assert.equal(release.mock.callCount(), 0);
   });
 });

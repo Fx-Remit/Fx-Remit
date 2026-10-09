@@ -56,6 +56,25 @@ describe('verifySettlementHash', () => {
     assert.equal(await verifySettlementHash({ row: cryptoRow, walletAddress: WALLET, txHash: HASH }), 'VERIFIED');
   });
 
+  it('verifies legs through PayoutForwarderV2 too, but never legs split across V1 and V2 (#191)', async () => {
+    const V1 = '0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83';
+    const V2 = '0x6575f142Ab3a557DF60F5a9B4d5cf0BD5f3732D5';
+    process.env.PAYOUT_FORWARDER_V2_ADDRESS = V2;
+    try {
+      mock.method(settlementProofDeps, 'getReceipt', async () =>
+        receipt([transferLog(CELO_USDC, WALLET, V2, 12_500_000n), transferLog(CELO_USDC, V2, DEST, 12_500_000n)]),
+      );
+      assert.equal(await verifySettlementHash({ row: cryptoRow, walletAddress: WALLET, txHash: HASH }), 'VERIFIED');
+      mock.restoreAll();
+      mock.method(settlementProofDeps, 'getReceipt', async () =>
+        receipt([transferLog(CELO_USDC, WALLET, V1, 12_500_000n), transferLog(CELO_USDC, V2, DEST, 12_500_000n)]),
+      );
+      assert.equal(await verifySettlementHash({ row: cryptoRow, walletAddress: WALLET, txHash: HASH }), 'MISMATCH');
+    } finally {
+      delete process.env.PAYOUT_FORWARDER_V2_ADDRESS;
+    }
+  });
+
   it('rejects unlinked legs: a self-transfer plus a transfer into the destination', async () => {
     mock.method(settlementProofDeps, 'getReceipt', async () =>
       receipt([transferLog(CELO_USDC, WALLET, WALLET, 12_500_000n), transferLog(CELO_USDC, DEST, DEST, 12_500_000n)]),

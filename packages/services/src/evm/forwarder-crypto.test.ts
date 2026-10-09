@@ -11,6 +11,7 @@ import { describe, it, mock, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   decodeFunctionData,
+  domainSeparator,
   encodeAbiParameters,
   encodeEventTopics,
   encodeFunctionData,
@@ -32,8 +33,10 @@ import {
   broadcastForwarderCryptoTransfer,
   cryptoFundingPathFor,
   forwarderAuthorizationNonce,
+  fundingReceiptMatches,
   forwarderDeps,
   PAYOUT_FORWARDER_ABI,
+  PAYOUT_FORWARDER_V2_ABI,
   prepareCryptoAuthorization,
   recoverStuckForwarderClaims,
   type ForwarderPublicClient,
@@ -42,6 +45,7 @@ import {
 const FORWARDER = getAddress('0x05FAA8d97e5eB76778F4e1ae8327DE63692c8F83');
 const CELO_USDC = getAddress('0xcebA9300f2b948710d2653dD7B07f33A8B32118C');
 const BASE_USDC = getAddress('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
+const CELO_USDT = getAddress('0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e');
 const PAYER = getAddress('0x1111111111111111111111111111111111111111');
 const DEST = getAddress('0x3333333333333333333333333333333333333333');
 const RELAYER = privateKeyToAccount(process.env.RELAYER_PRIVATE_KEY as Hex);
@@ -79,15 +83,15 @@ function log(address: Address, topics: Hex[], data: Hex) {
   return { address, topics, data } as never;
 }
 
-function receipt(usdc: Address, sink: Address = DEST): TransactionReceipt {
+function receipt(usdc: Address, sink: Address = DEST, forwarder: Address = FORWARDER): TransactionReceipt {
   const amount = encodeAbiParameters([{ type: 'uint256' }], [AMOUNT]);
   return {
     status: 'success',
     logs: [
-      log(usdc, encodeEventTopics({ abi: TRANSFER_ABI, eventName: 'Transfer', args: { from: PAYER, to: FORWARDER } }) as Hex[], amount),
-      log(usdc, encodeEventTopics({ abi: TRANSFER_ABI, eventName: 'Transfer', args: { from: FORWARDER, to: sink } }) as Hex[], amount),
+      log(usdc, encodeEventTopics({ abi: TRANSFER_ABI, eventName: 'Transfer', args: { from: PAYER, to: forwarder } }) as Hex[], amount),
+      log(usdc, encodeEventTopics({ abi: TRANSFER_ABI, eventName: 'Transfer', args: { from: forwarder, to: sink } }) as Hex[], amount),
       log(
-        FORWARDER,
+        forwarder,
         encodeEventTopics({ abi: PAYOUT_FORWARDER_ABI, eventName: 'PayoutFunded', args: { orderId: ORDER, payer: PAYER, sink } }) as Hex[],
         encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [usdc, AMOUNT]),
       ),
@@ -123,7 +127,9 @@ type Harness = {
   markConfirmed: ReturnType<typeof mock.fn>;
 };
 
-function harness(opts: { row?: unknown; trusted?: boolean; dryRunFails?: boolean; balance?: bigint } = {}): Harness {
+function harness(
+  opts: { row?: unknown; trusted?: boolean; dryRunFails?: boolean; balance?: bigint; domainVersion?: string } = {},
+): Harness {
   const h: Harness = {
     chains: [],
     dryRuns: [],
@@ -143,6 +149,11 @@ function harness(opts: { row?: unknown; trusted?: boolean; dryRunFails?: boolean
       async readContract(args) {
         if (args.functionName === 'balanceOf') return opts.balance ?? AMOUNT;
         if (args.functionName === 'name') return 'USDC';
+        if (args.functionName === 'DOMAIN_SEPARATOR') {
+          // Celo USDT signs with domain version 1, USDC with 2; a test can make the token's domain differ.
+          const version = opts.domainVersion ?? (getAddress(args.address) === CELO_USDT ? '1' : '2');
+          return domainSeparator({ domain: { name: 'USDC', version, chainId, verifyingContract: args.address } });
+        }
         return '2';
       },
       async call(args) {
@@ -165,6 +176,7 @@ function harness(opts: { row?: unknown; trusted?: boolean; dryRunFails?: boolean
   mock.method(forwarderDeps, 'now', () => NOW);
   mock.method(forwarderDeps, 'sleep', async () => {});
   mock.method(forwarderDeps, 'isFunded', async () => false);
+  mock.method(forwarderDeps, 'isVoided', async () => false);
   mock.method(forwarderDeps, 'withRelayerLock', async (fn: () => Promise<unknown>) => fn());
   mock.method(forwarderDeps, 'resolveWallet', async () => ({ walletId: 'wallet-1', delegated: true }));
   mock.method(forwarderDeps, 'signAuthorization', async (_w: string, td: Record<string, any>) => {
@@ -275,7 +287,9 @@ describe('broadcastForwarderCryptoTransfer: user-signed, any address', () => {
 
 describe('broadcastForwarderCryptoTransfer: terms come only from the reserved row', () => {
   const cases: [string, Record<string, unknown>, string][] = [
-    ['USDT', { sourceToken: 'USDT' }, 'UNSUPPORTED_TOKEN'],
+    ['a token the forwarder does not pay', { sourceToken: 'DAI' }, 'UNSUPPORTED_TOKEN'],
+    ['Base USDT while only V1 (USDC-only) is configured', { sourceToken: 'USDT', recipientBank: 'crypto:base' }, 'FORWARDER_UNAVAILABLE'],
+    ['USDT while only V1 (USDC-only) is configured', { sourceToken: 'USDT' }, 'FORWARDER_UNAVAILABLE'],
     ['arbitrum', { recipientBank: 'crypto:arbitrum' }, 'NOT_CRYPTO_CASH_OUT'],
     ['own wallet', { recipientAcc: PAYER }, 'SINK_IS_PAYER'],
     ['over the crypto cap', { amountUsd: { toString: () => '1000.000001' } }, 'AMOUNT_CAP'],
@@ -350,6 +364,91 @@ describe('prepareCryptoAuthorization', () => {
   });
 });
 
+describe('crypto cash-outs through PayoutForwarderV2 (#191)', () => {
+  const V2 = getAddress('0x6575f142Ab3a557DF60F5a9B4d5cf0BD5f3732D5');
+  const validBefore = String(Math.floor(NOW / 1000) + 600);
+  afterEach(() => {
+    delete process.env.PAYOUT_FORWARDER_V2_ADDRESS;
+  });
+
+  it('has the user sign for V2, pins V2 at claim and relays payoutWithAuthorization', async () => {
+    process.env.PAYOUT_FORWARDER_V2_ADDRESS = V2;
+    harness({ trusted: false });
+    const prepared = await prepareCryptoAuthorization({ userId: 'u1', walletAddress: PAYER, orderId: ORDER });
+    assert.equal(prepared.typedData.message.to, V2);
+
+    mock.restoreAll();
+    const h = harness({ trusted: false, dryRunFails: true });
+    await assert.rejects(send({ signature: SIGNATURE, validBefore }), code('PAYOUT_NOT_AUTHORIZED'));
+    assert.equal((h.claim.mock.calls[0].arguments[0] as { fundingContract?: string }).fundingContract, V2);
+    const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_V2_ABI, data: h.dryRuns[0] });
+    assert.equal(call.functionName, 'payoutWithAuthorization');
+    assert.deepEqual(call.args.slice(0, 5), [ORDER, PAYER, DEST, CELO_USDC, AMOUNT]);
+  });
+
+  it('pays Celo USDT through V2: Tether domain (version 1), USDT in the call and in the receipt legs', async () => {
+    process.env.PAYOUT_FORWARDER_V2_ADDRESS = V2;
+    const usdtRow = cryptoRow({ sourceToken: 'USDT' });
+    harness({ trusted: false, row: usdtRow });
+    const prepared = await prepareCryptoAuthorization({ userId: 'u1', walletAddress: PAYER, orderId: ORDER });
+    assert.deepEqual(prepared.typedData.domain, { name: 'USDC', version: '1', chainId: 42220, verifyingContract: CELO_USDT });
+    assert.equal(prepared.typedData.message.to, V2);
+    assert.equal(prepared.typedData.message.value, AMOUNT.toString());
+
+    mock.restoreAll();
+    const h = harness({ trusted: true, row: usdtRow, dryRunFails: true });
+    await assert.rejects(send(), code('PAYOUT_NOT_AUTHORIZED'));
+    assert.equal(h.typedData[0].domain.verifyingContract, CELO_USDT);
+    assert.equal(h.typedData[0].domain.version, '1');
+    const call = decodeFunctionData({ abi: PAYOUT_FORWARDER_V2_ABI, data: h.dryRuns[0] });
+    assert.deepEqual(call.args.slice(0, 5), [ORDER, PAYER, DEST, CELO_USDT, AMOUNT]);
+
+    const ctx = { orderId: ORDER, payer: PAYER, sink: DEST, token: CELO_USDT, forwarder: V2, amount: AMOUNT } as never;
+    assert.equal(fundingReceiptMatches(receipt(CELO_USDT, DEST, V2), ctx), true);
+    assert.equal(fundingReceiptMatches(receipt(CELO_USDC, DEST, V2), ctx), false);
+  });
+
+  it('keeps the claim when a saved tx pays a different token than the crypto row reserved', async () => {
+    process.env.PAYOUT_FORWARDER_V2_ADDRESS = V2;
+    const data = encodeFunctionData({
+      abi: PAYOUT_FORWARDER_V2_ABI,
+      functionName: 'payoutWithAuthorization',
+      args: [ORDER, PAYER, DEST, CELO_USDC, AMOUNT, BigInt(Math.floor(NOW / 1000) + 600), 27, `0x${'11'.repeat(32)}`, `0x${'22'.repeat(32)}`],
+    });
+    const raw = await RELAYER.signTransaction({
+      chainId: 42220, type: 'eip1559', to: V2, data, nonce: 3, gas: 200_000n, maxFeePerGas: 10_000_000n, maxPriorityFeePerGas: 1_000_000n,
+    });
+    const h = harness({
+      row: cryptoRow({
+        sourceToken: 'USDT',
+        txHash: `broadcasting-${KEY}`,
+        fundingPath: 'forwarder',
+        fundingContract: V2,
+        fundingTxHash: keccak256(raw),
+        fundingTxRaw: raw,
+      }),
+    });
+    await assert.rejects(send(), code('BROADCAST_UNCERTAIN'));
+    assert.equal(h.release.mock.callCount(), 0);
+  });
+
+  it('refuses to sign when the token no longer matches its EIP-712 domain, and sends nothing', async () => {
+    process.env.PAYOUT_FORWARDER_V2_ADDRESS = V2;
+    const h = harness({ trusted: true, row: cryptoRow({ sourceToken: 'USDT' }), domainVersion: '2' });
+    await assert.rejects(send(), code('PAYOUT_NOT_AUTHORIZED'));
+    assert.equal(h.typedData.length, 0);
+    assert.equal(h.relayerChains.length, 0);
+    assert.equal(h.release.mock.callCount(), 1);
+  });
+
+  it('keeps a crypto cash-out pinned to V1 on V1', async () => {
+    process.env.PAYOUT_FORWARDER_V2_ADDRESS = V2;
+    harness({ trusted: false, row: cryptoRow({ fundingPath: 'forwarder', fundingContract: FORWARDER }) });
+    const prepared = await prepareCryptoAuthorization({ userId: 'u1', walletAddress: PAYER, orderId: ORDER });
+    assert.equal(prepared.typedData.message.to, FORWARDER);
+  });
+});
+
 describe('cryptoFundingPathFor', () => {
   const user = { id: 'u1', privyDid: 'did:privy:u1' };
   const withEnv = (env: Record<string, string | undefined>, fn: () => void) => {
@@ -390,6 +489,22 @@ describe('cryptoFundingPathFor', () => {
   it('keeps the legacy direct send while the forwarder is off for the user', () => {
     withEnv({ PAYOUT_FORWARDER_ENABLED: 'false', PAYOUT_FORWARDER_ALLOWLIST: '' }, () => {
       assert.equal(cryptoFundingPathFor(user, 'celo'), 'direct');
+    });
+  });
+
+  it('sends USDT only through V2, never on the direct path (#191)', () => {
+    const V2 = '0x6575f142Ab3a557DF60F5a9B4d5cf0BD5f3732D5';
+    withEnv({ PAYOUT_FORWARDER_ENABLED: 'true', PAYOUT_FORWARDER_V2_ADDRESS: V2 }, () => {
+      assert.equal(cryptoFundingPathFor(user, 'celo', 'USDT'), 'forwarder');
+      assert.equal(cryptoFundingPathFor(user, 'base', 'USDT'), 'forwarder');
+      assert.equal(cryptoFundingPathFor(user, 'arbitrum', 'USDT'), 'unavailable');
+    });
+    withEnv({ PAYOUT_FORWARDER_ENABLED: 'true', PAYOUT_FORWARDER_V2_ADDRESS: undefined }, () => {
+      assert.equal(cryptoFundingPathFor(user, 'celo', 'USDT'), 'unavailable');
+      assert.equal(cryptoFundingPathFor(user, 'celo', 'USDC'), 'forwarder');
+    });
+    withEnv({ PAYOUT_FORWARDER_ENABLED: 'false', PAYOUT_FORWARDER_ALLOWLIST: '', PAYOUT_FORWARDER_V2_ADDRESS: V2 }, () => {
+      assert.equal(cryptoFundingPathFor(user, 'celo', 'USDT'), 'unavailable');
     });
   });
 });
